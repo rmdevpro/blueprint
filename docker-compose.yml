@@ -1,102 +1,25 @@
 services:
-
-  # HolyClaude — turnkey image, CloudCLI + all CLIs bundled
-  holyclaude:
-    image: coderluii/holyclaude:latest
-    container_name: hopper-eval-holyclaude
-    ports:
-      - "7861:3001"
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/New_York
-    env_file:
-      - /mnt/storage/credentials/api-keys/gemini.env
-      - /mnt/storage/credentials/api-keys/openai.env
-    volumes:
-      - /mnt/storage/projects/portfolio/hopper-eval/data/holyclaude:/home/claude/.claude
-      - /mnt/storage/projects/portfolio/ContextBroker:/workspace/ContextBroker
-    shm_size: 2g
-    cap_add:
-      - SYS_ADMIN
-      - SYS_PTRACE
-    security_opt:
-      - seccomp=unconfined
-    restart: unless-stopped
-
-  # CloudCLI — multi-CLI (Claude, Gemini, Codex), custom image
-  cloudcli:
+  blueprint:
     build:
       context: .
-      dockerfile: Dockerfile.cloudcli
-    container_name: hopper-eval-cloudcli
-    ports:
-      - "7862:3001"
-    volumes:
-      - /mnt/storage/projects/portfolio/hopper-eval/data/cloudcli:/root/.claude
-      - /mnt/storage/projects/portfolio/ContextBroker:/workspace/ContextBroker
-    restart: unless-stopped
-
-  # The Companion — WebSocket bridge, Claude + Codex
-  companion:
-    build:
-      context: .
-      dockerfile: Dockerfile.companion
-    container_name: hopper-eval-companion
-    ports:
-      - "7863:3456"
-    environment:
-      - COMPANION_AUTH_TOKEN=hopper2026
-    volumes:
-      - /mnt/storage/projects/portfolio/hopper-eval/data/companion:/root/.claude
-      - /mnt/storage/projects/portfolio/ContextBroker:/workspace/ContextBroker
-    restart: unless-stopped
-
-  # claude-code-webui (sugyan) — Claude only
-  webui:
-    build:
-      context: .
-      dockerfile: Dockerfile.webui
-    container_name: hopper-eval-webui
-    ports:
-      - "7864:8080"
-    volumes:
-      - /mnt/storage/projects/portfolio/hopper-eval/data/webui:/root/.claude
-      - /mnt/storage/projects/portfolio/ContextBroker:/workspace/ContextBroker
-    restart: unless-stopped
-
-  # Blueprint — CLI workbench, no auth
-  hopper-ui:
-    build:
-      context: .
-      dockerfile: Dockerfile.hopper-ui
-    container_name: hopper-eval-hopper-ui
+      dockerfile: Dockerfile
+    container_name: blueprint
     ports:
       - "7866:3000"
-    environment:
-      - MAX_TMUX_SESSIONS=20
     volumes:
-      - /mnt/storage/projects/portfolio/hopper-eval/data/hopper-ui:/home/hopper/.claude
-      - /mnt/storage/projects/portfolio/hopper-eval/data/blueprint-db:/home/hopper/.blueprint
-      - /mnt/storage/projects/portfolio/hopper-eval/data/hopper-ui-config:/home/hopper/.config
-      - /mnt/storage/projects/portfolio/ContextBroker:/workspace/ContextBroker
-      - /mnt/storage/projects/Joshua26:/workspace/Joshua26
-      # Optional: mount docker socket for building/deploying from within sessions
-      # WARNING: Docker socket access = root on host. Only enable with BLUEPRINT_API_KEY set.
-      # - /var/run/docker.sock:/var/run/docker.sock
+      - joshua26_workspace:/workspace
+      - joshua26_storage:/storage
+    environment:
+      - WORKSPACE=/workspace/blueprint/projects
+      - CLAUDE_HOME=/workspace/blueprint/.claude
+      - CLAUDE_CONFIG_DIR=/workspace/blueprint/.claude
+      - BLUEPRINT_DATA=/workspace/blueprint/data
+      - HOME=/home/hopper
+      - MAX_TMUX_SESSIONS=50
     restart: unless-stopped
 
-  # Kanna — Claude + Codex, Bun-based
-  kanna:
-    build:
-      context: .
-      dockerfile: Dockerfile.kanna
-    container_name: hopper-eval-kanna
-    ports:
-      - "7865:3210"
-    env_file:
-      - /mnt/storage/credentials/api-keys/openai.env
-    volumes:
-      - /mnt/storage/projects/portfolio/hopper-eval/data/kanna:/root/.claude
-      - /mnt/storage/projects/portfolio/ContextBroker:/workspace/ContextBroker
-    restart: unless-stopped
+volumes:
+  joshua26_workspace:
+    external: true
+  joshua26_storage:
+    external: true

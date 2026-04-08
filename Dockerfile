@@ -20,11 +20,11 @@ RUN npm install -g @anthropic-ai/claude-code
 
 # Copy and install app dependencies
 WORKDIR /app
-COPY hopper-ui/package.json .
+COPY package.json .
 RUN npm install
 
 # Copy app source
-COPY hopper-ui/ .
+COPY . .
 
 # Create non-root user (Claude CLI refuses --dangerously-skip-permissions as root)
 RUN useradd -m -s /bin/bash hopper && \
@@ -38,7 +38,7 @@ RUN mkdir -p /home/hopper/.claude && \
     chown -R hopper:hopper /home/hopper
 
 # Entrypoint ensures runtime directories exist after volume mounts
-COPY hopper-ui/entrypoint.sh /entrypoint.sh
+COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENV HOME=/home/hopper
