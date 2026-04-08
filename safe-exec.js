@@ -102,7 +102,7 @@ function tmuxCreateClaude(sessionName, cwd, claudeArgs = []) {
 
   // Export CLAUDE_HOME and CLAUDE_CONFIG_DIR so the CLI finds credentials and handles refresh itself.
   // Do NOT inject CLAUDE_CODE_OAUTH_TOKEN — it overrides the CLI's refresh flow with a potentially stale token.
-  const envExports = `export CLAUDE_HOME=${shellEscape(CLAUDE_HOME)} && export CLAUDE_CONFIG_DIR=${shellEscape(CLAUDE_HOME)} && export HOME=${shellEscape(HOME)} && export DISABLE_AUTO_COMPACT=1`;
+  const envExports = `export CLAUDE_HOME=${shellEscape(CLAUDE_HOME)} && export CLAUDE_CONFIG_DIR=${shellEscape(CLAUDE_HOME)} && export HOME=${shellEscape(HOME)}`;
 
   const cmd = `cd ${escapedCwd} && ${envExports} && exec claude ${escapedArgs}`;
   tmuxExec(['new-session', '-d', '-s', safeName, '-x', '200', '-y', '50', cmd], { timeout: 30000 });
