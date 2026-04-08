@@ -369,6 +369,7 @@
 
     /* ── Terminal Area ──────────────────────────────── */
     #terminal-area { flex: 1; position: relative; background: var(--bg-primary); }
+    #terminal-area.drag-over { outline: 2px solid var(--accent); outline-offset: -2px; }
 
     .terminal-pane {
       position: absolute; top: 0; left: 0; right: 0; bottom: 28px;
@@ -460,6 +461,7 @@
       <button class="panel-tab" data-panel="tasks" onclick="switchPanel('tasks')">Tasks</button>
       <button class="panel-tab" data-panel="claudemd" onclick="switchPanel('claudemd')">CLAUDE.md</button>
       <button class="panel-tab" data-panel="messages" onclick="switchPanel('messages')">Messages</button>
+      <button class="panel-tab" data-panel="files" onclick="switchPanel('files')">Files</button>
     </div>
     <div id="panel-content">
       <div id="panel-notes" class="panel-section">
@@ -479,6 +481,18 @@
       <div id="panel-messages" class="panel-section" style="display:none">
         <h3>Inter-Session Messages</h3>
         <div id="message-list" style="font-size:12px;color:var(--text-secondary)">No messages yet</div>
+      </div>
+      <div id="panel-files" class="panel-section" style="display:none">
+        <h3>Files</h3>
+        <div id="file-browser-path" style="font-size:11px;color:var(--text-muted);margin-bottom:8px;font-family:monospace;word-break:break-all"></div>
+        <div id="file-browser-tree" style="overflow-y:auto;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:4px;min-height:200px"></div>
+        <div id="file-viewer" style="display:none;margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span id="file-viewer-name" style="font-size:11px;color:var(--text-muted);font-family:monospace;word-break:break-all;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+            <button onclick="closeFileViewer()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:13px;padding:0 4px;flex-shrink:0" title="Close">&#10005;</button>
+          </div>
+          <textarea id="file-viewer-content" readonly style="width:100%;min-height:200px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);padding:8px;font-size:11px;font-family:monospace;resize:vertical;outline:none;box-sizing:border-box"></textarea>
+        </div>
       </div>
     </div>
   </div>
@@ -1347,6 +1361,7 @@
       document.getElementById('panel-tasks').style.display = panel === 'tasks' ? '' : 'none';
       document.getElementById('panel-claudemd').style.display = panel === 'claudemd' ? '' : 'none';
       document.getElementById('panel-messages').style.display = panel === 'messages' ? '' : 'none';
+      document.getElementById('panel-files').style.display = panel === 'files' ? '' : 'none';
       loadPanelData();
     }
 
@@ -1376,6 +1391,8 @@
         } catch {}
       } else if (activePanel === 'messages') {
         loadMessages(project);
+      } else if (activePanel === 'files') {
+        loadFiles(project);
       }
     }
 
@@ -1460,6 +1477,74 @@
           </div>
         `).join('');
       } catch {}
+    }
+
+    // File Browser
+    let fileBrowserProject = null;
+
+    function getCurrentProjectPath() {
+      const project = getCurrentProject();
+      if (!project) return null;
+      const ps = projectState.find(p => p.name === project);
+      return ps ? ps.path : null;
+    }
+
+    function loadFiles(project) {
+      const projectPath = getCurrentProjectPath();
+      if (!projectPath) return;
+
+      const treeEl = document.getElementById('file-browser-tree');
+      const pathEl = document.getElementById('file-browser-path');
+      pathEl.textContent = projectPath;
+
+      // Re-initialize only when project changes
+      if (fileBrowserProject === project) return;
+      fileBrowserProject = project;
+
+      treeEl.innerHTML = '';
+      closeFileViewer();
+
+      $(treeEl).fileTree({
+        root: projectPath.replace(/\/?$/, '/'),
+        script: '/api/jqueryfiletree',
+        folderEvent: 'click',
+        expandSpeed: 150,
+        collapseSpeed: 150,
+        multiFolder: true,
+        onlyFolders: false,
+      }, function(filePath) {
+        openFileBrowserFile(filePath);
+      });
+
+      // Make file links draggable — delegate so it works after tree expansion
+      $(treeEl).on('dragstart', 'li.file a', function(e) {
+        const path = $(this).attr('rel') || '';
+        e.originalEvent.dataTransfer.setData('text/plain', path.trim());
+        e.originalEvent.dataTransfer.effectAllowed = 'copy';
+      });
+      // Set draggable attr on existing and future file links
+      $(treeEl).on('mouseenter', 'li.file a', function() {
+        $(this).attr('draggable', 'true');
+      });
+    }
+
+    async function openFileBrowserFile(filePath) {
+      try {
+        const res = await fetch(`/api/file?path=${encodeURIComponent(filePath)}`);
+        if (!res.ok) { console.warn('Cannot read file:', filePath); return; }
+        const text = await res.text();
+        document.getElementById('file-viewer-name').textContent = filePath.split('/').filter(Boolean).pop();
+        document.getElementById('file-viewer-name').title = filePath;
+        document.getElementById('file-viewer-content').value = text;
+        document.getElementById('file-viewer').style.display = '';
+      } catch (err) {
+        console.warn('File read error:', err);
+      }
+    }
+
+    function closeFileViewer() {
+      document.getElementById('file-viewer').style.display = 'none';
+      document.getElementById('file-viewer-content').value = '';
     }
 
     // Reload panel when switching tabs
@@ -1593,6 +1678,29 @@
       div.textContent = str;
       return div.innerHTML;
     }
+
+    // ── File drag-and-drop onto terminal ─────────────
+    const terminalArea = document.getElementById('terminal-area');
+    terminalArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      terminalArea.classList.add('drag-over');
+    });
+    terminalArea.addEventListener('dragleave', (e) => {
+      if (!terminalArea.contains(e.relatedTarget)) terminalArea.classList.remove('drag-over');
+    });
+    terminalArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      terminalArea.classList.remove('drag-over');
+      const path = e.dataTransfer.getData('text/plain').trim();
+      if (!path) return;
+      if (activeTabId && tabs.has(activeTabId)) {
+        const tab = tabs.get(activeTabId);
+        if (tab.ws && tab.ws.readyState === WebSocket.OPEN) {
+          tab.ws.send(path);
+        }
+      }
+    });
 
     // ── Resize observer for terminal area ────────────
     const resizeObserver = new ResizeObserver(() => {

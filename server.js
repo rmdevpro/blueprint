@@ -72,6 +72,22 @@ app.get('/api/browse', async (req, res) => {
   }
 });
 
+// ── API: Read file contents ───────────────────────────────────────────────
+
+app.get('/api/file', async (req, res) => {
+  try {
+    const filePath = req.query.path;
+    if (!filePath) return res.status(400).send('path required');
+    const fileStat = await stat(filePath);
+    if (!fileStat.isFile()) return res.status(400).send('not a file');
+    if (fileStat.size > 1024 * 1024) return res.status(413).send('file too large (>1MB)');
+    const content = await readFile(filePath, 'utf-8');
+    res.type('text/plain').send(content);
+  } catch (err) {
+    res.status(400).send(`Cannot read file: ${err.message}`);
+  }
+});
+
 // ── jQuery File Tree connector ────────────────────────────────────────────
 const jqftConnector = require('jqueryfiletree/dist/connectors/jqueryFileTree');
 app.post('/api/jqueryfiletree', jqftConnector.getDirList);
