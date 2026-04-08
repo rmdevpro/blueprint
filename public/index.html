@@ -1502,16 +1502,6 @@
         openFileBrowserFile(filePath);
       });
 
-      // Collapse all after initial render so tree starts fully collapsed
-      const observer = new MutationObserver(function() {
-        observer.disconnect();
-        setTimeout(function() {
-          $(treeEl).find('ul.jqueryFileTree').hide();
-          $(treeEl).find('li.directory').addClass('collapsed').removeClass('expanded');
-        }, 50);
-      });
-      observer.observe(treeEl, { childList: true });
-
       // Make file links draggable — delegate so it works after tree expansion
       $(treeEl).on('dragstart', 'li.file a', function(e) {
         const path = $(this).attr('rel') || '';
