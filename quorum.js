@@ -263,7 +263,8 @@ const leadSessionCache = new Map();
 
 async function askQuorum(question, project, callingSessionId, mode) {
   const settings = getQuorumSettings();
-  const cwd = safe.resolveProjectPath(project);
+  const dbProj = db.getProject(project);
+  const cwd = dbProj ? dbProj.path : safe.resolveProjectPath(project);
 
   const roundId = randomUUID().substring(0, 8);
   const roundDir = join(QUORUM_DIR, roundId);
