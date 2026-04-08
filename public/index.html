@@ -577,23 +577,24 @@
         <div class="setting-row">
           <label>Lead Model (CLI)</label>
           <select id="setting-quorum-lead" onchange="saveSetting('quorum_lead_model', this.value)">
-            <option value="claude-opus-4-6">Opus 4.6</option>
-            <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+            <option value="opus">Opus</option>
+            <option value="sonnet">Sonnet</option>
+            <option value="haiku">Haiku</option>
           </select>
         </div>
         <div class="setting-row">
           <label>Fixed Junior</label>
-          <select id="setting-quorum-fixed" onchange="saveSetting('quorum_fixed_junior', JSON.parse(this.value))">
-            <option value='{"model":"claude-sonnet-4-6","provider":"anthropic"}'>Sonnet 4.6 (Anthropic)</option>
-            <option value='{"model":"claude-opus-4-6","provider":"anthropic"}'>Opus 4.6 (Anthropic)</option>
-            <option value='{"model":"claude-haiku-4-5-20251001","provider":"anthropic"}'>Haiku 4.5 (Anthropic)</option>
+          <select id="setting-quorum-fixed" onchange="saveSetting('quorum_fixed_junior', this.value)">
+            <option value="sonnet">Sonnet</option>
+            <option value="opus">Opus</option>
+            <option value="haiku">Haiku</option>
           </select>
         </div>
         <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:4px">
           <label>Additional Juniors <span style="font-size:10px;color:var(--text-muted)">(JSON array)</span></label>
           <textarea id="setting-quorum-additional" style="width:100%;min-height:60px;padding:6px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:11px;font-family:monospace;outline:none"
             onchange="saveSetting('quorum_additional_juniors', JSON.parse(this.value))"
-            placeholder='[{"model":"gpt-4o","provider":"openai","api_key_env":"OPENAI_API_KEY"}]'></textarea>
+            placeholder='[{"model":"gpt-5","provider":"openai","base_url":"https://api.openai.com","api_key":"sk-..."}]'></textarea>
         </div>
       </div>
 
@@ -2110,6 +2111,9 @@
         if (s.theme) document.getElementById('setting-theme').value = s.theme;
         if (s.font_size) document.getElementById('setting-font-size').value = s.font_size;
         if (s.font_family) document.getElementById('setting-font-family').value = s.font_family;
+        if (s.quorum_lead_model) document.getElementById('setting-quorum-lead').value = s.quorum_lead_model;
+        if (s.quorum_fixed_junior) document.getElementById('setting-quorum-fixed').value = s.quorum_fixed_junior;
+        if (s.quorum_additional_juniors) document.getElementById('setting-quorum-additional').value = JSON.stringify(s.quorum_additional_juniors, null, 2);
       } catch {}
       // Load global CLAUDE.md
       try {

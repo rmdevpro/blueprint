@@ -129,82 +129,54 @@ function executeTool(toolName, input, cwd, tempDir) {
 // ── API-based ReAct agent ──────────────────────────────────────────────────
 
 async function runJuniorAgent(modelConfig, question, cwd, tempDir) {
-  const provider = modelConfig.provider || 'anthropic';
-  const model = modelConfig.model;
-  const maxTurns = 10;
-
   const systemPrompt = `You are a junior member of a technical quorum. You have been given a question to answer independently.
 
 You have access to tools to examine the project codebase and search the web. Use them as needed to give a thorough, well-informed answer.
 
 When you have your answer ready, state it clearly. Be thorough but concise.`;
 
-  if (provider === 'anthropic') {
-    return await runAnthropicAgent(model, systemPrompt, question, cwd, tempDir, maxTurns, modelConfig);
-  } else {
-    return await runOpenAICompatAgent(model, systemPrompt, question, cwd, tempDir, maxTurns, modelConfig);
+  // String config (e.g. "sonnet") = Claude CLI model
+  if (typeof modelConfig === 'string') {
+    return await runClaudeCliJunior(modelConfig, systemPrompt, question, cwd);
+  }
+
+  const provider = modelConfig.provider || 'anthropic';
+
+  // Anthropic provider or missing = Claude CLI
+  if (provider === 'anthropic' || provider === 'anthropic-cli') {
+    const model = modelConfig.model || 'sonnet';
+    return await runClaudeCliJunior(model, systemPrompt, question, cwd);
+  }
+
+  // Everything else = OpenAI-compatible API
+  return await runOpenAICompatAgent(modelConfig, systemPrompt, question, cwd, tempDir);
+}
+
+async function runClaudeCliJunior(model, systemPrompt, question, cwd) {
+  const prompt = `${systemPrompt}\n\n## Question\n\n${question}`;
+  const args = [
+    '--print',
+    '--permission-mode', 'dontAsk',
+    '--tools', 'Read,Grep,Glob,WebSearch,WebFetch',
+    '--allowedTools', 'Read', 'Grep', 'Glob', 'WebSearch', 'WebFetch',
+    '--model', model,
+    '--no-session-persistence',
+    prompt,
+  ];
+  try {
+    return (await safe.claudeExecAsync(args, { cwd, timeout: 120000 })).trim();
+  } catch (err) {
+    return `CLI Error: ${err.message?.substring(0, 500)}`;
   }
 }
 
-async function runAnthropicAgent(model, systemPrompt, question, cwd, tempDir, maxTurns, config) {
-  const apiKey = process.env[config.api_key_env || 'ANTHROPIC_API_KEY'] || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return 'Error: no API key configured for Anthropic';
-
-  const baseUrl = config.base_url || 'https://api.anthropic.com';
-  const messages = [{ role: 'user', content: question }];
-
-  for (let turn = 0; turn < maxTurns; turn++) {
-    const body = {
-      model,
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages,
-      tools: JUNIOR_TOOLS,
-    };
-
-    const response = await fetchJSON(`${baseUrl}/v1/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (response.error) return `API Error: ${JSON.stringify(response.error)}`;
-
-    // Collect text and tool calls
-    let hasToolUse = false;
-    const toolResults = [];
-    let textContent = '';
-
-    for (const block of response.content || []) {
-      if (block.type === 'text') textContent += block.text;
-      if (block.type === 'tool_use') {
-        hasToolUse = true;
-        const result = executeTool(block.name, block.input, cwd, tempDir);
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
-      }
-    }
-
-    messages.push({ role: 'assistant', content: response.content });
-
-    if (!hasToolUse || response.stop_reason === 'end_turn') {
-      return textContent || 'No response generated';
-    }
-
-    messages.push({ role: 'user', content: toolResults });
-  }
-
-  return 'Max tool turns reached';
-}
-
-async function runOpenAICompatAgent(model, systemPrompt, question, cwd, tempDir, maxTurns, config) {
-  const apiKey = process.env[config.api_key_env || 'OPENAI_API_KEY'] || process.env.OPENAI_API_KEY;
+async function runOpenAICompatAgent(config, systemPrompt, question, cwd, tempDir) {
+  const apiKey = config.api_key || process.env[config.api_key_env || 'OPENAI_API_KEY'] || '';
   if (!apiKey) return `Error: no API key configured for ${config.provider}`;
 
+  const model = config.model;
   const baseUrl = config.base_url || 'https://api.openai.com';
+  const maxTurns = 10;
   const messages = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: question },
@@ -223,7 +195,7 @@ async function runOpenAICompatAgent(model, systemPrompt, question, cwd, tempDir,
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ model, messages, tools, max_tokens: 4096 }),
+      body: JSON.stringify({ model, messages, tools }),
     });
 
     if (response.error) return `API Error: ${JSON.stringify(response.error)}`;
@@ -278,9 +250,9 @@ function fetchJSON(url, opts) {
 
 function getQuorumSettings() {
   let lead, fixedJunior, additionalJuniors;
-  try { lead = JSON.parse(db.getSetting('quorum_lead_model', '"claude-opus-4-6"')); } catch { lead = 'claude-opus-4-6'; }
-  try { fixedJunior = JSON.parse(db.getSetting('quorum_fixed_junior', '{"model":"claude-sonnet-4-6","provider":"anthropic"}')); }
-  catch { fixedJunior = { model: 'claude-sonnet-4-6', provider: 'anthropic' }; }
+  try { lead = JSON.parse(db.getSetting('quorum_lead_model', '"opus"')); } catch { lead = 'opus'; }
+  try { fixedJunior = JSON.parse(db.getSetting('quorum_fixed_junior', '"sonnet"')); }
+  catch { fixedJunior = 'sonnet'; }
   try { additionalJuniors = JSON.parse(db.getSetting('quorum_additional_juniors', '[]')); }
   catch { additionalJuniors = []; }
 
@@ -304,8 +276,9 @@ async function askQuorum(question, project, callingSessionId, mode) {
   const juniorFiles = [];
   for (let i = 0; i < allJuniors.length; i++) {
     const config = allJuniors[i];
-    const label = config.label || config.model?.split('-').slice(0, 2).join('-') || `junior_${i + 1}`;
-    console.log(`[quorum] Running junior ${i + 1}: ${label} (${config.provider || 'anthropic'})...`);
+    const label = typeof config === 'string' ? config : (config.label || config.model || `junior_${i + 1}`);
+    const provider = typeof config === 'string' ? 'cli' : (config.provider || 'anthropic');
+    console.log(`[quorum] Running junior ${i + 1}: ${label} (${provider})...`);
 
     const response = await runJuniorAgent(config, question, cwd, roundDir);
     const filename = `junior_${i + 1}_${label.replace(/[^a-zA-Z0-9]/g, '_')}.md`;
