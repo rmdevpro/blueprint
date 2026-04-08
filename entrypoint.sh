@@ -53,9 +53,9 @@ run_as_hopper() {
 
   # Install Blueprint slash commands as global skills
   if [ -d /app/config/skills ]; then
-    mkdir -p "$HOME/.claude/skills"
-    cp -r /app/config/skills/* "$HOME/.claude/skills/"
-    echo "[entrypoint] Installed Blueprint skills"
+    mkdir -p "$CLAUDE/skills"
+    cp -r /app/config/skills/* "$CLAUDE/skills/"
+    echo "[entrypoint] Installed Blueprint skills to $CLAUDE/skills/"
   fi
 
   # Verify Claude CLI credentials (non-interactive)
