@@ -6,6 +6,12 @@
   <title>Blueprint</title>
   <link rel="stylesheet" href="/lib/xterm/css/xterm.css">
   <link rel="stylesheet" href="/lib/jqueryfiletree/jQueryFileTree.min.css">
+  <style>
+    /* Override jQueryFileTree hardcoded colors to use theme variables */
+    UL.jqueryFileTree A { color: var(--text-primary); }
+    UL.jqueryFileTree A:hover { color: var(--accent); background: var(--bg-tertiary); }
+    UL.jqueryFileTree LI.selected > A { color: var(--accent); }
+  </style>
   <script src="/lib/jquery/jquery.min.js"></script>
   <script src="/lib/jqueryfiletree/jQueryFileTree.min.js"></script>
   <style>
@@ -1526,13 +1532,13 @@
         });
       }
 
-      // Make file links draggable — delegate so it works after tree expansion
-      $(treeEl).on('dragstart', 'li.file a', function(e) {
+      // Make file and directory links draggable
+      $(treeEl).on('dragstart', 'a', function(e) {
         const path = $(this).attr('rel') || '';
         e.originalEvent.dataTransfer.setData('text/plain', path.trim());
         e.originalEvent.dataTransfer.effectAllowed = 'copy';
       });
-      $(treeEl).on('mouseenter', 'li.file a', function() {
+      $(treeEl).on('mouseenter', 'a', function() {
         $(this).attr('draggable', 'true');
       });
     }
@@ -1708,6 +1714,7 @@
         if (tab.ws && tab.ws.readyState === WebSocket.OPEN) {
           tab.ws.send(path);
         }
+        tab.term.focus();
       }
     });
 
