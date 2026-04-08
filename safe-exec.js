@@ -107,9 +107,13 @@ function tmuxCreateClaude(sessionName, cwd, claudeArgs = []) {
   const cmd = `cd ${escapedCwd} && ${envExports} && exec claude ${escapedArgs}`;
   tmuxExec(['new-session', '-d', '-s', safeName, '-x', '200', '-y', '50', cmd], { timeout: 30000 });
 
-  // Enable mouse scrolling and set scrollback depth so users can scroll up in the browser
-  tmuxExec(['set-option', '-t', safeName, 'mouse', 'off']);
+  // Enable mouse for scrolling but unbind selection/drag so xterm.js handles copy/paste natively
+  tmuxExec(['set-option', '-t', safeName, 'mouse', 'on']);
   tmuxExec(['set-option', '-t', safeName, 'history-limit', '10000']);
+  tmuxExec(['unbind-key', '-T', 'root', 'MouseDrag1Pane']);
+  tmuxExec(['unbind-key', '-T', 'root', 'MouseDown3Pane']);
+  tmuxExec(['unbind-key', '-T', 'copy-mode', 'MouseDrag1Pane']);
+  tmuxExec(['unbind-key', '-T', 'copy-mode-vi', 'MouseDrag1Pane']);
 }
 
 /**
@@ -121,8 +125,12 @@ function tmuxCreateBash(sessionName, cwd) {
   const envExports = `export CLAUDE_HOME=${shellEscape(CLAUDE_HOME)} && export CLAUDE_CONFIG_DIR=${shellEscape(CLAUDE_HOME)} && export HOME=${shellEscape(HOME)}`;
   const cmd = `cd ${escapedCwd} && ${envExports} && exec bash`;
   tmuxExec(['new-session', '-d', '-s', safeName, '-x', '200', '-y', '50', cmd], { timeout: 30000 });
-  tmuxExec(['set-option', '-t', safeName, 'mouse', 'off']);
+  tmuxExec(['set-option', '-t', safeName, 'mouse', 'on']);
   tmuxExec(['set-option', '-t', safeName, 'history-limit', '10000']);
+  tmuxExec(['unbind-key', '-T', 'root', 'MouseDrag1Pane']);
+  tmuxExec(['unbind-key', '-T', 'root', 'MouseDown3Pane']);
+  tmuxExec(['unbind-key', '-T', 'copy-mode', 'MouseDrag1Pane']);
+  tmuxExec(['unbind-key', '-T', 'copy-mode-vi', 'MouseDrag1Pane']);
 }
 
 /**
