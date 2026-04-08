@@ -1010,6 +1010,13 @@
         fastScrollSensitivity: 5,
         scrollSensitivity: 3,
       });
+      // Block mouse tracking sequences from Ink/Claude CLI so native selection works
+      const mouseModes = [1000, 1002, 1003, 1006, 1015];
+      for (const mode of mouseModes) {
+        term.parser.registerCsiHandler({ prefix: '?', params: [mode], final: 'h' }, () => true);
+        term.parser.registerCsiHandler({ prefix: '?', params: [mode], final: 'l' }, () => true);
+      }
+
       const fitAddon = new FitAddon.FitAddon();
       term.loadAddon(fitAddon);
       term.loadAddon(new WebLinksAddon.WebLinksAddon());
@@ -1694,19 +1701,8 @@
       return div.innerHTML;
     }
 
-    // ── Mouse wheel scroll → send arrow keys to tmux ──
-    const terminalArea = document.getElementById('terminal-area');
-    terminalArea.addEventListener('wheel', (e) => {
-      if (!activeTabId || !tabs.has(activeTabId)) return;
-      const tab = tabs.get(activeTabId);
-      if (!tab.ws || tab.ws.readyState !== WebSocket.OPEN) return;
-      const lines = Math.max(1, Math.round(Math.abs(e.deltaY) / 40));
-      const key = e.deltaY < 0 ? '\x1b[A' : '\x1b[B'; // up or down arrow
-      for (let i = 0; i < lines; i++) tab.ws.send(key);
-      e.preventDefault();
-    }, { passive: false });
-
     // ── File drag-and-drop onto terminal ─────────────
+    const terminalArea = document.getElementById('terminal-area');
     terminalArea.addEventListener('dragover', (e) => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
