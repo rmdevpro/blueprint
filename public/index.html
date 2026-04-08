@@ -1696,6 +1696,7 @@
 
     // ── File drag-and-drop onto terminal ─────────────
     const terminalArea = document.getElementById('terminal-area');
+    terminalArea.addEventListener('contextmenu', (e) => e.preventDefault());
     terminalArea.addEventListener('dragover', (e) => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
