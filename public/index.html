@@ -1158,7 +1158,12 @@
         // Wire terminal input
         if (tab.dataDisposable) tab.dataDisposable.dispose();
         tab.dataDisposable = tab.term.onData((data) => {
-          if (tab.ws && tab.ws.readyState === WebSocket.OPEN) tab.ws.send(data);
+          if (tab.ws && tab.ws.readyState === WebSocket.OPEN) {
+            // Filter out SGR mouse movement events (button 35 = no-button motion)
+            // These cause tmux popup menus to dismiss immediately
+            if (/^\x1b\[<35;\d+;\d+[Mm]$/.test(data)) return;
+            tab.ws.send(data);
+          }
         });
 
         if (tab.resizeDisposable) tab.resizeDisposable.dispose();
