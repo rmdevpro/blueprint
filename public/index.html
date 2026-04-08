@@ -457,14 +457,14 @@
 
   <div id="right-panel">
     <div id="panel-header">
-      <button class="panel-tab active" data-panel="notes" onclick="switchPanel('notes')">Notes</button>
+      <button class="panel-tab active" data-panel="files" onclick="switchPanel('files')">Files</button>
+      <button class="panel-tab" data-panel="notes" onclick="switchPanel('notes')">Notes</button>
       <button class="panel-tab" data-panel="tasks" onclick="switchPanel('tasks')">Tasks</button>
       <button class="panel-tab" data-panel="claudemd" onclick="switchPanel('claudemd')">CLAUDE.md</button>
       <button class="panel-tab" data-panel="messages" onclick="switchPanel('messages')">Messages</button>
-      <button class="panel-tab" data-panel="files" onclick="switchPanel('files')">Files</button>
     </div>
     <div id="panel-content">
-      <div id="panel-notes" class="panel-section">
+      <div id="panel-notes" class="panel-section" style="display:none">
         <h3>Project Notes</h3>
         <textarea id="notes-editor" placeholder="Shared notes for this project..."></textarea>
       </div>
@@ -482,10 +482,8 @@
         <h3>Inter-Session Messages</h3>
         <div id="message-list" style="font-size:12px;color:var(--text-secondary)">No messages yet</div>
       </div>
-      <div id="panel-files" class="panel-section" style="display:none">
-        <h3>Files</h3>
-        <div id="file-browser-path" style="font-size:11px;color:var(--text-muted);margin-bottom:8px;font-family:monospace;word-break:break-all"></div>
-        <div id="file-browser-tree" style="overflow-y:auto;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:4px;min-height:200px"></div>
+      <div id="panel-files" class="panel-section">
+        <div id="file-browser-tree" style="overflow-y:auto;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:4px;flex:1;min-height:0"></div>
         <div id="file-viewer" style="display:none;margin-top:8px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
             <span id="file-viewer-name" style="font-size:11px;color:var(--text-muted);font-family:monospace;word-break:break-all;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
@@ -1340,7 +1338,7 @@
     // ── Right Panel ──────────────────────────────────
 
     let panelOpen = false;
-    let activePanel = 'notes';
+    let activePanel = 'files';
     let notesSaveTimer = null;
     let currentPanelProject = null;
 
@@ -1371,6 +1369,10 @@
     }
 
     async function loadPanelData() {
+      if (activePanel === 'files') {
+        loadFiles();
+        return;
+      }
       const project = getCurrentProject();
       if (!project) return;
       currentPanelProject = project;
@@ -1391,8 +1393,6 @@
         } catch {}
       } else if (activePanel === 'messages') {
         loadMessages(project);
-      } else if (activePanel === 'files') {
-        loadFiles(project);
       }
     }
 
@@ -1480,32 +1480,18 @@
     }
 
     // File Browser
-    let fileBrowserProject = null;
+    let fileBrowserInitialized = false;
 
-    function getCurrentProjectPath() {
-      const project = getCurrentProject();
-      if (!project) return null;
-      const ps = projectState.find(p => p.name === project);
-      return ps ? ps.path : null;
-    }
-
-    function loadFiles(project) {
-      const projectPath = getCurrentProjectPath();
-      if (!projectPath) return;
+    function loadFiles() {
+      if (fileBrowserInitialized) return;
+      fileBrowserInitialized = true;
 
       const treeEl = document.getElementById('file-browser-tree');
-      const pathEl = document.getElementById('file-browser-path');
-      pathEl.textContent = projectPath;
-
-      // Re-initialize only when project changes
-      if (fileBrowserProject === project) return;
-      fileBrowserProject = project;
-
       treeEl.innerHTML = '';
       closeFileViewer();
 
       $(treeEl).fileTree({
-        root: projectPath.replace(/\/?$/, '/'),
+        root: '/workspace/',
         script: '/api/jqueryfiletree',
         folderEvent: 'click',
         expandSpeed: 150,
@@ -1516,13 +1502,22 @@
         openFileBrowserFile(filePath);
       });
 
+      // Collapse all after initial render so tree starts fully collapsed
+      const observer = new MutationObserver(function() {
+        observer.disconnect();
+        setTimeout(function() {
+          $(treeEl).find('ul.jqueryFileTree').hide();
+          $(treeEl).find('li.directory').addClass('collapsed').removeClass('expanded');
+        }, 50);
+      });
+      observer.observe(treeEl, { childList: true });
+
       // Make file links draggable — delegate so it works after tree expansion
       $(treeEl).on('dragstart', 'li.file a', function(e) {
         const path = $(this).attr('rel') || '';
         e.originalEvent.dataTransfer.setData('text/plain', path.trim());
         e.originalEvent.dataTransfer.effectAllowed = 'copy';
       });
-      // Set draggable attr on existing and future file links
       $(treeEl).on('mouseenter', 'li.file a', function() {
         $(this).attr('draggable', 'true');
       });
