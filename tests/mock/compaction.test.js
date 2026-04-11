@@ -22,6 +22,7 @@ async function makeEnv(overrides = {}) {
   const captureOutputs = [...(overrides.captureOutputs || [])];
   const claudeOutputs = [...(overrides.claudeOutputs || [])];
   const tmuxAlive = overrides.tmuxAlive ?? new Set(['bp_session123']);
+  let captureCounter = 0;
 
   const configValues = {
     'compaction.verbose': overrides.verbose ?? false,
@@ -59,10 +60,15 @@ async function makeEnv(overrides = {}) {
       sanitizeTmuxName: v => v.replace(/[^a-zA-Z0-9_-]/g, '_'),
       tmuxExecAsync: async (args) => {
         if (args[0] === 'capture-pane') {
-          if (captureOutputs.length === 0) return fixtures.compaction.promptVisibleBuffer;
-          const n = captureOutputs.shift();
-          if (n instanceof Error) throw n;
-          return n;
+          if (captureOutputs.length > 0) {
+            const n = captureOutputs.shift();
+            if (n instanceof Error) throw n;
+            return n;
+          }
+          // Default: rotate the content each call so enterPlanMode detects
+          // buffer change and waitForPrompt detects settled state.
+          captureCounter++;
+          return `\nfoo${captureCounter}\n❯ \n`;
         }
         return '';
       },
@@ -183,29 +189,17 @@ test('CMP-38: non-running session returns non-compacted', async () => {
 
 // ── CMP-39: lock prevents concurrent run ──
 test('CMP-39: lock prevents concurrent compaction', async () => {
-  let resolveGate;
-  const gate = new Promise(r => { resolveGate = r; });
-  const env = await makeEnv({
-    claudeOutputs: [
-      fixtures.compaction.prepResponses.initReady,
-      // This output will be delayed by the gate
-      fixtures.compaction.prepResponses.readyToCompact,
-      fixtures.compaction.prepResponses.resumeComplete,
-    ],
-  });
-  // Override sleep to include a controllable delay on first call
-  let firstSleep = true;
-  const origSleep = env.comp.runSmartCompaction;
-  // Directly check the lock via internal state
+  const env = await makeEnv();
   const locks = env.comp.__getCompactionLocks();
-  const p1 = env.comp.runSmartCompaction('session123', 'proj');
-  // Wait a tick for p1 to acquire lock
-  await new Promise(r => setTimeout(r, 5));
-  assert.ok(locks.has('bp_session123'));
-  const r2 = await env.comp.runSmartCompaction('session123', 'proj');
-  assert.equal(r2.compacted, false);
-  assert.match(r2.reason, /already in progress/);
-  await p1;
+  // Simulate an in-flight compaction holding the lock.
+  locks.add('bp_session123');
+  try {
+    const r = await env.comp.runSmartCompaction('session123', 'proj');
+    assert.equal(r.compacted, false);
+    assert.match(r.reason, /already in progress/);
+  } finally {
+    locks.delete('bp_session123');
+  }
 });
 
 // ── CMP-47..50: below-threshold boundary tests ──

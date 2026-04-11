@@ -6,8 +6,10 @@ const express = require('express');
 const http = require('node:http');
 const { registerExternalMcpRoutes, ADMIN_TOOLS } = require('../../mcp-external.js');
 
-test('MCX-02: falls back to admin tools when internal fetch fails', async (t) => {
-  t.mock.method(global, 'fetch', async () => { throw new Error('down'); });
+test('MCX-02: falls back to admin tools when internal fetch fails', async () => {
+  // No PORT binding in the test — internal fetch to localhost:3000 fails with
+  // ECONNREFUSED, triggering the fallback path.
+  delete process.env.PORT;
   const app = express(); app.use(express.json()); registerExternalMcpRoutes(app);
   const server = http.createServer(app);
   await new Promise(r => server.listen(0, r));
