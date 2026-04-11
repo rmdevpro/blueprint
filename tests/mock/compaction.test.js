@@ -125,11 +125,19 @@ test('CMP-02: parseBlueprint extracts valid blueprint JSON', async () => {
 });
 
 test('CMP-03: malformed blueprint JSON returns error', async () => {
+  // Output order: init (parsed), connection-ack (discarded),
+  // first loop iteration returns malformed JSON -> parseBlueprint yields
+  // 'error' -> prep phase aborts.
   const env = await makeEnv({
-    claudeOutputs: [fixtures.compaction.prepResponses.initReady, '{"blueprint": invalid }'],
+    claudeOutputs: [
+      fixtures.compaction.prepResponses.initReady,
+      'connection acknowledged',
+      '{"blueprint": invalid }',
+    ],
   });
   const r = await env.comp.runSmartCompaction('session123', 'proj');
   assert.equal(r.compacted, false);
+  assert.match(r.reason, /checker signaled error/);
 });
 
 test('CMP-03a: hallucinated text around JSON still extracted', async () => {
@@ -284,9 +292,12 @@ test('CMP-33: state map evicts oldest non-locked entry when full', async () => {
 
 // ── CMP-35: full orchestration ──
 test('CMP-35: full orchestration PREP -> COMPACT -> RECOVERY', async () => {
+  // init (parsed), connection-ack (discarded), ready_to_compact (parsed),
+  // resume_complete (parsed in recovery phase).
   const env = await makeEnv({
     claudeOutputs: [
       fixtures.compaction.prepResponses.initReady,
+      'connection acknowledged',
       fixtures.compaction.prepResponses.readyToCompact,
       fixtures.compaction.prepResponses.resumeComplete,
     ],
