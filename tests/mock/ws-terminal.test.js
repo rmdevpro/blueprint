@@ -5,27 +5,69 @@ const assert = require('node:assert/strict');
 const createWsTerminal = require('../../ws-terminal.js');
 
 class FakePty {
-  constructor() { this.pid = 1234; this.paused = false; this.killed = false; this.resizeCalls = []; this.writeCalls = []; this.dataHandler = null; this.exitHandler = null; }
-  onData(fn) { this.dataHandler = fn; }
-  emitData(d) { if (this.dataHandler) this.dataHandler(d); }
-  onExit(fn) { this.exitHandler = fn; }
-  pause() { this.paused = true; }
-  resume() { this.paused = false; }
-  resize(c, r) { this.resizeCalls.push([c, r]); }
-  write(d) { this.writeCalls.push(d); }
-  kill() { this.killed = true; }
+  constructor() {
+    this.pid = 1234;
+    this.paused = false;
+    this.killed = false;
+    this.resizeCalls = [];
+    this.writeCalls = [];
+    this.dataHandler = null;
+    this.exitHandler = null;
+  }
+  onData(fn) {
+    this.dataHandler = fn;
+  }
+  emitData(d) {
+    if (this.dataHandler) this.dataHandler(d);
+  }
+  onExit(fn) {
+    this.exitHandler = fn;
+  }
+  pause() {
+    this.paused = true;
+  }
+  resume() {
+    this.paused = false;
+  }
+  resize(c, r) {
+    this.resizeCalls.push([c, r]);
+  }
+  write(d) {
+    this.writeCalls.push(d);
+  }
+  kill() {
+    this.killed = true;
+  }
 }
 
 function makeWs() {
   const h = {};
   return {
-    OPEN: 1, readyState: 1, bufferedAmount: 0, sent: [], isAlive: true,
-    on(e, fn) { h[e] = fn; },
-    send(p) { this.sent.push(p); },
-    close() { this.readyState = 3; if (h.close) h.close(); },
-    terminate() { this.readyState = 3; if (h.close) h.close(); },
-    ping() { this.pinged = true; },
-    trigger(e, p) { if (h[e]) h[e](p); },
+    OPEN: 1,
+    readyState: 1,
+    bufferedAmount: 0,
+    sent: [],
+    isAlive: true,
+    on(e, fn) {
+      h[e] = fn;
+    },
+    send(p) {
+      this.sent.push(p);
+    },
+    close() {
+      this.readyState = 3;
+      if (h.close) h.close();
+    },
+    terminate() {
+      this.readyState = 3;
+      if (h.close) h.close();
+    },
+    ping() {
+      this.pinged = true;
+    },
+    trigger(e, p) {
+      if (h[e]) h[e](p);
+    },
   };
 }
 
@@ -35,20 +77,42 @@ function makeEnv(overrides = {}) {
   const swc = new Map();
   const fp = overrides.fakePty || new FakePty();
   const env = {
-    safe: { sanitizeTmuxName: v => v.replace(/[^a-zA-Z0-9_-]/g, '_') },
-    keepalive: { onBrowserConnect: () => kaCalls.push('connect'), onBrowserDisconnect: n => kaCalls.push(['disconnect', n]) },
+    safe: { sanitizeTmuxName: (v) => v.replace(/[^a-zA-Z0-9_-]/g, '_') },
+    keepalive: {
+      onBrowserConnect: () => kaCalls.push('connect'),
+      onBrowserDisconnect: (n) => kaCalls.push(['disconnect', n]),
+    },
     logger: { info() {}, warn() {}, error() {}, debug() {} },
-    config: { get: (k, fb) => ({ 'ws.bufferHighWaterMark': 1024, 'ws.bufferLowWaterMark': 512, 'ws.pingIntervalMs': 50 }[k] ?? fb) },
+    config: {
+      get: (k, fb) =>
+        ({ 'ws.bufferHighWaterMark': 1024, 'ws.bufferLowWaterMark': 512, 'ws.pingIntervalMs': 50 })[
+          k
+        ] ?? fb,
+    },
     sessionWsClients: swc,
     getBrowserCount: () => bc,
     incrementBrowserCount: () => ++bc,
-    decrementBrowserCount: () => { if (bc > 0) bc--; return bc; },
+    decrementBrowserCount: () => {
+      if (bc > 0) bc--;
+      return bc;
+    },
     tmuxExists: async () => overrides.tmuxExists ?? true,
-    cancelTmuxCleanup: () => { env.cancelled = true; },
-    scheduleTmuxCleanup: n => { env.scheduled = n; },
-    startJsonlWatcher: n => { env.startedWatcher = n; },
-    stopJsonlWatcher: n => { env.stoppedWatcher = n; },
-    spawnPty: () => { if (overrides.spawnThrows) throw new Error('spawn failed'); return fp; },
+    cancelTmuxCleanup: () => {
+      env.cancelled = true;
+    },
+    scheduleTmuxCleanup: (n) => {
+      env.scheduled = n;
+    },
+    startJsonlWatcher: (n) => {
+      env.startedWatcher = n;
+    },
+    stopJsonlWatcher: (n) => {
+      env.stoppedWatcher = n;
+    },
+    spawnPty: () => {
+      if (overrides.spawnThrows) throw new Error('spawn failed');
+      return fp;
+    },
   };
   env.terminal = createWsTerminal(env);
   env.kaCalls = kaCalls;
@@ -61,7 +125,7 @@ test('WS-01: nonexistent tmux session sends error and closes', async () => {
   const env = makeEnv({ tmuxExists: false });
   const ws = makeWs();
   await env.terminal.handleTerminalConnection(ws, 'nonexistent');
-  assert.ok(ws.sent.some(s => s.includes('No tmux session')));
+  assert.ok(ws.sent.some((s) => s.includes('No tmux session')));
   assert.equal(ws.readyState, 3);
 });
 
@@ -130,7 +194,15 @@ test('WS: ping message gets pong response', async () => {
   const ws = makeWs();
   await env.terminal.handleTerminalConnection(ws, 'bp_test');
   ws.trigger('message', Buffer.from(JSON.stringify({ type: 'ping' })));
-  assert.ok(ws.sent.some(s => { try { return JSON.parse(s).type === 'pong'; } catch { return false; } }));
+  assert.ok(
+    ws.sent.some((s) => {
+      try {
+        return JSON.parse(s).type === 'pong';
+      } catch {
+        return false;
+      }
+    }),
+  );
 });
 
 test('WS-06: heartbeat ping sent on interval, terminates unresponsive connection', async () => {
@@ -140,7 +212,7 @@ test('WS-06: heartbeat ping sent on interval, terminates unresponsive connection
   await env.terminal.handleTerminalConnection(ws, 'bp_test');
 
   // After one interval, server should ping the client
-  await new Promise(r => setTimeout(r, 70));
+  await new Promise((r) => setTimeout(r, 70));
   assert.equal(ws.pinged, true, 'Server should ping after interval');
   assert.equal(ws.isAlive, false, 'isAlive should be set to false before ping');
 
@@ -150,13 +222,13 @@ test('WS-06: heartbeat ping sent on interval, terminates unresponsive connection
 
   // Now simulate no pong — next interval should terminate
   ws.pinged = false;
-  await new Promise(r => setTimeout(r, 70));
+  await new Promise((r) => setTimeout(r, 70));
   // isAlive was set to false by first interval tick, pong reset it
   // second tick: isAlive is true (we just set it), so it sets false and pings again
   assert.equal(ws.pinged, true, 'Should ping again on next interval');
 
   // Now DON'T respond with pong — next tick should terminate
-  await new Promise(r => setTimeout(r, 70));
+  await new Promise((r) => setTimeout(r, 70));
   assert.equal(ws.readyState, 3, 'Unresponsive connection should be terminated');
 });
 

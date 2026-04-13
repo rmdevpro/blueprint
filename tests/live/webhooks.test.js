@@ -10,7 +10,9 @@ test('WHK-01..04: webhook CRUD lifecycle', async () => {
   await post('/api/webhooks', { url: 'http://localhost:9999/test', events: ['*'] });
   const afterAdd = await get('/api/webhooks');
   assert.ok(afterAdd.data.webhooks.length > 0);
-  await put('/api/webhooks', { webhooks: [{ url: 'http://localhost:9999/r', events: ['*'], mode: 'event_only' }] });
+  await put('/api/webhooks', {
+    webhooks: [{ url: 'http://localhost:9999/r', events: ['*'], mode: 'event_only' }],
+  });
   const afterPut = await get('/api/webhooks');
   assert.equal(afterPut.data.webhooks.length, 1);
   const delResult = await del('/api/webhooks/0');

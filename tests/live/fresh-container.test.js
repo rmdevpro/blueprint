@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { get, BASE_URL } = require('../helpers/http-client');
-const { resetBaseline, dockerExec, CONTAINER } = require('../helpers/reset-state');
+const { resetBaseline, dockerExec } = require('../helpers/reset-state');
 
 test('FRS-01/ENT-03: data directories exist', () => {
   const storage = dockerExec('ls -1 /storage');
@@ -29,13 +29,22 @@ test('ENT-10: storage owned by hopper', () => {
 });
 
 test('ENG-13: health returns 200', async () => {
-  for (let i = 0; i < 30; i++) { try { if ((await fetch(`${BASE_URL}/health`)).ok) break; } catch {} await new Promise(r => setTimeout(r, 2000)); }
+  for (let i = 0; i < 30; i++) {
+    try {
+      if ((await fetch(`${BASE_URL}/health`)).ok) break;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 2000));
+  }
   const r = await get('/health');
   assert.equal(r.status, 200);
 });
 
 test('ENG-05: no hardcoded secrets in application code', () => {
-  const count = parseInt(dockerExec("grep -rn 'API_KEY=' /app/*.js 2>/dev/null | grep -v 'api_key_env' | grep -v 'node_modules' | wc -l") || '0');
+  const count = parseInt(
+    dockerExec(
+      "grep -rn 'API_KEY=' /app/*.js 2>/dev/null | grep -v 'api_key_env' | grep -v 'node_modules' | wc -l",
+    ) || '0',
+  );
   assert.equal(count, 0, 'No hardcoded API keys should exist');
 });
 

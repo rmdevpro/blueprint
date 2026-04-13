@@ -3,7 +3,11 @@
 const { describe, it, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 let chromium;
-try { ({ chromium } = require('playwright')); } catch { process.exit(0); }
+try {
+  ({ chromium } = require('playwright'));
+} catch {
+  process.exit(0);
+}
 
 const { resetBaseline } = require('../helpers/reset-state');
 const SS = require('path').join(__dirname, 'screenshots');
@@ -12,24 +16,33 @@ describe('status bar (browser)', () => {
   let browser, page;
   const errors = [];
 
-  before(async () => { require('fs').mkdirSync(SS, { recursive: true }); browser = await chromium.launch({ headless: true }); });
-  after(async () => { if (browser) await browser.close(); });
+  before(async () => {
+    require('fs').mkdirSync(SS, { recursive: true });
+    browser = await chromium.launch({ headless: true });
+  });
+  after(async () => {
+    if (browser) await browser.close();
+  });
   beforeEach(async () => {
     errors.length = 0;
     const ctx = await browser.newContext();
     page = await ctx.newPage();
-    page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-    page.on('pageerror', e => errors.push(e.message));
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(m.text());
+    });
+    page.on('pageerror', (e) => errors.push(e.message));
     await resetBaseline(page);
   });
 
   it('BRW-19: status bar displays meaningful content after data load', async () => {
-    assert.ok(await page.locator('#status-bar').count() > 0, 'Status bar element must exist');
+    assert.ok((await page.locator('#status-bar').count()) > 0, 'Status bar element must exist');
     // Behavioral: status bar should contain actual data, not just exist as an empty element
     await page.waitForTimeout(1500); // Allow initial state load and status bar update
     const statusBarText = await page.locator('#status-bar').textContent();
-    assert.ok(statusBarText.trim().length > 0,
-      'Status bar must contain text content after page load (model, token usage, or status indicator)');
+    assert.ok(
+      statusBarText.trim().length > 0,
+      'Status bar must contain text content after page load (model, token usage, or status indicator)',
+    );
     await page.screenshot({ path: `${SS}/status-bar--structure.png` });
     assert.equal(errors.length, 0, errors.join(', '));
   });
@@ -39,7 +52,7 @@ describe('status bar (browser)', () => {
     assert.equal(refreshMs, 30000, 'REFRESH_MS must be 30000ms');
     // Behavioral: call loadState and verify it updates the DOM with data from the server
     const result = await page.evaluate(async () => {
-      const projectListBefore = document.getElementById('project-list')?.innerHTML || '';
+      const _projectListBefore = document.getElementById('project-list')?.innerHTML || '';
       try {
         await loadState();
       } catch (e) {
@@ -49,7 +62,10 @@ describe('status bar (browser)', () => {
       return {
         success: true,
         domUpdated: projectListAfter.length > 0,
-        hasContent: projectListAfter.includes('project') || projectListAfter.includes('data-') || projectListAfter.length > 10
+        hasContent:
+          projectListAfter.includes('project') ||
+          projectListAfter.includes('data-') ||
+          projectListAfter.length > 10,
       };
     });
     assert.ok(!result.error, `loadState() should not throw: ${result.error}`);
@@ -71,7 +87,9 @@ describe('status bar (browser)', () => {
       };
       try {
         await checkAuth();
-      } catch { /* may fail in test env */ }
+      } catch {
+        /* may fail in test env */
+      }
       window.fetch = origFetch;
       return { fetchCalled };
     });

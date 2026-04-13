@@ -6,20 +6,20 @@ Modular server for managing Claude AI coding sessions via tmux, with smart compa
 
 The monolithic `server.js` has been decomposed into focused modules using factory-based dependency injection:
 
-| Module | Responsibility |
-|---|---|
-| `server.js` | Wiring layer: constructs modules, injects deps, starts server |
-| `routes.js` | HTTP boundary: all 40+ route handlers with input validation |
-| `compaction.js` | Smart compaction pipeline with 3-phase orchestration (prep → compact → recover) |
-| `watchers.js` | Filesystem monitoring: JSONL watchers, settings sync, compaction polling |
-| `tmux-lifecycle.js` | tmux session creation, cleanup, limit enforcement |
-| `ws-terminal.js` | WebSocket ↔ PTY terminal bridge with backpressure handling |
-| `session-resolver.js` | Async temp→real session ID resolution |
-| `shared-state.js` | Shared runtime state (WebSocket client map, browser count) |
-| `db.js` | SQLite-backed persistent storage with WAL mode |
-| `config.js` | Externalized configuration with in-memory cache and hot-reload via file watchers |
-| `logger.js` | Structured JSON logging (stdout/stderr) |
-| `keepalive.js` | OAuth token refresh with configurable timing (fully async) |
+| Module                | Responsibility                                                                   |
+| --------------------- | -------------------------------------------------------------------------------- |
+| `server.js`           | Wiring layer: constructs modules, injects deps, starts server                    |
+| `routes.js`           | HTTP boundary: all 40+ route handlers with input validation                      |
+| `compaction.js`       | Smart compaction pipeline with 3-phase orchestration (prep → compact → recover)  |
+| `watchers.js`         | Filesystem monitoring: JSONL watchers, settings sync, compaction polling         |
+| `tmux-lifecycle.js`   | tmux session creation, cleanup, limit enforcement                                |
+| `ws-terminal.js`      | WebSocket ↔ PTY terminal bridge with backpressure handling                       |
+| `session-resolver.js` | Async temp→real session ID resolution                                            |
+| `shared-state.js`     | Shared runtime state (WebSocket client map, browser count)                       |
+| `db.js`               | SQLite-backed persistent storage with WAL mode                                   |
+| `config.js`           | Externalized configuration with in-memory cache and hot-reload via file watchers |
+| `logger.js`           | Structured JSON logging (stdout/stderr)                                          |
+| `keepalive.js`        | OAuth token refresh with configurable timing (fully async)                       |
 
 Supporting modules: `mcp-server.js`, `mcp-tools.js`, `mcp-external.js`, `openai-compat.js`, `quorum.js`, `webhooks.js`, `safe-exec.js`, `session-utils.js`.
 
@@ -49,11 +49,13 @@ server.js                           (wiring — constructs all, injects deps, ca
 ## Quick Start
 
 1. Copy `.env.example` to `.env` and configure paths:
+
    ```bash
    cp .env.example .env
    ```
 
 2. Build and run:
+
    ```bash
    docker build -t blueprint-server .
    docker run -p 3000:3000 --env-file .env \
@@ -85,6 +87,7 @@ All tunables are externalized in `.env` (see `.env.example` for complete list) a
 ## Input Validation
 
 All API endpoints validate inputs:
+
 - Project names: max 255 characters
 - Session names: max 255 characters
 - Prompt text: max 50,000 characters
@@ -123,6 +126,7 @@ On startup, `watchers.js` registers a Blueprint MCP server in Claude's `settings
 ## Health Endpoint
 
 `GET /health` returns 200 when healthy, 503 when degraded, with per-dependency status:
+
 ```json
 { "status": "ok", "dependencies": { "db": "healthy", "workspace": "healthy", "auth": "healthy" } }
 ```

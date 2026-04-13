@@ -5,12 +5,14 @@ We are building a CLI workbench called Blueprint that wraps Claude Code CLI sess
 ## Current Implementation (broken)
 
 Our current smart compaction (server.js) does this:
+
 1. Spawns a SEPARATE CLI instance (--print --no-session-persistence) to "prepare" for compaction — but this instance has NO context about the session's conversation
 2. Sends /compact to the session via tmuxSendKeys
 3. Polls tmux buffer for 30 seconds (too short — compaction takes 1-5 minutes)
 4. After compaction, sends the plan file path and "Read the plan file and resume from where we left off"
 
 Problems:
+
 - The prep CLI is blind — it can't see the session's conversation
 - 30s timeout is way too short
 - Post-compaction recovery is thin — just "read the plan file and resume"
@@ -34,14 +36,17 @@ Eight elements must be maintained across session boundaries:
 Instead of using /compact, treat context window as RAM and filesystem as hard drive:
 
 Step 1: Prep Agent (headless, has full context)
+
 ```bash
 claude --resume <SESSION_ID> \
   --agents '{"state-manager": {"prompt": "Execute the session maintenance checklist...", "allowedTools": ["Read", "Write", "Bash"], "effort": "high"}}' \
   -p "@state-manager Finalize the current session state and write the resume instructions to the plan file."
 ```
+
 This runs within the session's context — it has the full conversation history.
 
 Step 2: Kill and restart (flush the RAM)
+
 ```bash
 docker exec blueprint tmux send-keys -t my_session C-c
 docker exec blueprint tmux send-keys -t my_session "claude" C-m
@@ -85,34 +90,34 @@ Read the session maintenance guide below and give us your honest assessment of t
 
 # Session Maintenance Guide
 
-*Applies to: All projects and components.*
+_Applies to: All projects and components._
 
 **Purpose:** Standard process for preserving state across session boundaries — compactions, session ends, and handoffs. Ensures the next session can resume work without re-litigating decisions, missing context, or losing progress.
 
-***
+---
 
 ## Why This Matters
 
 Design decisions happen in conversation, not in documents. If the next session doesn't have the reasoning behind those decisions, it makes different decisions or undoes settled work. This guide ensures continuity.
 
-***
+---
 
 ## Elements of Session State
 
 Eight elements must be maintained. Each has specific guidance below.
 
-| # | Element | Where it lives | Updated when |
-|---|---------|---------------|-------------|
-| 1 | Reading list | Plan file | Session end |
-| 2 | Plan file | `~/.claude/plans/` | Throughout session, formal update at end |
-| 3 | Resume instructions | Plan file | Session end |
-| 4 | Conversation re-injection | Plan file (pointer to transcript) | When design discussions happen in conversation |
-| 5 | CLI conversation continuity | Plan file | When multi-round CLI research is in progress |
-| 6 | GitHub issues | GitHub | Throughout session, formal update at end |
-| 7 | Research artifacts | Repository (`docs/designs/` or similar) | When CLI research or analysis produces output |
-| 8 | Memory files | Component/ecosystem memory dirs | When durable facts emerge |
+| #   | Element                     | Where it lives                          | Updated when                                   |
+| --- | --------------------------- | --------------------------------------- | ---------------------------------------------- |
+| 1   | Reading list                | Plan file                               | Session end                                    |
+| 2   | Plan file                   | `~/.claude/plans/`                      | Throughout session, formal update at end       |
+| 3   | Resume instructions         | Plan file                               | Session end                                    |
+| 4   | Conversation re-injection   | Plan file (pointer to transcript)       | When design discussions happen in conversation |
+| 5   | CLI conversation continuity | Plan file                               | When multi-round CLI research is in progress   |
+| 6   | GitHub issues               | GitHub                                  | Throughout session, formal update at end       |
+| 7   | Research artifacts          | Repository (`docs/designs/` or similar) | When CLI research or analysis produces output  |
+| 8   | Memory files                | Component/ecosystem memory dirs         | When durable facts emerge                      |
 
-***
+---
 
 ## 1. Reading List
 
@@ -121,6 +126,7 @@ The reading list is maintained in the plan file. It tells the next session what 
 ### Two sections
 
 **Required** — Read before doing anything. The minimum context to understand the current state of work and not break things or re-litigate settled decisions. Includes:
+
 - The plan file itself (always first)
 - Design documents being implemented
 - Conversation transcripts where key decisions were made but not yet captured in docs
@@ -152,7 +158,7 @@ Two steps:
 - **HLDs** — which architecture docs describe the system being modified?
 - **CLI guides** — are multi-round CLI research conversations in progress?
 
-***
+---
 
 ## 2. Plan File
 
@@ -161,6 +167,7 @@ The plan file is the master state document. It spans all phases of work.
 ### During the session
 
 Update at natural breakpoints:
+
 - When starting a new phase
 - After significant decisions
 - Before compaction
@@ -169,18 +176,20 @@ Update at natural breakpoints:
 ### At session end
 
 Update with:
+
 - **Current status** — what phase, what's done, what's next
 - **Key decisions** — what was decided and the rationale (not just "we decided X" but WHY)
 - **Deviations** — anything that changed from the original plan and why
 - **Files modified** — what was created or changed during this session
 
-***
+---
 
 ## 3. Resume Instructions
 
 Written in the plan file at session end. Explicit steps for the next session to pick up work.
 
 Include:
+
 - What to read (the reading list)
 - What commands to run (deployments, tests, verifications)
 - What to check (background processes, extraction progress, test results)
@@ -188,7 +197,7 @@ Include:
 
 Be specific. "Check test results" is useless. "Run `ssh aristotle9@192.168.1.110 'docker exec claude-test-postgres psql ...'` to check extraction progress" is actionable.
 
-***
+---
 
 ## 4. Conversation Re-injection
 
@@ -215,7 +224,7 @@ Everything from that point forward is the design conversation.
 
 The next session reads the raw conversation to get the full reasoning, not just the conclusion.
 
-***
+---
 
 ## 5. CLI Conversation Continuity
 
@@ -241,7 +250,7 @@ gemini -r latest -p "YOUR FOLLOW-UP"
 - Where their output files are saved (persistent paths, not /tmp)
 - What questions are pending
 
-***
+---
 
 ## 6. GitHub Issues
 
@@ -262,7 +271,7 @@ Per SDLC-06: record issues before investigating, update with root cause and fix 
 - `gh issue list --repo rmdevpro/Joshua26 --label component:[name] --state open`
 - Read each open issue's comments for current state
 
-***
+---
 
 ## 7. Research Artifacts
 
@@ -275,7 +284,7 @@ CLI research outputs, analysis documents, and other generated artifacts must be 
 - Use descriptive filenames: `cli-research-round1-claude.txt`, not `output.txt`
 - Record file locations in the plan file's resume instructions
 
-***
+---
 
 ## 8. Memory Files
 
@@ -295,7 +304,7 @@ Component and ecosystem memory files capture durable facts that apply across ses
 
 See the auto-memory system instructions for memory types and formatting.
 
-***
+---
 
 ## Session End Checklist
 
@@ -310,7 +319,7 @@ Run through this at the end of every session:
 7. Save any research artifacts to persistent locations
 8. Update memory files if durable facts emerged
 
-***
+---
 
 **Related:** [Debugging Guide](./SDLC-06-debugging-guide.md) · [Implementation Guide](./SDLC-02-implementation-guide.md)
 
@@ -336,13 +345,11 @@ Since your tmux session is running inside the blueprint Docker container, you ca
 1. To send a standard prompt to Claude:
 
 Bash
-ssh aristotle9@192.168.1.110 "docker exec blueprint tmux send-keys -t my_session 'Please review the auth module for security vulnerabilities.' C-m"
-2. To change settings mid-session (Sending Slash Commands):
+ssh aristotle9@192.168.1.110 "docker exec blueprint tmux send-keys -t my_session 'Please review the auth module for security vulnerabilities.' C-m" 2. To change settings mid-session (Sending Slash Commands):
 Because Claude CLI treats slash commands just like regular text input, you can dynamically change the model or spawn agents on the fly:
 
 Bash
-ssh aristotle9@192.168.1.110 "docker exec blueprint tmux send-keys -t my_session '/model claude-3-5-sonnet-20241022' C-m"
-3. To trigger a Subagent:
+ssh aristotle9@192.168.1.110 "docker exec blueprint tmux send-keys -t my_session '/model claude-3-5-sonnet-20241022' C-m" 3. To trigger a Subagent:
 
 Bash
 ssh aristotle9@192.168.1.110 "docker exec blueprint tmux send-keys -t my_session '@database-expert write a migration for the users table' C-m"
@@ -371,26 +378,22 @@ The "Hidden" Options the UI Doesn't Show
 Because you are injecting raw JSON via the CLI flag, you can define these advanced fields for the agent:
 
 1. permissionMode (Agent-Specific Permissions)
-Normally, if you run the CLI in safe mode, the agent is also safe. With the JSON flag, you can grant a specific subagent bypassPermissions while keeping your main session secure.
+   Normally, if you run the CLI in safe mode, the agent is also safe. With the JSON flag, you can grant a specific subagent bypassPermissions while keeping your main session secure.
 
 JSON
-"permissionMode": "bypassPermissions"
-2. mcpServers (Isolated Integrations)
+"permissionMode": "bypassPermissions" 2. mcpServers (Isolated Integrations)
 The UI doesn't let you restrict MCP servers per agent. Using the CLI flag, you can spin up an agent that only has access to your production database MCP, ensuring your general coding agent can't accidentally drop tables.
 
 JSON
-"mcpServers": ["postgres-prod-mcp"]
-3. maxTurns (Budget / Infinite Loop Protection)
+"mcpServers": ["postgres-prod-mcp"] 3. maxTurns (Budget / Infinite Loop Protection)
 If an agent gets confused, it can get stuck in a loop of reading files and writing bad code, burning tokens. The UI has no budget control. The CLI flag lets you put a hard cap on the agent's autonomy:
 
 JSON
-"maxTurns": 15
-4. effort (The Thinking Budget!)
+"maxTurns": 15 4. effort (The Thinking Budget!)
 Bringing it full circle to our earlier conversation: you can explicitly set the thinking effort specifically for this ephemeral agent, overriding the session default.
 
 JSON
-"effort": "high"
-5. hooks (Lifecycle Scripts)
+"effort": "high" 5. hooks (Lifecycle Scripts)
 You can attach bash scripts that trigger specifically when this agent starts, uses a tool, or finishes.
 
 JSON
@@ -401,11 +404,13 @@ Instead of Blueprint launching a generic claude session in tmux and waiting for 
 When a user clicks a button in your UI (e.g., "Run Security Audit"), Blueprint can spawn a perfectly configured, invisible agent via bash:
 
 Bash
+
 # Blueprint runs this inside the container to start the tmux session
+
 tmux new-session -d -s audit_session "claude \
-  --dangerously-skip-permissions \
-  --agents '{\"auditor\": {\"prompt\": \"Find sec flaws\", \"maxTurns\": 10, \"effort\": \"high\", \"allowedTools\": [\"Read\", \"Grep\"]}}' \
-  -p '@auditor scan the src/ directory'"
+ --dangerously-skip-permissions \
+ --agents '{\"auditor\": {\"prompt\": \"Find sec flaws\", \"maxTurns\": 10, \"effort\": \"high\", \"allowedTools\": [\"Read\", \"Grep\"]}}' \
+ -p '@auditor scan the src/ directory'"
 By doing this, Blueprint dynamically injects "super-agents" directly into the command line memory on startup. The user never sees the /agents menu, but they get the full power of the hidden configuration fields.
 
 You said
@@ -426,13 +431,17 @@ Blueprint already knows the current Session ID (it's the filename of the .jsonl)
 Here is the exact bash sequence Blueprint would execute against the Docker container:
 
 Bash
+
 # 1. Send Ctrl+C to the tmux pane to gracefully stop the current interactive Claude prompt
+
 docker exec blueprint tmux send-keys -t my_session C-c
 
 # 2. Immediately restart the CLI, targeting the Session ID, and injecting your hidden agent
+
 docker exec blueprint tmux send-keys -t my_session "claude --resume <SESSION_ID> --agents '{\"auditor\": {\"prompt\": \"Find sec flaws\", \"maxTurns\": 10, \"effort\": \"high\", \"permissionMode\": \"bypassPermissions\"}}'" C-m
 
 # 3. Auto-trigger the agent so the user doesn't even have to type
+
 docker exec blueprint tmux send-keys -t my_session "@auditor begin the scan" C-m
 To the user looking at the terminal, it will just look like the terminal blinked for a millisecond, and suddenly a high-effort, permission-bypassing agent took over their exact conversation context.
 
@@ -446,24 +455,30 @@ Those hidden fields we talked about (effort, permissionMode, maxTurns) aren't ju
 Blueprint can write a file directly to the project directory in the background, and then force the running CLI to hot-reload it:
 
 Bash
+
 # 1. Blueprint silently creates the super-agent file on disk
-docker exec blueprint bash -c 'cat << EOF > .claude/agents/auditor.md
----
+
+## docker exec blueprint bash -c 'cat << EOF > .claude/agents/auditor.md
+
 name: "auditor"
 model: "claude-3-5-sonnet-20241022"
 effort: "high"
 permissionMode: "bypassPermissions"
 maxTurns: 10
 allowedTools: ["Read", "Grep"]
+
 ---
+
 You are an advanced security auditor...
 EOF'
 
 # 2. Force the running Claude session to discover the new file on disk by briefly opening/closing the agents menu
+
 docker exec blueprint tmux send-keys -t my_session "/agents" C-m
 docker exec blueprint tmux send-keys -t my_session Escape # Backs out of the menu
 
 # 3. The agent is now live in the current session memory!
+
 docker exec blueprint tmux send-keys -t my_session "@auditor please scan the auth module" C-m
 Which should Blueprint use?
 Use Method 1 (claude --resume <id> --agents ...) if you want the agent to be purely ephemeral (it only exists in memory for this specific session and disappears when the session is over).
@@ -487,8 +502,8 @@ When you run this from your Blueprint backend (outside of tmux), Claude will bri
 
 Bash
 claude --resume 550e8400-e29b-41d4-a716-446655440000 \
-  --agents '{"auditor": {"prompt": "Find sec flaws", "maxTurns": 10, "effort": "high", "permissionMode": "bypassPermissions", "allowedTools": ["Read", "Grep"]}}' \
-  -p "@auditor run a security scan on the auth module"
+ --agents '{"auditor": {"prompt": "Find sec flaws", "maxTurns": 10, "effort": "high", "permissionMode": "bypassPermissions", "allowedTools": ["Read", "Grep"]}}' \
+ -p "@auditor run a security scan on the auth module"
 Why this is the ultimate Blueprint backend pattern:
 No UI hacks: You aren't simulating keystrokes. It's a standard blocking script.
 
@@ -526,41 +541,49 @@ Step 1: The "Prep" Agent (Headless Execution)
 Blueprint pauses the interactive session and fires a background agent targeting the current Session ID. This agent's sole purpose is to execute your 8-step checklist, write the .md plan files, and exit.
 
 Bash
+
 # Blueprint runs this in the background (no tmux output seen by user)
+
 claude --resume <CURRENT_SESSION_ID> \
-  --agents '{
-    "state-manager": {
-      "prompt": "You are a session state manager. Execute the Session End Checklist defined in docs/session-maintenance-guide.md. Update the plan file, reading list, and write explicit resume instructions. Do not write code. Only finalize state.",
-      "allowedTools": ["Read", "Write", "Bash"],
-      "effort": "high"
-    }
-  }' \
-  -p "@state-manager Finalize the current session state and write the resume instructions to the plan file."
+ --agents '{
+"state-manager": {
+"prompt": "You are a session state manager. Execute the Session End Checklist defined in docs/session-maintenance-guide.md. Update the plan file, reading list, and write explicit resume instructions. Do not write code. Only finalize state.",
+"allowedTools": ["Read", "Write", "Bash"],
+"effort": "high"
+}
+}' \
+ -p "@state-manager Finalize the current session state and write the resume instructions to the plan file."
 Result: The current context window is perfectly serialized to disk (~/.claude/plans/, docs/designs/, etc.) without cluttering the user's screen.
 
 Step 2: The Hard Compaction (The Context Reset)
 Instead of using Claude's native /compact, which leaves a messy summary in the chat, Blueprint can just aggressively reset the context window. Since you serialized everything to disk in Step 1, the old context is no longer needed.
 
 Bash
+
 # Blueprint interrupts the user's running interactive session
+
 docker exec blueprint tmux send-keys -t my_session C-c
 
 # Blueprint starts a brand new, empty Claude session
+
 docker exec blueprint tmux send-keys -t my_session "claude" C-m
 Step 3: The "Resume" Agent (Headless Rehydration)
 Now that the interactive terminal has a fresh, empty context window (saving massive token costs), Blueprint immediately injects the rehydration commands.
 
 Bash
+
 # Blueprint secretly asks a resume-agent to read the plan and prepare the workspace
+
 # We use `tmux send-keys` here so the final result populates the user's interactive terminal
+
 docker exec blueprint tmux send-keys -t my_session "\
-  --agents '{
-    \"rehydrator\": {
-      \"prompt\": \"You are a workspace rehydrator. Read ~/.claude/plans/[current_plan].md. Process the Reading List, check the GitHub issues mentioned, and execute the resume instructions so the main session is ready to work.\",
-      \"allowedTools\": [\"Read\", \"Bash\"]
-    }
-  }' \
-  @rehydrator Rehydrate the workspace based on the current plan file." C-m
+ --agents '{
+\"rehydrator\": {
+\"prompt\": \"You are a workspace rehydrator. Read ~/.claude/plans/[current_plan].md. Process the Reading List, check the GitHub issues mentioned, and execute the resume instructions so the main session is ready to work.\",
+\"allowedTools\": [\"Read\", \"Bash\"]
+}
+}' \
+ @rehydrator Rehydrate the workspace based on the current plan file." C-m
 Why this is a game-changer for your users:
 If I am an engineer using your Blueprint platform, here is what this looks like to me:
 
@@ -583,17 +606,17 @@ Exactly. Once you implement a rigorous, file-based state architecture like your 
 The native /compact command is effectively a consumer-grade band-aid for token limits. Here is why the developer community is largely abandoning it for workflows exactly like the one you just designed:
 
 1. It is "Lossy Compression"
-When you run /compact, Claude doesn't intelligently archive your files. It simply reads the chat history, generates a 500-word summary of what it thinks is important, inserts that summary at the top, and deletes the exact history.
+   When you run /compact, Claude doesn't intelligently archive your files. It simply reads the chat history, generates a 500-word summary of what it thinks is important, inserts that summary at the top, and deletes the exact history.
 
 What survives: High-level goals ("We are building a login page").
 
 What gets lost: Exact file paths, the specific bash commands you used to reproduce a bug, the nuance of why you chose a specific database index, and the exact lines of code you rejected 10 minutes ago.
 
 2. The "Context Rot" Phenomenon
-Because the summary is lossy, if you use /compact three or four times in a long session, you are summarizing a summary of a summary. By hour four, Claude forgets project constraints, hallucinates file names, and starts suggesting solutions you already tried and discarded.
+   Because the summary is lossy, if you use /compact three or four times in a long session, you are summarizing a summary of a summary. By hour four, Claude forgets project constraints, hallucinates file names, and starts suggesting solutions you already tried and discarded.
 
 3. It frequently drops CLAUDE.md rules
-There is a massive, ongoing discussion in the developer community right now about how /compact accidentally summarizes away project rules. You can have strict rules like "Never use external libraries" or "Always run tests before committing" loaded at the start of the session. But after a /compact, Claude often drops those rules from its active memory because they weren't explicitly talked about in the last 10 messages.
+   There is a massive, ongoing discussion in the developer community right now about how /compact accidentally summarizes away project rules. You can have strict rules like "Never use external libraries" or "Always run tests before committing" loaded at the start of the session. But after a /compact, Claude often drops those rules from its active memory because they weren't explicitly talked about in the last 10 messages.
 
 What /compact is actually good for
 The only time /compact has value is if you are doing a quick, messy 30-minute scripting task, your terminal gets clogged with a massive stack trace, and you just want to quickly clear the token buffer without doing any formal "paperwork."

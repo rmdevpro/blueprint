@@ -13,9 +13,11 @@ I'll provide the architectural plan in my response and attempt to save it to a f
 I have reviewed the engineering requirements, the existing `server.js` monolith, and the proposed refactor plan. Below is my architectural assessment and refined plan.
 
 ### Architectural Assessment
+
 The `server.js` file currently acts as a "God Object," managing everything from low-level PTY bridging to high-level LLM orchestration. This violates **REQ-001 (Code Quality)** regarding clarity and focus. The presence of 22 bare `catch {}` blocks is a critical reliability risk that must be addressed during decomposition.
 
 ### Refined Refactor Plan
+
 My plan builds on the initial proposal by emphasizing **dependency injection**, **state isolation**, and **standardized observability**.
 
 1.  **State Management:** I propose centralizing global shared state (like `sessionWsClients`) in a `state.js` module, while keeping logic-specific state (like `compactionState`) private to its respective module. This prevents the "shared mutable state" mess identified in the reviews.
@@ -30,7 +32,9 @@ I have attempted to write the full detailed plan to the requested path (`C:\User
 # Architectural Refactor Plan: Blueprint Core (Gemini Version)
 
 ## 1. Structural Decomposition
+
 We will extract seven focused modules from `server.js`:
+
 - **`state.js`**: Manages `sessionWsClients` and `browserCount`.
 - **`tmux.js`**: Handles session lifecycle and limits.
 - **`resolver.js`**: Logic for ID migration from temp to UUID.
@@ -40,11 +44,14 @@ We will extract seven focused modules from `server.js`:
 - **`terminal.js`**: WebSocket and PTY bridge logic.
 
 ## 2. Remediation: Bare Catches
+
 Each of the 22 bare catches will be converted to one of:
+
 - `/* expected */` comments for known non-error states (e.g., `stat` check).
 - `logger.info()` for non-critical failures.
 - `logger.error()` with context for data-loss risks (e.g., JSONL write failure).
 
 ## 3. Testing & Verification
+
 - **Unit Tests**: Newly isolated functions in `resolver.js` and `compaction.js` will get dedicated unit tests.
 - **Live Tests**: Run the full suite against the "Shadow" container (`:7867`) before swapping production.

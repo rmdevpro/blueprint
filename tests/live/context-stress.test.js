@@ -6,18 +6,23 @@ const fs = require('fs');
 const path = require('path');
 const { post, get } = require('../helpers/http-client');
 const { resetBaseline, dockerExec } = require('../helpers/reset-state');
-const { queryJson } = require('../helpers/db-query');
 
 test('CST: prime-test-session.js exists and exports expected interface', () => {
   const scriptPath = path.join(__dirname, '../../scripts/prime-test-session.js');
   assert.ok(fs.existsSync(scriptPath), 'prime-test-session.js must exist');
   const content = fs.readFileSync(scriptPath, 'utf-8');
   assert.ok(content.length > 100, 'Script should have substantial content');
-  assert.ok(content.includes('function') || content.includes('=>'), 'Script should contain functions');
+  assert.ok(
+    content.includes('function') || content.includes('=>'),
+    'Script should contain functions',
+  );
   // Behavioral: verify the script has the expected structure for context filling
   assert.ok(
-    content.includes('token') || content.includes('message') || content.includes('session') || content.includes('fill'),
-    'Script should reference tokens, messages, or session filling logic'
+    content.includes('token') ||
+      content.includes('message') ||
+      content.includes('session') ||
+      content.includes('fill'),
+    'Script should reference tokens, messages, or session filling logic',
   );
 });
 
@@ -29,15 +34,20 @@ test('CST: token usage API returns valid percentages for active sessions', async
   await post('/api/projects', { path: '/workspace/cst_proj', name: 'cst_proj' });
 
   // Create a test session
-  const sessResult = await post('/api/sessions', { project: 'cst_proj', prompt: 'context stress test' });
+  const sessResult = await post('/api/sessions', {
+    project: 'cst_proj',
+    prompt: 'context stress test',
+  });
   if (sessResult.status === 200 && sessResult.data.id) {
     const sid = sessResult.data.id;
     // Query token usage — this exercises the real getTokenUsage code path
     const tokenResult = await get(`/api/sessions/${sid}/tokens?project=cst_proj`);
     if (tokenResult.status === 200) {
       const data = tokenResult.data;
-      assert.ok('input_tokens' in data || 'percent' in data || 'model' in data,
-        'Token usage response must contain token/model data');
+      assert.ok(
+        'input_tokens' in data || 'percent' in data || 'model' in data,
+        'Token usage response must contain token/model data',
+      );
       if (data.max_tokens) {
         assert.ok(data.max_tokens > 0, 'max_tokens must be positive');
       }

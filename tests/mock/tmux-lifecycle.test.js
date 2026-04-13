@@ -11,19 +11,30 @@ function makeLifecycle(overrides = {}) {
   const killed = [];
   const existing = new Set(overrides.existing || []);
   const safe = {
-    sanitizeTmuxName: n => n.replace(/[^a-zA-Z0-9_-]/g, '_'),
-    tmuxExists: async n => existing.has(n),
-    tmuxKill: async n => { killed.push(n); existing.delete(n); },
-    tmuxExecAsync: overrides.tmuxExecAsync || (async (args) => {
-      if (args[0] === 'list-sessions' && args[2] === '#{session_name} #{session_activity}') return 'bp_old 1\nbp_new 2\n';
-      if (args[0] === 'list-sessions' && args[2] === '#{session_name}') return 'bp_one\nbp_two\n';
-      return '';
-    }),
+    sanitizeTmuxName: (n) => n.replace(/[^a-zA-Z0-9_-]/g, '_'),
+    tmuxExists: async (n) => existing.has(n),
+    tmuxKill: async (n) => {
+      killed.push(n);
+      existing.delete(n);
+    },
+    tmuxExecAsync:
+      overrides.tmuxExecAsync ||
+      (async (args) => {
+        if (args[0] === 'list-sessions' && args[2] === '#{session_name} #{session_activity}')
+          return 'bp_old 1\nbp_new 2\n';
+        if (args[0] === 'list-sessions' && args[2] === '#{session_name}') return 'bp_one\nbp_two\n';
+        return '';
+      }),
   };
   const logger = { info() {}, warn() {}, error() {}, debug() {} };
   const onKilled = [];
-  const lc = createTmuxLifecycle({ safe, MAX_TMUX_SESSIONS: overrides.max ?? 1, TMUX_CLEANUP_DELAY: overrides.delay ?? 10, logger });
-  lc.setOnSessionKilled(tmux => onKilled.push(tmux));
+  const lc = createTmuxLifecycle({
+    safe,
+    MAX_TMUX_SESSIONS: overrides.max ?? 1,
+    TMUX_CLEANUP_DELAY: overrides.delay ?? 10,
+    logger,
+  });
+  lc.setOnSessionKilled((tmux) => onKilled.push(tmux));
   return { lifecycle: lc, killed, existing, onKilled };
 }
 
@@ -43,7 +54,7 @@ test('TMX-02: tmuxExists delegates to safe', async () => {
 test('TMX-06: scheduleTmuxCleanup kills idle session after delay', async () => {
   const { lifecycle, killed, onKilled } = makeLifecycle({ existing: ['bp_dead'], delay: 5 });
   lifecycle.scheduleTmuxCleanup('bp_dead');
-  await new Promise(r => setTimeout(r, 30));
+  await new Promise((r) => setTimeout(r, 30));
   assert.deepEqual(killed, ['bp_dead']);
   assert.deepEqual(onKilled, ['bp_dead']);
 });
@@ -52,24 +63,34 @@ test('TMX-07: cancelTmuxCleanup prevents kill', async () => {
   const { lifecycle, killed } = makeLifecycle({ existing: ['bp_alive'], delay: 20 });
   lifecycle.scheduleTmuxCleanup('bp_alive');
   lifecycle.cancelTmuxCleanup('bp_alive');
-  await new Promise(r => setTimeout(r, 50));
+  await new Promise((r) => setTimeout(r, 50));
   assert.deepEqual(killed, []);
 });
 
 test('TMX-08: enforceTmuxLimit kills oldest bp_ sessions over limit', async () => {
-  const { lifecycle, killed } = makeLifecycle({ max: 1, tmuxExecAsync: async () => 'bp_a 10\nbp_b 20\nbp_c 30\n' });
+  const { lifecycle, killed } = makeLifecycle({
+    max: 1,
+    tmuxExecAsync: async () => 'bp_a 10\nbp_b 20\nbp_c 30\n',
+  });
   await lifecycle.enforceTmuxLimit();
   assert.deepEqual(killed, ['bp_a', 'bp_b']);
 });
 
 test('TMX-08: enforceTmuxLimit handles no-server-running gracefully', async () => {
-  const { lifecycle, killed } = makeLifecycle({ max: 1, tmuxExecAsync: async () => { throw new Error('no server running'); } });
+  const { lifecycle, killed } = makeLifecycle({
+    max: 1,
+    tmuxExecAsync: async () => {
+      throw new Error('no server running');
+    },
+  });
   await assert.doesNotReject(lifecycle.enforceTmuxLimit());
   assert.deepEqual(killed, []);
 });
 
 test('TMX-09: cleanOrphanedTmuxSessions kills all bp_ sessions', async () => {
-  const { lifecycle, killed } = makeLifecycle({ tmuxExecAsync: async () => 'bp_one\nbp_two\nregular\n' });
+  const { lifecycle, killed } = makeLifecycle({
+    tmuxExecAsync: async () => 'bp_one\nbp_two\nregular\n',
+  });
   await lifecycle.cleanOrphanedTmuxSessions();
   assert.deepEqual(killed, ['bp_one', 'bp_two']);
 });
@@ -80,7 +101,11 @@ test('TMX-10: cleanBridgeFiles removes files older than 2 hours', async () => {
   const fresh = path.join(tmp, 'fresh.txt');
   await fsp.writeFile(stale, 'old');
   await fsp.writeFile(fresh, 'new');
-  await fsp.utimes(stale, new Date(Date.now() - 3 * 60 * 60 * 1000), new Date(Date.now() - 3 * 60 * 60 * 1000));
+  await fsp.utimes(
+    stale,
+    new Date(Date.now() - 3 * 60 * 60 * 1000),
+    new Date(Date.now() - 3 * 60 * 60 * 1000),
+  );
   const { lifecycle } = makeLifecycle();
   await lifecycle.cleanBridgeFiles(tmp);
   await assert.rejects(fsp.stat(stale), /ENOENT/);

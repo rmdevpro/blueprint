@@ -3,7 +3,7 @@
 const childProcess = require('child_process');
 const { execFileSync } = childProcess;
 const { writeFile: writeFileAsync, unlink: unlinkAsync } = require('fs/promises');
-const { resolve, join, sep } = require('path');
+const { resolve, join } = require('path');
 const os = require('os');
 const logger = require('./logger');
 
@@ -61,16 +61,21 @@ async function tmuxExecAsync(args, options = {}) {
 
 function claudeExecAsync(args, options = {}) {
   return new Promise((resolve, reject) => {
-    childProcess.execFile('claude', [...args], {
-      encoding: 'utf-8',
-      timeout: options.timeout || 120000,
-      cwd: options.cwd || WORKSPACE,
-      maxBuffer: 10 * 1024 * 1024,
-      env: { ...process.env, TERM: 'xterm-256color' },
-    }, (err, stdout) => {
-      if (err) reject(err);
-      else resolve(stdout);
-    });
+    childProcess.execFile(
+      'claude',
+      [...args],
+      {
+        encoding: 'utf-8',
+        timeout: options.timeout || 120000,
+        cwd: options.cwd || WORKSPACE,
+        maxBuffer: 10 * 1024 * 1024,
+        env: { ...process.env, TERM: 'xterm-256color' },
+      },
+      (err, stdout) => {
+        if (err) reject(err);
+        else resolve(stdout);
+      },
+    );
   });
 }
 
@@ -89,10 +94,12 @@ function tmuxCreateClaude(sessionName, cwd, claudeArgs = []) {
   const safeName = sanitizeTmuxName(sessionName);
   const allArgs = ['--dangerously-skip-permissions', ...claudeArgs];
   const escapedCwd = shellEscape(cwd);
-  const escapedArgs = allArgs.map(a => shellEscape(a)).join(' ');
+  const escapedArgs = allArgs.map((a) => shellEscape(a)).join(' ');
   const envExports = `export CLAUDE_HOME=${shellEscape(CLAUDE_HOME)} && export CLAUDE_CONFIG_DIR=${shellEscape(CLAUDE_HOME)} && export HOME=${shellEscape(HOME)}`;
   const cmd = `cd ${escapedCwd} && ${envExports} && exec claude ${escapedArgs}`;
-  tmuxExecSync(['new-session', '-d', '-s', safeName, '-x', '200', '-y', '50', cmd], { timeout: 30000 });
+  tmuxExecSync(['new-session', '-d', '-s', safeName, '-x', '200', '-y', '50', cmd], {
+    timeout: 30000,
+  });
   tmuxExecSync(['set-option', '-t', safeName, 'mouse', 'off']);
   tmuxExecSync(['set-option', '-t', safeName, 'history-limit', '10000']);
 }
@@ -102,7 +109,9 @@ function tmuxCreateBash(sessionName, cwd) {
   const escapedCwd = shellEscape(cwd);
   const envExports = `export CLAUDE_HOME=${shellEscape(CLAUDE_HOME)} && export CLAUDE_CONFIG_DIR=${shellEscape(CLAUDE_HOME)} && export HOME=${shellEscape(HOME)}`;
   const cmd = `cd ${escapedCwd} && ${envExports} && exec bash`;
-  tmuxExecSync(['new-session', '-d', '-s', safeName, '-x', '200', '-y', '50', cmd], { timeout: 30000 });
+  tmuxExecSync(['new-session', '-d', '-s', safeName, '-x', '200', '-y', '50', cmd], {
+    timeout: 30000,
+  });
   tmuxExecSync(['set-option', '-t', safeName, 'mouse', 'off']);
   tmuxExecSync(['set-option', '-t', safeName, 'history-limit', '10000']);
 }
@@ -112,10 +121,19 @@ async function tmuxKill(sessionName) {
   try {
     await tmuxExecAsync(['kill-session', '-t', safeName]);
   } catch (err) {
-    if (err.message && (err.message.includes('session not found') || err.message.includes('no server running') || err.message.includes('error connecting to'))) {
+    if (
+      err.message &&
+      (err.message.includes('session not found') ||
+        err.message.includes('no server running') ||
+        err.message.includes('error connecting to'))
+    ) {
       /* expected: session already gone or tmux server not running */
     } else {
-      logger.debug('tmuxKill unexpected error', { module: 'safe-exec', tmuxSession: safeName, err: err.message });
+      logger.debug('tmuxKill unexpected error', {
+        module: 'safe-exec',
+        tmuxSession: safeName,
+        err: err.message,
+      });
     }
   }
 }
@@ -127,16 +145,24 @@ async function tmuxKill(sessionName) {
  */
 async function tmuxSendKeysAsync(sessionName, text) {
   const safeName = sanitizeTmuxName(sessionName);
-  const tmpFile = join(os.tmpdir(), `tmux_paste_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.txt`);
+  const tmpFile = join(
+    os.tmpdir(),
+    `tmux_paste_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.txt`,
+  );
   await writeFileAsync(tmpFile, text);
   try {
     await tmuxExecAsync(['load-buffer', tmpFile]);
     await tmuxExecAsync(['paste-buffer', '-t', safeName]);
     await tmuxExecAsync(['send-keys', '-t', safeName, 'Enter']);
   } finally {
-    try { await unlinkAsync(tmpFile); } catch (cleanupErr) {
+    try {
+      await unlinkAsync(tmpFile);
+    } catch (cleanupErr) {
       if (cleanupErr.code !== 'ENOENT') {
-        logger.debug('tmuxSendKeysAsync cleanup failed', { module: 'safe-exec', err: cleanupErr.message });
+        logger.debug('tmuxSendKeysAsync cleanup failed', {
+          module: 'safe-exec',
+          err: cleanupErr.message,
+        });
       }
     }
   }
@@ -166,28 +192,38 @@ function grepSearchAsync(pattern, cwd, glob) {
     const args = ['-rn'];
     if (glob) args.push('--include=' + glob);
     args.push('--', pattern, '.');
-    childProcess.execFile('grep', args, {
-      cwd,
-      encoding: 'utf-8',
-      timeout: 10000,
-      maxBuffer: 1024 * 1024,
-    }, (err, stdout) => {
-      if (err || !stdout) resolve('No matches found');
-      else resolve(stdout.split('\n').slice(0, 50).join('\n') || 'No matches found');
-    });
+    childProcess.execFile(
+      'grep',
+      args,
+      {
+        cwd,
+        encoding: 'utf-8',
+        timeout: 10000,
+        maxBuffer: 1024 * 1024,
+      },
+      (err, stdout) => {
+        if (err || !stdout) resolve('No matches found');
+        else resolve(stdout.split('\n').slice(0, 50).join('\n') || 'No matches found');
+      },
+    );
   });
 }
 
 function curlFetchAsync(url) {
   return new Promise((resolve) => {
-    childProcess.execFile('curl', ['-sL', '--max-time', '10', url], {
-      encoding: 'utf-8',
-      timeout: 15000,
-      maxBuffer: 1024 * 1024,
-    }, (err, stdout) => {
-      if (err || !stdout) resolve(`Error: failed to fetch ${url}`);
-      else resolve(stdout.substring(0, 20000));
-    });
+    childProcess.execFile(
+      'curl',
+      ['-sL', '--max-time', '10', url],
+      {
+        encoding: 'utf-8',
+        timeout: 15000,
+        maxBuffer: 1024 * 1024,
+      },
+      (err, stdout) => {
+        if (err || !stdout) resolve(`Error: failed to fetch ${url}`);
+        else resolve(stdout.substring(0, 20000));
+      },
+    );
   });
 }
 

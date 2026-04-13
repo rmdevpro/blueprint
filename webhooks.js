@@ -7,7 +7,9 @@ const logger = require('./logger');
 
 function getWebhooks() {
   const raw = db.getSetting('webhooks', '[]');
-  try { return JSON.parse(raw); } catch (err) {
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
     if (err instanceof SyntaxError) {
       logger.warn('Webhooks setting contains invalid JSON', { module: 'webhooks' });
       return [];
@@ -50,10 +52,16 @@ function sendWebhook(url, payload) {
       port: parsed.port,
       path: parsed.pathname + parsed.search,
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'User-Agent': 'Blueprint-Webhook/0.1' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'User-Agent': 'Blueprint-Webhook/0.1',
+      },
       timeout: 5000,
     });
-    req.on('error', (err) => { logger.error('Webhook delivery failed', { module: 'webhooks', url, err: err.message }); });
+    req.on('error', (err) => {
+      logger.error('Webhook delivery failed', { module: 'webhooks', url, err: err.message });
+    });
     req.write(body);
     req.end();
   } catch (err) {
@@ -68,7 +76,8 @@ function registerWebhookRoutes(app) {
 
   app.put('/api/webhooks', (req, res) => {
     const { webhooks } = req.body;
-    if (!Array.isArray(webhooks)) return res.status(400).json({ error: 'webhooks must be an array' });
+    if (!Array.isArray(webhooks))
+      return res.status(400).json({ error: 'webhooks must be an array' });
     db.setSetting('webhooks', JSON.stringify(webhooks));
     res.json({ saved: true });
   });
@@ -85,7 +94,8 @@ function registerWebhookRoutes(app) {
   app.delete('/api/webhooks/:index', (req, res) => {
     const hooks = getWebhooks();
     const idx = parseInt(req.params.index, 10);
-    if (isNaN(idx) || idx < 0 || idx >= hooks.length) return res.status(404).json({ error: 'not found' });
+    if (isNaN(idx) || idx < 0 || idx >= hooks.length)
+      return res.status(404).json({ error: 'not found' });
     hooks.splice(idx, 1);
     db.setSetting('webhooks', JSON.stringify(hooks));
     res.json({ deleted: true });

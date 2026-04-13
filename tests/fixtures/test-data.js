@@ -44,10 +44,7 @@ function makeAssistantEntry({
   };
 }
 
-function makeUserEntry({
-  text = 'user prompt',
-  timestamp = '2026-04-10T00:00:00.000Z',
-} = {}) {
+function makeUserEntry({ text = 'user prompt', timestamp = '2026-04-10T00:00:00.000Z' } = {}) {
   return {
     type: 'user',
     timestamp,
@@ -143,11 +140,21 @@ const malformedJsonlLines = [
 ];
 
 const sessionUtilsValidLines = [
-  makeJsonlLine(makeUserEntry({ text: 'First user message', timestamp: '2026-04-10T00:00:01.000Z' })),
-  makeJsonlLine(makeAssistantEntry({ text: 'Assistant first', timestamp: '2026-04-10T00:00:02.000Z' })),
-  makeJsonlLine(makeUserEntry({ text: 'Second user message', timestamp: '2026-04-10T00:00:03.000Z' })),
-  makeJsonlLine(makeAssistantEntry({ text: 'Assistant second', timestamp: '2026-04-10T00:00:04.000Z' })),
-  makeJsonlLine(makeUserEntry({ text: 'Third user message', timestamp: '2026-04-10T00:00:05.000Z' })),
+  makeJsonlLine(
+    makeUserEntry({ text: 'First user message', timestamp: '2026-04-10T00:00:01.000Z' }),
+  ),
+  makeJsonlLine(
+    makeAssistantEntry({ text: 'Assistant first', timestamp: '2026-04-10T00:00:02.000Z' }),
+  ),
+  makeJsonlLine(
+    makeUserEntry({ text: 'Second user message', timestamp: '2026-04-10T00:00:03.000Z' }),
+  ),
+  makeJsonlLine(
+    makeAssistantEntry({ text: 'Assistant second', timestamp: '2026-04-10T00:00:04.000Z' }),
+  ),
+  makeJsonlLine(
+    makeUserEntry({ text: 'Third user message', timestamp: '2026-04-10T00:00:05.000Z' }),
+  ),
 ];
 
 const sessionUtilsMalformedLines = [
@@ -157,18 +164,46 @@ const sessionUtilsMalformedLines = [
 ];
 
 const sessionUtilsSummaryOverrideLines = [
-  makeJsonlLine(makeUserEntry({ text: 'Original derived title should come from this message', timestamp: '2026-04-10T00:00:01.000Z' })),
+  makeJsonlLine(
+    makeUserEntry({
+      text: 'Original derived title should come from this message',
+      timestamp: '2026-04-10T00:00:01.000Z',
+    }),
+  ),
   makeJsonlLine(makeSummaryEntry('Human curated summary title', '2026-04-10T00:00:02.000Z')),
 ];
 
 const tokenUsageLines = [
-  makeJsonlLine(makeAssistantEntry({ text: 'synthetic ignored', model: 'synthetic-model', inputTokens: 999999, outputTokens: 1 })),
-  makeJsonlLine(makeAssistantEntry({ text: 'system ignored', model: 'system-model', inputTokens: 888888, outputTokens: 1 })),
-  makeJsonlLine(makeAssistantEntry({ text: 'real used', model: 'claude-sonnet-4-6', inputTokens: 5000, outputTokens: 700, cacheRead: 300, cacheCreate: 200 })),
+  makeJsonlLine(
+    makeAssistantEntry({
+      text: 'synthetic ignored',
+      model: 'synthetic-model',
+      inputTokens: 999999,
+      outputTokens: 1,
+    }),
+  ),
+  makeJsonlLine(
+    makeAssistantEntry({
+      text: 'system ignored',
+      model: 'system-model',
+      inputTokens: 888888,
+      outputTokens: 1,
+    }),
+  ),
+  makeJsonlLine(
+    makeAssistantEntry({
+      text: 'real used',
+      model: 'claude-sonnet-4-6',
+      inputTokens: 5000,
+      outputTokens: 700,
+      cacheRead: 300,
+      cacheCreate: 200,
+    }),
+  ),
 ];
 
 function buildJsonlContent(entries) {
-  return entries.map(e => typeof e === 'string' ? e : JSON.stringify(e)).join('\n') + '\n';
+  return entries.map((e) => (typeof e === 'string' ? e : JSON.stringify(e))).join('\n') + '\n';
 }
 
 function buildValidJsonl() {
@@ -217,13 +252,15 @@ function buildJsonlForTokenPercent(targetPercent, maxTokens = 200000) {
   const targetInputTokens = Math.floor(maxTokens * (targetPercent / 100));
   const entries = [];
   entries.push(makeUserEntry({ text: 'Fill session to target capacity' }));
-  entries.push(makeAssistantEntry({
-    text: 'x'.repeat(1000),
-    inputTokens: targetInputTokens,
-    outputTokens: 200,
-    cacheRead: 0,
-    cacheCreate: 0,
-  }));
+  entries.push(
+    makeAssistantEntry({
+      text: 'x'.repeat(1000),
+      inputTokens: targetInputTokens,
+      outputTokens: 200,
+      cacheRead: 0,
+      cacheCreate: 0,
+    }),
+  );
   return buildJsonlContent(entries);
 }
 

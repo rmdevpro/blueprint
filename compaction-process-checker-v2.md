@@ -15,6 +15,7 @@ The user replaced the 50-line directive prompt with one conversational line:
 ## The two-session process checker design (refined)
 
 ### Architecture
+
 - **Session A** — the work session being compacted
 - **Session B** — a Haiku process checker that manages the conversation with A
 - **Blueprint** — a programmatic parser that relays messages between A and B, and handles mechanical actions

@@ -15,11 +15,11 @@ test('TSK-01..05: task CRUD lifecycle with DB verification', async () => {
   const taskId = t.data.id;
   await put(`/api/tasks/${taskId}/complete`);
   const afterComplete = await get('/api/projects/task_proj/tasks');
-  assert.equal(afterComplete.data.tasks.find(x => x.id === taskId).status, 'done');
+  assert.equal(afterComplete.data.tasks.find((x) => x.id === taskId).status, 'done');
   await put(`/api/tasks/${taskId}/reopen`);
   const afterReopen = await get('/api/projects/task_proj/tasks');
-  assert.equal(afterReopen.data.tasks.find(x => x.id === taskId).status, 'todo');
+  assert.equal(afterReopen.data.tasks.find((x) => x.id === taskId).status, 'todo');
   await del(`/api/tasks/${taskId}`);
   const afterDelete = await get('/api/projects/task_proj/tasks');
-  assert.equal(afterDelete.data.tasks.filter(x => x.id === taskId).length, 0);
+  assert.equal(afterDelete.data.tasks.filter((x) => x.id === taskId).length, 0);
 });

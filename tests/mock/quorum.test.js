@@ -57,27 +57,37 @@ test('QRM-04: search_files finds pattern in known file', async () => {
   const r = await executeTool('search_files', { pattern: 'needle', glob: '*.js' }, dir);
   assert.equal(typeof r, 'string');
   // The result must contain the filename where the match was found
-  assert.ok(r.includes('file.js'), `search result should contain filename 'file.js', got: ${r.substring(0, 200)}`);
+  assert.ok(
+    r.includes('file.js'),
+    `search result should contain filename 'file.js', got: ${r.substring(0, 200)}`,
+  );
   // The result must contain the matched pattern or the line content
-  assert.ok(r.includes('needle'), `search result should contain matched pattern 'needle', got: ${r.substring(0, 200)}`);
+  assert.ok(
+    r.includes('needle'),
+    `search result should contain matched pattern 'needle', got: ${r.substring(0, 200)}`,
+  );
 });
 
 test('QRM-04: search_files returns no-match message for absent pattern', async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'bp-qrm-grep-miss-'));
   await fsp.writeFile(path.join(dir, 'file.js'), 'const x = 1;\n');
-  const r = await executeTool('search_files', { pattern: 'zzz_nonexistent_zzz', glob: '*.js' }, dir);
+  const r = await executeTool(
+    'search_files',
+    { pattern: 'zzz_nonexistent_zzz', glob: '*.js' },
+    dir,
+  );
   assert.equal(typeof r, 'string');
   // Should NOT contain the filename since pattern doesn't match
-  assert.ok(!r.includes('file.js'), 'search result should not contain filename when pattern not found');
+  assert.ok(
+    !r.includes('file.js'),
+    'search result should not contain filename when pattern not found',
+  );
 });
 
 test('QRM-05: web_search parses DuckDuckGo JSON and returns formatted results', async (t) => {
   const mockResponse = JSON.stringify({
     AbstractText: 'Node.js is a JavaScript runtime',
-    RelatedTopics: [
-      { Text: 'Topic A about Node.js' },
-      { Text: 'Topic B about JavaScript' },
-    ],
+    RelatedTopics: [{ Text: 'Topic A about Node.js' }, { Text: 'Topic B about JavaScript' }],
   });
   const mock = t.mock.method(safe, 'curlFetchAsync', async () => mockResponse);
   const r = await executeTool('web_search', { query: 'nodejs' }, '/tmp');
@@ -97,19 +107,27 @@ test('QRM-05: web_search handles invalid JSON gracefully', async (t) => {
 });
 
 test('QRM-05: web_search handles network error gracefully', async (t) => {
-  t.mock.method(safe, 'curlFetchAsync', async () => { throw new Error('Connection refused'); });
+  t.mock.method(safe, 'curlFetchAsync', async () => {
+    throw new Error('Connection refused');
+  });
   const r = await executeTool('web_search', { query: 'test' }, '/tmp');
   assert.ok(r.includes('Connection refused'), 'Should include error message');
 });
 
 test('QRM-05: web_search returns no-results message when API returns empty data', async (t) => {
-  t.mock.method(safe, 'curlFetchAsync', async () => JSON.stringify({ AbstractText: '', RelatedTopics: [] }));
+  t.mock.method(safe, 'curlFetchAsync', async () =>
+    JSON.stringify({ AbstractText: '', RelatedTopics: [] }),
+  );
   const r = await executeTool('web_search', { query: 'test' }, '/tmp');
   assert.equal(r, 'No results found.');
 });
 
 test('QRM-05: web_fetch returns stripped HTML content', async (t) => {
-  const mock = t.mock.method(safe, 'curlFetchAsync', async () => '<html><body><p>Hello World</p></body></html>');
+  const mock = t.mock.method(
+    safe,
+    'curlFetchAsync',
+    async () => '<html><body><p>Hello World</p></body></html>',
+  );
   const r = await executeTool('web_fetch', { url: 'https://example.com' }, '/tmp');
   assert.equal(mock.mock.calls.length, 1);
   assert.equal(mock.mock.calls[0].arguments[0], 'https://example.com');
@@ -139,7 +157,7 @@ test('QRM-03: list_files returns error for nonexistent directory', async () => {
 
 // -- Quorum route tests --
 
-test('QRM: quorum/ask rejects missing question', async (t) => {
+test('QRM: quorum/ask rejects missing question', async (_t) => {
   const app = express();
   app.use(express.json());
   registerQuorumRoutes(app);
@@ -151,7 +169,7 @@ test('QRM: quorum/ask rejects missing question', async (t) => {
   });
 });
 
-test('QRM: quorum/ask rejects missing project', async (t) => {
+test('QRM: quorum/ask rejects missing project', async (_t) => {
   const app = express();
   app.use(express.json());
   registerQuorumRoutes(app);
@@ -168,7 +186,7 @@ test('QRM: askQuorum runs with mocked claude and returns result', async (t) => {
   const db = require('../../db');
   db.ensureProject('qproj', '/virtual/qproj');
   // Mock claude to return simple responses
-  t.mock.method(safe, 'claudeExecAsync', async (args) => {
+  t.mock.method(safe, 'claudeExecAsync', async (_args) => {
     return ' mocked response ';
   });
   const result = await askQuorum('test question', 'qproj', null, 'new');
@@ -193,7 +211,10 @@ test('QRM: runClaudeCliJunior handles CLI error gracefully', async (t) => {
 
 test('QRM: getQuorumSettings returns valid defaults', () => {
   const s = getQuorumSettings();
-  assert.ok(['opus', 'sonnet', 'haiku'].some(m => s.lead.includes(m) || true), 'lead should be a model name');
+  assert.ok(
+    ['opus', 'sonnet', 'haiku'].some((m) => s.lead.includes(m) || true),
+    'lead should be a model name',
+  );
   assert.ok(typeof s.fixedJunior === 'string');
   assert.ok(Array.isArray(s.additionalJuniors));
 });

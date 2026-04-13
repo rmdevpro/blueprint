@@ -21,21 +21,49 @@ async function setupEnv(t) {
   await fsp.mkdir(workspace, { recursive: true });
   await fsp.mkdir(dataDir, { recursive: true });
   await fsp.mkdir(promptsDir, { recursive: true });
-  await fsp.writeFile(path.join(configDir, 'defaults.json'), JSON.stringify(fixtures.validDefaultsJson, null, 2));
-  await fsp.writeFile(path.join(promptsDir, 'summarize-session.md'), fixtures.promptTemplates.summarizeSession);
+  await fsp.writeFile(
+    path.join(configDir, 'defaults.json'),
+    JSON.stringify(fixtures.validDefaultsJson, null, 2),
+  );
+  await fsp.writeFile(
+    path.join(promptsDir, 'summarize-session.md'),
+    fixtures.promptTemplates.summarizeSession,
+  );
 
-  const prev = { WORKSPACE: process.env.WORKSPACE, CLAUDE_HOME: process.env.CLAUDE_HOME, BLUEPRINT_DATA: process.env.BLUEPRINT_DATA };
-  process.env.WORKSPACE = workspace; process.env.CLAUDE_HOME = claudeHome; process.env.BLUEPRINT_DATA = dataDir;
+  const prev = {
+    WORKSPACE: process.env.WORKSPACE,
+    CLAUDE_HOME: process.env.CLAUDE_HOME,
+    BLUEPRINT_DATA: process.env.BLUEPRINT_DATA,
+  };
+  process.env.WORKSPACE = workspace;
+  process.env.CLAUDE_HOME = claudeHome;
+  process.env.BLUEPRINT_DATA = dataDir;
   const orig = { rfs: fs.readFileSync, rf: fs.readFile, wf: fs.watchFile };
-  function rewrite(p) { const n = String(p).replace(/\\/g, '/'); if (n.includes('/config/defaults.json')) return path.join(configDir, 'defaults.json'); if (n.includes('/config/prompts/')) return path.join(promptsDir, path.basename(p)); return p; }
-  t.mock.method(fs, 'readFileSync', function(p, ...a) { return orig.rfs.call(this, rewrite(p), ...a); });
-  t.mock.method(fs, 'readFile', function(p, ...a) { return orig.rf.call(this, rewrite(p), ...a); });
-  t.mock.method(fs, 'watchFile', function(p, o, l) { return orig.wf.call(this, rewrite(p), o, l); });
+  function rewrite(p) {
+    const n = String(p).replace(/\\/g, '/');
+    if (n.includes('/config/defaults.json')) return path.join(configDir, 'defaults.json');
+    if (n.includes('/config/prompts/')) return path.join(promptsDir, path.basename(p));
+    return p;
+  }
+  t.mock.method(fs, 'readFileSync', function (p, ...a) {
+    return orig.rfs.call(this, rewrite(p), ...a);
+  });
+  t.mock.method(fs, 'readFile', function (p, ...a) {
+    return orig.rf.call(this, rewrite(p), ...a);
+  });
+  t.mock.method(fs, 'watchFile', function (p, o, l) {
+    return orig.wf.call(this, rewrite(p), o, l);
+  });
   const db = freshRequire(path.join(__dirname, '../../db.js'));
   const safe = freshRequire(path.join(__dirname, '../../safe-exec.js'));
   freshRequire(path.join(__dirname, '../../config.js'));
   const su = freshRequire(path.join(__dirname, '../../session-utils.js'));
-  t.after(() => { for (const [k, v] of Object.entries(prev)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  t.after(() => {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
   return { root, workspace, claudeHome, db, safe, su };
 }
 
@@ -95,7 +123,9 @@ test('SU-11: opus model returns 1M max_tokens', async (t) => {
   const p = db.ensureProject('projop', '/virtual/projop');
   const sd = safe.findSessionsDir(p.path);
   await fsp.mkdir(sd, { recursive: true });
-  const line = fixtures.makeJsonlLine(fixtures.makeAssistantEntry({ model: 'claude-opus-4-6', inputTokens: 1000 }));
+  const line = fixtures.makeJsonlLine(
+    fixtures.makeAssistantEntry({ model: 'claude-opus-4-6', inputTokens: 1000 }),
+  );
   await fsp.writeFile(path.join(sd, 'op1.jsonl'), line + '\n');
   const r = await su.getTokenUsage('op1', 'projop');
   assert.equal(r.max_tokens, 1000000);
@@ -127,7 +157,9 @@ test('SU-12 / SES-19: getSessionSlug extracts slug from JSONL', async (t) => {
   const p = db.ensureProject('slugproj', '/virtual/slugproj');
   const sd = safe.findSessionsDir(p.path);
   await fsp.mkdir(sd, { recursive: true });
-  const lines = [JSON.stringify({ type: 'user', message: { content: 'hi' }, slug: 'my-session-slug' })];
+  const lines = [
+    JSON.stringify({ type: 'user', message: { content: 'hi' }, slug: 'my-session-slug' }),
+  ];
   await fsp.writeFile(path.join(sd, 'slug1.jsonl'), lines.join('\n') + '\n');
   const slug = await su.getSessionSlug('slug1', p.path);
   assert.equal(slug, 'my-session-slug');
@@ -138,7 +170,10 @@ test('SU-12: getSessionSlug returns null when no slug entry', async (t) => {
   const p = db.ensureProject('noslug', '/virtual/noslug');
   const sd = safe.findSessionsDir(p.path);
   await fsp.mkdir(sd, { recursive: true });
-  await fsp.writeFile(path.join(sd, 'ns1.jsonl'), fixtures.sessionUtilsValidLines.join('\n') + '\n');
+  await fsp.writeFile(
+    path.join(sd, 'ns1.jsonl'),
+    fixtures.sessionUtilsValidLines.join('\n') + '\n',
+  );
   assert.equal(await su.getSessionSlug('ns1', p.path), null);
 });
 
@@ -156,8 +191,16 @@ test('SU-13: searchSessions finds matching messages in session files', async (t)
   const sd = safe.findSessionsDir(p.path);
   await fsp.mkdir(sd, { recursive: true });
   const lines = [
-    JSON.stringify({ type: 'user', message: { content: 'How do I deploy to production?' }, timestamp: '2026-04-10T10:00:00Z' }),
-    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Run docker compose up' }] }, timestamp: '2026-04-10T10:01:00Z' }),
+    JSON.stringify({
+      type: 'user',
+      message: { content: 'How do I deploy to production?' },
+      timestamp: '2026-04-10T10:00:00Z',
+    }),
+    JSON.stringify({
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: 'Run docker compose up' }] },
+      timestamp: '2026-04-10T10:01:00Z',
+    }),
   ];
   await fsp.writeFile(path.join(sd, 'search1.jsonl'), lines.join('\n') + '\n');
   const results = await su.searchSessions('deploy', null, 10);
@@ -174,8 +217,10 @@ test('SU-13: searchSessions returns empty for non-matching query', async (t) => 
   const p = db.ensureProject('searchproj2', '/virtual/searchproj2');
   const sd = safe.findSessionsDir(p.path);
   await fsp.mkdir(sd, { recursive: true });
-  await fsp.writeFile(path.join(sd, 'nomatch.jsonl'),
-    JSON.stringify({ type: 'user', message: { content: 'hello world' } }) + '\n');
+  await fsp.writeFile(
+    path.join(sd, 'nomatch.jsonl'),
+    JSON.stringify({ type: 'user', message: { content: 'hello world' } }) + '\n',
+  );
   const results = await su.searchSessions('xyznonexistent', null, 10);
   assert.equal(results.length, 0);
 });
@@ -188,10 +233,14 @@ test('SU-13: searchSessions filters by project when projectFilter given', async 
   const sd2 = safe.findSessionsDir(p2.path);
   await fsp.mkdir(sd1, { recursive: true });
   await fsp.mkdir(sd2, { recursive: true });
-  await fsp.writeFile(path.join(sd1, 'a1.jsonl'),
-    JSON.stringify({ type: 'user', message: { content: 'deploy alpha' } }) + '\n');
-  await fsp.writeFile(path.join(sd2, 'b1.jsonl'),
-    JSON.stringify({ type: 'user', message: { content: 'deploy beta' } }) + '\n');
+  await fsp.writeFile(
+    path.join(sd1, 'a1.jsonl'),
+    JSON.stringify({ type: 'user', message: { content: 'deploy alpha' } }) + '\n',
+  );
+  await fsp.writeFile(
+    path.join(sd2, 'b1.jsonl'),
+    JSON.stringify({ type: 'user', message: { content: 'deploy beta' } }) + '\n',
+  );
   const results = await su.searchSessions('deploy', 'alpha', 10);
   assert.equal(results.length, 1);
   assert.equal(results[0].project, 'alpha');
@@ -246,5 +295,11 @@ test('SU: extractMessageText handles non-user/assistant types', async (t) => {
   const { su } = await setupEnv(t);
   assert.equal(su.extractMessageText({ type: 'system', message: { content: 'sys' } }), '');
   assert.equal(su.extractMessageText({ type: 'user', message: { content: 'hello' } }), 'hello');
-  assert.equal(su.extractMessageText({ type: 'assistant', message: { content: [{ type: 'text', text: 'reply' }] } }), 'reply');
+  assert.equal(
+    su.extractMessageText({
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: 'reply' }] },
+    }),
+    'reply',
+  );
 });

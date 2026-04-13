@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: blueprint
     ports:
-      - "7866:3000"
+      - '7866:3000'
     volumes:
       - joshua26_workspace:/workspace
       - joshua26_storage:/storage

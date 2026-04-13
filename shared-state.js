@@ -5,7 +5,9 @@ let _browserCount = 0;
 
 module.exports = {
   sessionWsClients,
-  getBrowserCount() { return _browserCount; },
+  getBrowserCount() {
+    return _browserCount;
+  },
   incrementBrowserCount() {
     _browserCount += 1;
     return _browserCount;

@@ -3,7 +3,11 @@
 const { describe, it, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 let chromium;
-try { ({ chromium } = require('playwright')); } catch { process.exit(0); }
+try {
+  ({ chromium } = require('playwright'));
+} catch {
+  process.exit(0);
+}
 
 const { resetBaseline } = require('../helpers/reset-state');
 const SS = require('path').join(__dirname, 'screenshots');
@@ -12,14 +16,21 @@ describe('reconnect (browser)', () => {
   let browser, page;
   const errors = [];
 
-  before(async () => { require('fs').mkdirSync(SS, { recursive: true }); browser = await chromium.launch({ headless: true }); });
-  after(async () => { if (browser) await browser.close(); });
+  before(async () => {
+    require('fs').mkdirSync(SS, { recursive: true });
+    browser = await chromium.launch({ headless: true });
+  });
+  after(async () => {
+    if (browser) await browser.close();
+  });
   beforeEach(async () => {
     errors.length = 0;
     const ctx = await browser.newContext();
     page = await ctx.newPage();
-    page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-    page.on('pageerror', e => errors.push(e.message));
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(m.text());
+    });
+    page.on('pageerror', (e) => errors.push(e.message));
     await resetBaseline(page);
   });
 
@@ -27,8 +38,11 @@ describe('reconnect (browser)', () => {
     assert.equal(await page.evaluate(() => MAX_RECONNECT_DELAY), 30000);
     assert.equal(await page.evaluate(() => HEARTBEAT_MS), 30000);
     // Behavioral: verify the reconnect function exists and is callable
-    const hasReconnect = await page.evaluate(() =>
-      typeof connectWebSocket === 'function' || typeof setupWebSocket === 'function' || typeof reconnect === 'function'
+    const hasReconnect = await page.evaluate(
+      () =>
+        typeof connectWebSocket === 'function' ||
+        typeof setupWebSocket === 'function' ||
+        typeof reconnect === 'function',
     );
     assert.ok(hasReconnect, 'A WebSocket connection/reconnect function must be defined');
     await page.screenshot({ path: `${SS}/reconnect--constants.png` });
@@ -37,7 +51,7 @@ describe('reconnect (browser)', () => {
 
   it('BRW-24: resize triggers terminal fit without crash or layout break', async () => {
     // Get initial terminal dimensions
-    const initialState = await page.evaluate(() => ({
+    const _initialState = await page.evaluate(() => ({
       width: window.innerWidth,
       height: window.innerHeight,
       terminalExists: !!document.querySelector('.xterm, #terminal-container, .terminal-wrapper'),

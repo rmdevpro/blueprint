@@ -12,6 +12,7 @@ The plan:
 6. **Defines success criteria** — 9 verifiable conditions (test suites, smoke tests, requirement compliance)
 
 The key findings:
+
 - ✓ All 22 bare `catch {}` blocks have specific remediation (expected failures, informational logs, critical errors)
 - ✓ Dependency graph is acyclic and testable in order
 - ✓ Cross-module state (sessionWsClients, browserCount) properly centralized

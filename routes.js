@@ -1,19 +1,27 @@
 'use strict';
 
-const { readdir, readFile, writeFile, stat, unlink, mkdir, appendFile, access } = require('fs/promises');
-const { createReadStream } = require('fs');
-const { join, basename, resolve } = require('path');
+const {
+  readdir,
+  readFile,
+  writeFile,
+  stat,
+  unlink,
+  mkdir,
+  appendFile,
+  access,
+} = require('fs/promises');
+const { join, basename } = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 const crypto = require('crypto');
 
-const { registerMcpRoutes }         = require('./mcp-tools');
-const { registerOpenAIRoutes }      = require('./openai-compat');
-const { registerWebhookRoutes }     = require('./webhooks');
+const { registerMcpRoutes } = require('./mcp-tools');
+const { registerOpenAIRoutes } = require('./openai-compat');
+const { registerWebhookRoutes } = require('./webhooks');
 const { registerExternalMcpRoutes } = require('./mcp-external');
-const { registerQuorumRoutes }      = require('./quorum');
-const jqftConnector                 = require('jqueryfiletree/dist/connectors/jqueryFileTree');
+const { registerQuorumRoutes } = require('./quorum');
+const jqftConnector = require('jqueryfiletree/dist/connectors/jqueryFileTree');
 
 const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 const PROJECT_NAME_MAX_LEN = 255;
@@ -31,22 +39,44 @@ function validateSessionId(sessionId) {
   return SESSION_ID_PATTERN.test(sessionId);
 }
 
-function registerCoreRoutes(app, {
-  db, safe, config, sessionUtils, keepalive, fireEvent, logger,
-  tmuxName, tmuxExists, enforceTmuxLimit,
-  resolveSessionId, runSmartCompaction,
-  getBrowserCount, CLAUDE_HOME, WORKSPACE,
-  ensureSettings, sleep,
-}) {
-
+function registerCoreRoutes(
+  app,
+  {
+    db,
+    safe,
+    config,
+    sessionUtils,
+    keepalive,
+    fireEvent,
+    logger,
+    tmuxName,
+    tmuxExists: _tmuxExists,
+    enforceTmuxLimit,
+    resolveSessionId,
+    runSmartCompaction,
+    getBrowserCount,
+    CLAUDE_HOME,
+    WORKSPACE,
+    ensureSettings,
+    sleep,
+  },
+) {
   const fileLocks = new Map();
-  async function lockedAppend(path, data) {
+  async function _lockedAppend(path, data) {
     const current = fileLocks.get(path) || Promise.resolve();
-    const next = current.then(() => appendFile(path, data)).catch(err => {
-      logger.error('Append write failed', { module: 'routes', op: 'lockedAppend', err: err.message, path });
-    }).finally(() => {
-      if (fileLocks.get(path) === next) fileLocks.delete(path);
-    });
+    const next = current
+      .then(() => appendFile(path, data))
+      .catch((err) => {
+        logger.error('Append write failed', {
+          module: 'routes',
+          op: 'lockedAppend',
+          err: err.message,
+          path,
+        });
+      })
+      .finally(() => {
+        if (fileLocks.get(path) === next) fileLocks.delete(path);
+      });
     fileLocks.set(path, next);
     return next;
   }
@@ -56,13 +86,17 @@ function registerCoreRoutes(app, {
     try {
       const raw = await readFile(credsFile, 'utf-8');
       let creds;
-      try { creds = JSON.parse(raw); } catch (parseErr) {
-        if (parseErr instanceof SyntaxError) return { valid: false, reason: 'malformed_credentials' };
+      try {
+        creds = JSON.parse(raw);
+      } catch (parseErr) {
+        if (parseErr instanceof SyntaxError)
+          return { valid: false, reason: 'malformed_credentials' };
         throw parseErr;
       }
       const oauth = creds.claudeAiOauth;
       if (!oauth || !oauth.accessToken) return { valid: false, reason: 'no_credentials' };
-      if (oauth.accessToken === 'expired' || oauth.refreshToken === 'expired') return { valid: false, reason: 'invalid_credentials' };
+      if (oauth.accessToken === 'expired' || oauth.refreshToken === 'expired')
+        return { valid: false, reason: 'invalid_credentials' };
       if (!oauth.refreshToken) {
         const expiresAt = oauth.expiresAt || 0;
         if (Date.now() > expiresAt) return { valid: false, reason: 'expired_no_refresh' };
@@ -70,7 +104,11 @@ function registerCoreRoutes(app, {
       return { valid: true, expiresAt: oauth.expiresAt };
     } catch (err) {
       if (err.code === 'ENOENT') return { valid: false, reason: 'no_credentials_file' };
-      logger.error('Unexpected error checking auth status', { module: 'routes', op: 'checkAuthStatus', err: err.message });
+      logger.error('Unexpected error checking auth status', {
+        module: 'routes',
+        op: 'checkAuthStatus',
+        err: err.message,
+      });
       return { valid: false, reason: 'read_error' };
     }
   }
@@ -79,7 +117,9 @@ function registerCoreRoutes(app, {
   async function trustDir(dirPath) {
     const prev = _trustDirLock;
     let unlock;
-    _trustDirLock = new Promise(r => { unlock = r; });
+    _trustDirLock = new Promise((r) => {
+      unlock = r;
+    });
     await prev;
     try {
       const configFile = join(CLAUDE_HOME, '.claude.json');
@@ -87,15 +127,28 @@ function registerCoreRoutes(app, {
       try {
         cfg = JSON.parse(await readFile(configFile, 'utf-8'));
       } catch (err) {
-        if (err.code === 'ENOENT') { /* first run */ }
-        else if (err instanceof SyntaxError) { logger.error('.claude.json is corrupt — skipping trustDir', { module: 'routes' }); return; }
-        else { logger.warn('Failed to parse .claude.json', { module: 'routes', op: 'trustDir', err: err.message }); }
+        if (err.code === 'ENOENT') {
+          /* first run */
+        } else if (err instanceof SyntaxError) {
+          logger.error('.claude.json is corrupt — skipping trustDir', { module: 'routes' });
+          return;
+        } else {
+          logger.warn('Failed to parse .claude.json', {
+            module: 'routes',
+            op: 'trustDir',
+            err: err.message,
+          });
+        }
       }
       if (!cfg.projects) cfg.projects = {};
       if (cfg.projects[dirPath] && cfg.projects[dirPath].hasTrustDialogAccepted) {
         return;
       }
-      cfg.projects[dirPath] = { hasTrustDialogAccepted: true, enabledMcpjsonServers: [], disabledMcpjsonServers: [] };
+      cfg.projects[dirPath] = {
+        hasTrustDialogAccepted: true,
+        enabledMcpjsonServers: [],
+        disabledMcpjsonServers: [],
+      };
       await writeFile(configFile, JSON.stringify(cfg, null, 2));
     } finally {
       unlock();
@@ -105,13 +158,15 @@ function registerCoreRoutes(app, {
   // ── Helper: reconcile stale sessions for a project ─────────────────────────
 
   async function reconcileStaleSessionsForProject(currentSessions, sessDir, projectId) {
-    const staleTmps = currentSessions.filter(s => s.id.startsWith('new_'));
+    const staleTmps = currentSessions.filter((s) => s.id.startsWith('new_'));
     if (staleTmps.length === 0) return;
 
-    const dbIds = new Set(currentSessions.map(s => s.id));
+    const dbIds = new Set(currentSessions.map((s) => s.id));
     try {
       const files = await readdir(sessDir);
-      const unmatched = files.filter(f => f.endsWith('.jsonl') && !dbIds.has(basename(f, '.jsonl')));
+      const unmatched = files.filter(
+        (f) => f.endsWith('.jsonl') && !dbIds.has(basename(f, '.jsonl')),
+      );
       for (const tmp of staleTmps) {
         if (unmatched.length > 0) {
           const realFile = unmatched.shift();
@@ -123,11 +178,20 @@ function registerCoreRoutes(app, {
           db.deleteSession(tmp.id);
           const oldTmux = tmuxName(tmp.id);
           const newTmux = tmuxName(realId);
-          try { await safe.tmuxExecAsync(['rename-session', '-t', oldTmux, newTmux]); } catch (renameErr) {
-            if (renameErr.message && (renameErr.message.includes('no server running') || renameErr.message.includes('error connecting to'))) {
+          try {
+            await safe.tmuxExecAsync(['rename-session', '-t', oldTmux, newTmux]);
+          } catch (renameErr) {
+            if (
+              renameErr.message &&
+              (renameErr.message.includes('no server running') ||
+                renameErr.message.includes('error connecting to'))
+            ) {
               /* expected: tmux server not running */
             } else {
-              logger.debug('tmux rename skipped during reconcile', { module: 'routes', err: renameErr.message });
+              logger.debug('tmux rename skipped during reconcile', {
+                module: 'routes',
+                err: renameErr.message,
+              });
             }
           }
         } else if (!(await safe.tmuxExists(tmuxName(tmp.id)))) {
@@ -167,12 +231,15 @@ function registerCoreRoutes(app, {
   app.get('/api/mounts', async (req, res) => {
     try {
       const { stdout } = await execFileAsync('mount');
-      const mounts = stdout.trim().split('\n')
-        .map(line => {
+      const mounts = stdout
+        .trim()
+        .split('\n')
+        .map((line) => {
           if (/proc|sys|dev|tmpfs|cgroup|mqueue|overlay/.test(line)) return null;
           const match = line.match(/on\s+(\S+)\s+type\s+(\S+)/);
           return match ? { path: match[1], type: match[2] } : null;
-        }).filter(Boolean);
+        })
+        .filter(Boolean);
       res.json(mounts);
     } catch (err) {
       logger.warn('GET /api/mounts failed', { module: 'routes', err: err.message });
@@ -197,7 +264,8 @@ function registerCoreRoutes(app, {
             const realStat = await stat(join(targetPath, entry.name));
             if (realStat.isDirectory()) dirs.push({ name: entry.name, type: 'directory' });
           } catch (symErr) {
-            if (symErr.code !== 'ENOENT') logger.debug('Symlink stat failed', { module: 'routes', err: symErr.message });
+            if (symErr.code !== 'ENOENT')
+              logger.debug('Symlink stat failed', { module: 'routes', err: symErr.message });
             /* expected: dangling symlink */
           }
         }
@@ -236,7 +304,8 @@ function registerCoreRoutes(app, {
     try {
       let { path: projectPath, name } = req.body;
       if (!projectPath) return res.status(400).json({ error: 'path required' });
-      if (name && name.length > PROJECT_NAME_MAX_LEN) return res.status(400).json({ error: `name too long (max ${PROJECT_NAME_MAX_LEN})` });
+      if (name && name.length > PROJECT_NAME_MAX_LEN)
+        return res.status(400).json({ error: `name too long (max ${PROJECT_NAME_MAX_LEN})` });
       projectPath = projectPath.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
 
       if (projectPath.startsWith('http') || projectPath.startsWith('git@')) {
@@ -252,16 +321,25 @@ function registerCoreRoutes(app, {
         try {
           await safe.gitCloneAsync(projectPath, targetPath);
         } catch (gitErr) {
-          logger.warn('Git clone failed', { module: 'routes', url: projectPath.substring(0, 100), err: gitErr.message?.substring(0, 200) });
-          return res.status(400).json({ error: `Git clone failed: ${gitErr.message?.substring(0, 200)}` });
+          logger.warn('Git clone failed', {
+            module: 'routes',
+            url: projectPath.substring(0, 100),
+            err: gitErr.message?.substring(0, 200),
+          });
+          return res
+            .status(400)
+            .json({ error: `Git clone failed: ${gitErr.message?.substring(0, 200)}` });
         }
         db.ensureProject(repoName, targetPath);
         await trustDir(targetPath);
         return res.json({ name: repoName, path: targetPath, cloned: true });
       }
 
-      try { await stat(projectPath); } catch (statErr) {
-        if (statErr.code === 'ENOENT') return res.status(404).json({ error: 'Path does not exist' });
+      try {
+        await stat(projectPath);
+      } catch (statErr) {
+        if (statErr.code === 'ENOENT')
+          return res.status(404).json({ error: 'Path does not exist' });
         throw statErr;
       }
       const projectName = name || basename(projectPath);
@@ -289,8 +367,11 @@ function registerCoreRoutes(app, {
   // ── Auth endpoints ─────────────────────────────────────────────────────────
 
   app.get('/api/auth/status', async (req, res) => {
-    try { res.json(await checkAuthStatus()); }
-    catch (err) { res.json({ valid: false, reason: err.message }); }
+    try {
+      res.json(await checkAuthStatus());
+    } catch (err) {
+      res.json({ valid: false, reason: err.message });
+    }
   });
 
   app.post('/api/auth/login', async (req, res) => {
@@ -311,8 +392,12 @@ function registerCoreRoutes(app, {
 
   app.put('/api/keepalive/mode', (req, res) => {
     const { mode, idleMinutes } = req.body;
-    if (!['always', 'browser', 'idle'].includes(mode)) return res.status(400).json({ error: 'mode must be always, browser, or idle' });
-    if (idleMinutes !== undefined && (typeof idleMinutes !== 'number' || idleMinutes < 1 || idleMinutes > 1440)) {
+    if (!['always', 'browser', 'idle'].includes(mode))
+      return res.status(400).json({ error: 'mode must be always, browser, or idle' });
+    if (
+      idleMinutes !== undefined &&
+      (typeof idleMinutes !== 'number' || idleMinutes < 1 || idleMinutes > 1440)
+    ) {
       return res.status(400).json({ error: 'idleMinutes must be a number between 1 and 1440' });
     }
     keepalive.setMode(mode, idleMinutes);
@@ -334,9 +419,19 @@ function registerCoreRoutes(app, {
         const project = dbProject;
 
         let dirMissing = false;
-        try { await stat(projectPath); } catch (err) {
-          if (err.code === 'ENOENT') { dirMissing = true; }
-          else { logger.warn('Error checking project directory', { module: 'routes', project: projectName, err: err.message }); dirMissing = true; }
+        try {
+          await stat(projectPath);
+        } catch (err) {
+          if (err.code === 'ENOENT') {
+            dirMissing = true;
+          } else {
+            logger.warn('Error checking project directory', {
+              module: 'routes',
+              project: projectName,
+              err: err.message,
+            });
+            dirMissing = true;
+          }
         }
 
         const sessDir = safe.findSessionsDir(projectPath);
@@ -351,7 +446,11 @@ function registerCoreRoutes(app, {
           }
         } catch (err) {
           if (err.code !== 'ENOENT') {
-            logger.warn('Error reading sessions dir in state handler', { module: 'routes', project: projectName, err: err.message });
+            logger.warn('Error reading sessions dir in state handler', {
+              module: 'routes',
+              project: projectName,
+              err: err.message,
+            });
           }
           /* expected for ENOENT: no sessions dir */
         }
@@ -388,13 +487,20 @@ function registerCoreRoutes(app, {
     try {
       const { project, prompt } = req.body;
       if (!project) return res.status(400).json({ error: 'project required' });
-      if (project.length > PROJECT_NAME_MAX_LEN) return res.status(400).json({ error: `project name too long (max ${PROJECT_NAME_MAX_LEN})` });
-      if (prompt && prompt.length > PROMPT_MAX_LEN) return res.status(400).json({ error: `prompt too long (max ${PROMPT_MAX_LEN})` });
+      if (project.length > PROJECT_NAME_MAX_LEN)
+        return res
+          .status(400)
+          .json({ error: `project name too long (max ${PROJECT_NAME_MAX_LEN})` });
+      if (prompt && prompt.length > PROMPT_MAX_LEN)
+        return res.status(400).json({ error: `prompt too long (max ${PROMPT_MAX_LEN})` });
 
       const dbProject = db.getProject(project);
       const projectPath = dbProject ? dbProject.path : safe.resolveProjectPath(project);
-      try { await stat(projectPath); } catch (statErr) {
-        if (statErr.code === 'ENOENT') return res.status(410).json({ error: 'Project directory not found' });
+      try {
+        await stat(projectPath);
+      } catch (statErr) {
+        if (statErr.code === 'ENOENT')
+          return res.status(410).json({ error: 'Project directory not found' });
         throw statErr;
       }
 
@@ -402,10 +508,13 @@ function registerCoreRoutes(app, {
       let existingFiles = new Set();
       try {
         const files = await readdir(sessDir);
-        existingFiles = new Set(files.filter(f => f.endsWith('.jsonl')));
+        existingFiles = new Set(files.filter((f) => f.endsWith('.jsonl')));
       } catch (err) {
         if (err.code !== 'ENOENT') {
-          logger.warn('Error reading sessions dir for existing files', { module: 'routes', err: err.message });
+          logger.warn('Error reading sessions dir for existing files', {
+            module: 'routes',
+            err: err.message,
+          });
         }
         /* expected for ENOENT: no sessions dir yet */
       }
@@ -417,7 +526,10 @@ function registerCoreRoutes(app, {
 
       const model = db.getSetting('default_model', '"claude-sonnet-4-6"');
       const claudeArgs = [];
-      try { const m = JSON.parse(model); if (m) claudeArgs.push('--model', m); } catch (parseErr) {
+      try {
+        const m = JSON.parse(model);
+        if (m) claudeArgs.push('--model', m);
+      } catch (parseErr) {
         if (parseErr instanceof SyntaxError) {
           logger.debug('Invalid default_model JSON in settings', { module: 'routes' });
         } else {
@@ -430,13 +542,18 @@ function registerCoreRoutes(app, {
 
       const proj = db.ensureProject(project, projectPath);
       const nameMaxLen = config.get('session.nameMaxLength', 60);
-      const sessionName = (prompt && prompt.replace(/\s+/g, ' ').trim()) ? prompt.substring(0, nameMaxLen).replace(/\n/g, ' ').trim() : 'New Session';
+      const sessionName =
+        prompt && prompt.replace(/\s+/g, ' ').trim()
+          ? prompt.substring(0, nameMaxLen).replace(/\n/g, ' ').trim()
+          : 'New Session';
       db.upsertSession(tmpId, proj.id, sessionName);
 
       if (prompt) {
         const promptDelayMs = config.get('session.promptInjectionDelayMs', 2000);
         setTimeout(async () => {
-          try { await safe.tmuxSendKeysAsync(tmux, prompt); } catch (err) {
+          try {
+            await safe.tmuxSendKeysAsync(tmux, prompt);
+          } catch (err) {
             logger.error('Failed to send initial prompt', { module: 'routes', err: err.message });
           }
         }, promptDelayMs);
@@ -457,11 +574,17 @@ function registerCoreRoutes(app, {
     try {
       const { project } = req.body;
       if (!project) return res.status(400).json({ error: 'project required' });
-      if (project.length > PROJECT_NAME_MAX_LEN) return res.status(400).json({ error: `project name too long (max ${PROJECT_NAME_MAX_LEN})` });
+      if (project.length > PROJECT_NAME_MAX_LEN)
+        return res
+          .status(400)
+          .json({ error: `project name too long (max ${PROJECT_NAME_MAX_LEN})` });
       const dbProject = db.getProject(project);
       const projectPath = dbProject ? dbProject.path : safe.resolveProjectPath(project);
-      try { await stat(projectPath); } catch (statErr) {
-        if (statErr.code === 'ENOENT') return res.status(410).json({ error: 'Project directory not found' });
+      try {
+        await stat(projectPath);
+      } catch (statErr) {
+        if (statErr.code === 'ENOENT')
+          return res.status(410).json({ error: 'Project directory not found' });
         throw statErr;
       }
       const termId = `t_${Date.now()}`;
@@ -480,13 +603,17 @@ function registerCoreRoutes(app, {
   app.post('/api/sessions/:sessionId/resume', async (req, res) => {
     try {
       const { sessionId } = req.params;
-      if (!validateSessionId(sessionId)) return res.status(400).json({ error: 'invalid session ID format' });
+      if (!validateSessionId(sessionId))
+        return res.status(400).json({ error: 'invalid session ID format' });
       const { project } = req.body;
       if (!project) return res.status(400).json({ error: 'project required' });
       const dbProject = db.getProject(project);
       const projectPath = dbProject ? dbProject.path : safe.resolveProjectPath(project);
-      try { await stat(projectPath); } catch (statErr) {
-        if (statErr.code === 'ENOENT') return res.status(410).json({ error: 'Project directory not found' });
+      try {
+        await stat(projectPath);
+      } catch (statErr) {
+        if (statErr.code === 'ENOENT')
+          return res.status(410).json({ error: 'Project directory not found' });
         throw statErr;
       }
       const tmux = tmuxName(sessionId);
@@ -508,10 +635,12 @@ function registerCoreRoutes(app, {
   app.put('/api/sessions/:sessionId/name', async (req, res) => {
     try {
       const { sessionId } = req.params;
-      if (!validateSessionId(sessionId)) return res.status(400).json({ error: 'invalid session ID format' });
+      if (!validateSessionId(sessionId))
+        return res.status(400).json({ error: 'invalid session ID format' });
       const { name } = req.body;
       if (!name || !name.trim()) return res.status(400).json({ error: 'name required' });
-      if (name.length > SESSION_NAME_MAX_LEN) return res.status(400).json({ error: `name too long (max ${SESSION_NAME_MAX_LEN})` });
+      if (name.length > SESSION_NAME_MAX_LEN)
+        return res.status(400).json({ error: `name too long (max ${SESSION_NAME_MAX_LEN})` });
       db.renameSession(sessionId, name.trim());
       try {
         const session = db.getSessionFull(sessionId);
@@ -520,19 +649,30 @@ function registerCoreRoutes(app, {
           if (projectPath) {
             const sessDir = safe.findSessionsDir(projectPath);
             const jsonlFile = join(sessDir, `${sessionId}.jsonl`);
-            const summaryEntry = JSON.stringify({ type: 'summary', summary: name.trim(), timestamp: new Date().toISOString() });
+            const summaryEntry = JSON.stringify({
+              type: 'summary',
+              summary: name.trim(),
+              timestamp: new Date().toISOString(),
+            });
             try {
               await appendFile(jsonlFile, '\n' + summaryEntry);
             } catch (appendErr) {
               if (appendErr.code !== 'ENOENT') {
-                logger.warn('Failed to append summary to JSONL', { module: 'routes', sessionId: sessionId.substring(0, 8), err: appendErr.message });
+                logger.warn('Failed to append summary to JSONL', {
+                  module: 'routes',
+                  sessionId: sessionId.substring(0, 8),
+                  err: appendErr.message,
+                });
               }
               /* expected for ENOENT: session file may not exist */
             }
           }
         }
       } catch (outerErr) {
-        logger.debug('Best-effort summary append failed', { module: 'routes', err: outerErr.message });
+        logger.debug('Best-effort summary append failed', {
+          module: 'routes',
+          err: outerErr.message,
+        });
       }
       res.json({ id: sessionId, name: name.trim() });
     } catch (err) {
@@ -546,13 +686,16 @@ function registerCoreRoutes(app, {
   app.get('/api/sessions/:sessionId/config', (req, res) => {
     try {
       const { sessionId } = req.params;
-      if (!validateSessionId(sessionId)) return res.status(400).json({ error: 'invalid session ID format' });
+      if (!validateSessionId(sessionId))
+        return res.status(400).json({ error: 'invalid session ID format' });
       const session = db.getSessionFull(sessionId);
       if (!session) return res.status(404).json({ error: 'session not found' });
       res.json({
-        id: session.id, name: session.name,
+        id: session.id,
+        name: session.name,
         state: session.state || (session.archived ? 'archived' : 'active'),
-        notes: session.notes || '', project: session.project_name,
+        notes: session.notes || '',
+        project: session.project_name,
       });
     } catch (err) {
       logger.error('Error getting session config', { module: 'routes', err: err.message });
@@ -563,18 +706,24 @@ function registerCoreRoutes(app, {
   app.put('/api/sessions/:sessionId/config', (req, res) => {
     try {
       const { sessionId } = req.params;
-      if (!validateSessionId(sessionId)) return res.status(400).json({ error: 'invalid session ID format' });
+      if (!validateSessionId(sessionId))
+        return res.status(400).json({ error: 'invalid session ID format' });
       const { name, state, notes } = req.body;
       if (name !== undefined) {
-        if (name.length > SESSION_NAME_MAX_LEN) return res.status(400).json({ error: `name too long (max ${SESSION_NAME_MAX_LEN})` });
+        if (name.length > SESSION_NAME_MAX_LEN)
+          return res.status(400).json({ error: `name too long (max ${SESSION_NAME_MAX_LEN})` });
         db.renameSession(sessionId, name);
       }
       if (state !== undefined) {
-        if (!VALID_STATES.includes(state)) return res.status(400).json({ error: `state must be one of: ${VALID_STATES.join(', ')}` });
+        if (!VALID_STATES.includes(state))
+          return res
+            .status(400)
+            .json({ error: `state must be one of: ${VALID_STATES.join(', ')}` });
         db.setSessionState(sessionId, state);
       }
       if (notes !== undefined) {
-        if (notes.length > NOTES_MAX_LEN) return res.status(400).json({ error: `notes too long (max ${NOTES_MAX_LEN})` });
+        if (notes.length > NOTES_MAX_LEN)
+          return res.status(400).json({ error: `notes too long (max ${NOTES_MAX_LEN})` });
         db.setSessionNotes(sessionId, notes);
       }
       res.json({ saved: true });
@@ -589,7 +738,8 @@ function registerCoreRoutes(app, {
   app.put('/api/sessions/:sessionId/archive', async (req, res) => {
     try {
       const { sessionId } = req.params;
-      if (!validateSessionId(sessionId)) return res.status(400).json({ error: 'invalid session ID format' });
+      if (!validateSessionId(sessionId))
+        return res.status(400).json({ error: 'invalid session ID format' });
       const { archived } = req.body;
       db.setSessionState(sessionId, archived ? 'archived' : 'active');
       res.json({ id: sessionId, archived: !!archived });
@@ -611,7 +761,8 @@ function registerCoreRoutes(app, {
     const project = db.getProject(req.params.name);
     if (!project) return res.status(404).json({ error: 'project not found' });
     const notes = req.body.notes || '';
-    if (notes.length > NOTES_MAX_LEN) return res.status(400).json({ error: `notes too long (max ${NOTES_MAX_LEN})` });
+    if (notes.length > NOTES_MAX_LEN)
+      return res.status(400).json({ error: `notes too long (max ${NOTES_MAX_LEN})` });
     db.setProjectNotes(project.id, notes);
     res.json({ saved: true });
   });
@@ -619,14 +770,17 @@ function registerCoreRoutes(app, {
   // ── Session notes ─────────────────────────────────────────────────────────
 
   app.get('/api/sessions/:id/notes', (req, res) => {
-    if (!validateSessionId(req.params.id)) return res.status(400).json({ error: 'invalid session ID format' });
+    if (!validateSessionId(req.params.id))
+      return res.status(400).json({ error: 'invalid session ID format' });
     res.json({ notes: db.getSessionNotes(req.params.id) });
   });
 
   app.put('/api/sessions/:id/notes', (req, res) => {
-    if (!validateSessionId(req.params.id)) return res.status(400).json({ error: 'invalid session ID format' });
+    if (!validateSessionId(req.params.id))
+      return res.status(400).json({ error: 'invalid session ID format' });
     const notes = req.body.notes || '';
-    if (notes.length > NOTES_MAX_LEN) return res.status(400).json({ error: `notes too long (max ${NOTES_MAX_LEN})` });
+    if (notes.length > NOTES_MAX_LEN)
+      return res.status(400).json({ error: `notes too long (max ${NOTES_MAX_LEN})` });
     db.setSessionNotes(req.params.id, notes);
     res.json({ saved: true });
   });
@@ -644,7 +798,8 @@ function registerCoreRoutes(app, {
     if (!project) return res.status(404).json({ error: 'project not found' });
     const { text, created_by } = req.body;
     if (!text) return res.status(400).json({ error: 'text required' });
-    if (text.length > TASK_TEXT_MAX_LEN) return res.status(400).json({ error: `text too long (max ${TASK_TEXT_MAX_LEN})` });
+    if (text.length > TASK_TEXT_MAX_LEN)
+      return res.status(400).json({ error: `text too long (max ${TASK_TEXT_MAX_LEN})` });
     const task = db.addTask(project.id, text, created_by || 'human');
     fireEvent('task_added', { task_id: task.id, project: req.params.name, text });
     res.json(task);
@@ -679,10 +834,17 @@ function registerCoreRoutes(app, {
       if (!project) return res.status(404).json({ error: 'project not found' });
       const { from_session, to_session, content } = req.body;
       if (!content) return res.status(400).json({ error: 'content required' });
-      if (content.length > MESSAGE_CONTENT_MAX_LEN) return res.status(400).json({ error: `content too long (max ${MESSAGE_CONTENT_MAX_LEN})` });
+      if (content.length > MESSAGE_CONTENT_MAX_LEN)
+        return res.status(400).json({ error: `content too long (max ${MESSAGE_CONTENT_MAX_LEN})` });
 
       const msg = db.sendMessage(project.id, from_session || null, to_session || null, content);
-      fireEvent('message_sent', { message_id: msg.id, project: req.params.name, from_session, to_session, content });
+      fireEvent('message_sent', {
+        message_id: msg.id,
+        project: req.params.name,
+        from_session,
+        to_session,
+        content,
+      });
 
       if (to_session) {
         const bridgeDir = join(db.DATA_DIR, 'bridges');
@@ -696,22 +858,42 @@ function registerCoreRoutes(app, {
           try {
             const claudeTimeout = config.get('claude.defaultTimeoutMs', 120000);
             await safe.claudeExecAsync(
-              ['--resume', to_session, '--dangerously-skip-permissions', '--no-session-persistence', '--print', bridgeFile],
-              { cwd: project.path, timeout: claudeTimeout }
+              [
+                '--resume',
+                to_session,
+                '--dangerously-skip-permissions',
+                '--no-session-persistence',
+                '--print',
+                bridgeFile,
+              ],
+              { cwd: project.path, timeout: claudeTimeout },
             );
             delivered = true;
           } catch (err) {
-            logger.error('Failed to deliver bridge file', { module: 'routes', to_session, err: err.message });
+            logger.error('Failed to deliver bridge file', {
+              module: 'routes',
+              to_session,
+              err: err.message,
+            });
           }
         }
 
         const bridgeCleanupSentMs = config.get('bridge.cleanupSentMs', 5000);
         const bridgeCleanupUnsentMs = config.get('bridge.cleanupUnsentMs', 3600000);
-        setTimeout(async () => {
-          try { await unlink(bridgeFile); } catch (cleanupErr) {
-            if (cleanupErr.code !== 'ENOENT') logger.debug('Bridge file cleanup failed', { module: 'routes', err: cleanupErr.message });
-          }
-        }, delivered ? bridgeCleanupSentMs : bridgeCleanupUnsentMs);
+        setTimeout(
+          async () => {
+            try {
+              await unlink(bridgeFile);
+            } catch (cleanupErr) {
+              if (cleanupErr.code !== 'ENOENT')
+                logger.debug('Bridge file cleanup failed', {
+                  module: 'routes',
+                  err: cleanupErr.message,
+                });
+            }
+          },
+          delivered ? bridgeCleanupSentMs : bridgeCleanupUnsentMs,
+        );
       }
       res.json(msg);
     } catch (err) {
@@ -747,7 +929,9 @@ function registerCoreRoutes(app, {
     }
     if (key === 'keepalive_idle_minutes') {
       const mode = db.getSetting('keepalive_mode', '"always"');
-      try { keepalive.setMode(JSON.parse(mode), parseInt(value, 10)); } catch (parseErr) {
+      try {
+        keepalive.setMode(JSON.parse(mode), parseInt(value, 10));
+      } catch (parseErr) {
         if (parseErr instanceof SyntaxError) {
           logger.debug('Invalid keepalive_mode JSON in settings', { module: 'routes' });
         } else {
@@ -780,7 +964,9 @@ function registerCoreRoutes(app, {
       const file = join(process.env.HOME || '/home/hopper', '.claude', 'CLAUDE.md');
       await writeFile(file, req.body.content || '');
       res.json({ saved: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   app.get('/api/projects/:name/claude-md', async (req, res) => {
@@ -794,7 +980,9 @@ function registerCoreRoutes(app, {
       } catch (readErr) {
         if (readErr.code === 'ENOENT') {
           const template = db.getSetting('default_project_claude_md', '""');
-          try { content = JSON.parse(template); } catch (parseErr) {
+          try {
+            content = JSON.parse(template);
+          } catch (parseErr) {
             if (parseErr instanceof SyntaxError) {
               logger.debug('Invalid default_project_claude_md JSON', { module: 'routes' });
               content = '';
@@ -821,7 +1009,9 @@ function registerCoreRoutes(app, {
       const file = join(projectPath, 'CLAUDE.md');
       await writeFile(file, req.body.content || '');
       res.json({ saved: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // ── MCP Servers config ────────────────────────────────────────────────────
@@ -847,7 +1037,9 @@ function registerCoreRoutes(app, {
       const { servers } = req.body;
       const configFile = join(CLAUDE_HOME, 'settings.json');
       let cfg = {};
-      try { cfg = JSON.parse(await readFile(configFile, 'utf-8')); } catch (readErr) {
+      try {
+        cfg = JSON.parse(await readFile(configFile, 'utf-8'));
+      } catch (readErr) {
         if (readErr.code !== 'ENOENT' && !(readErr instanceof SyntaxError)) throw readErr;
         /* expected: fresh config or corrupt — start clean */
       }
@@ -865,7 +1057,8 @@ function registerCoreRoutes(app, {
     try {
       const { q } = req.query;
       if (!q || q.length < 2) return res.json({ results: [] });
-      if (q.length > SEARCH_QUERY_MAX_LEN) return res.status(400).json({ error: `query too long (max ${SEARCH_QUERY_MAX_LEN})` });
+      if (q.length > SEARCH_QUERY_MAX_LEN)
+        return res.status(400).json({ error: `query too long (max ${SEARCH_QUERY_MAX_LEN})` });
       const results = await sessionUtils.searchSessions(q, null, 20);
       res.json({ results });
     } catch (err) {
@@ -878,7 +1071,8 @@ function registerCoreRoutes(app, {
   app.post('/api/sessions/:sessionId/summary', async (req, res) => {
     try {
       const { sessionId } = req.params;
-      if (!validateSessionId(sessionId)) return res.status(400).json({ error: 'invalid session ID format' });
+      if (!validateSessionId(sessionId))
+        return res.status(400).json({ error: 'invalid session ID format' });
       const { project } = req.body;
       if (!project) return res.status(400).json({ error: 'project required' });
       const result = await sessionUtils.summarizeSession(sessionId, project);
@@ -894,7 +1088,8 @@ function registerCoreRoutes(app, {
   app.get('/api/sessions/:sessionId/tokens', async (req, res) => {
     try {
       const { sessionId } = req.params;
-      if (!validateSessionId(sessionId)) return res.status(400).json({ error: 'invalid session ID format' });
+      if (!validateSessionId(sessionId))
+        return res.status(400).json({ error: 'invalid session ID format' });
       const { project } = req.query;
       if (!project) return res.json({ tokens: null });
       const result = await sessionUtils.getTokenUsage(sessionId, project);
@@ -910,7 +1105,8 @@ function registerCoreRoutes(app, {
   app.post('/api/sessions/:sessionId/smart-compact', async (req, res) => {
     try {
       const { sessionId } = req.params;
-      if (!validateSessionId(sessionId)) return res.status(400).json({ error: 'invalid session ID format' });
+      if (!validateSessionId(sessionId))
+        return res.status(400).json({ error: 'invalid session ID format' });
       const { project } = req.body;
       if (!project) return res.status(400).json({ error: 'project required' });
       const result = await runSmartCompaction(sessionId, project);
@@ -926,14 +1122,32 @@ function registerCoreRoutes(app, {
   app.get('/health', async (req, res) => {
     const deps = { db: 'unknown', workspace: 'unknown', auth: 'unknown' };
     let healthy = true;
-    try { db.getProjects(); deps.db = 'healthy'; } catch (err) { deps.db = 'degraded'; healthy = false; logger.warn('Health check: db degraded', { module: 'routes', err: err.message }); }
-    try { await access(WORKSPACE); deps.workspace = 'healthy'; } catch (err) { deps.workspace = 'degraded'; healthy = false; logger.warn('Health check: workspace degraded', { module: 'routes', err: err.message }); }
+    try {
+      db.getProjects();
+      deps.db = 'healthy';
+    } catch (err) {
+      deps.db = 'degraded';
+      healthy = false;
+      logger.warn('Health check: db degraded', { module: 'routes', err: err.message });
+    }
+    try {
+      await access(WORKSPACE);
+      deps.workspace = 'healthy';
+    } catch (err) {
+      deps.workspace = 'degraded';
+      healthy = false;
+      logger.warn('Health check: workspace degraded', { module: 'routes', err: err.message });
+    }
     try {
       const auth = await checkAuthStatus();
       deps.auth = auth.valid ? 'healthy' : 'degraded';
       // Auth is informational only — does not affect overall healthy status
-    } catch (err) { deps.auth = 'degraded'; }
-    res.status(healthy ? 200 : 503).json({ status: healthy ? 'ok' : 'degraded', dependencies: deps });
+    } catch (_err) {
+      deps.auth = 'degraded';
+    }
+    res
+      .status(healthy ? 200 : 503)
+      .json({ status: healthy ? 'ok' : 'degraded', dependencies: deps });
   });
 
   // ── Register sub-route modules ────────────────────────────────────────────

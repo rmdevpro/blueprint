@@ -9,12 +9,15 @@ function connectWs(wsPath, timeoutMs = 10000) {
     const ws = new WebSocket(`${WS_URL}${wsPath}`);
     const msgs = [];
     const timer = setTimeout(() => reject(new Error('WS connect timeout')), timeoutMs);
-    ws.on('message', m => msgs.push(m.toString()));
+    ws.on('message', (m) => msgs.push(m.toString()));
     ws.on('open', () => {
       clearTimeout(timer);
       resolve({ ws, msgs, close: () => ws.close(), send: (d) => ws.send(d) });
     });
-    ws.on('error', (err) => { clearTimeout(timer); reject(err); });
+    ws.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
   });
 }
 

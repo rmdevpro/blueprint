@@ -7,10 +7,12 @@ module.exports = function createKeepalive({ safe, config, logger }) {
   const WORKSPACE = safe.WORKSPACE;
   const CLAUDE_HOME = safe.CLAUDE_HOME;
 
-  const REFRESH_THRESHOLD = config ? config.get('keepalive.refreshThreshold', 0.85) : 0.85;
+  const _REFRESH_THRESHOLD = config ? config.get('keepalive.refreshThreshold', 0.85) : 0.85;
   const CHECK_RANGE_LOW = config ? config.get('keepalive.checkRangeLow', 0.65) : 0.65;
   const CHECK_RANGE_HIGH = config ? config.get('keepalive.checkRangeHigh', 0.85) : 0.85;
-  const FALLBACK_INTERVAL_MS = config ? config.get('keepalive.fallbackIntervalMs', 30 * 60 * 1000) : 30 * 60 * 1000;
+  const FALLBACK_INTERVAL_MS = config
+    ? config.get('keepalive.fallbackIntervalMs', 30 * 60 * 1000)
+    : 30 * 60 * 1000;
 
   let mode = process.env.KEEPALIVE_MODE || 'browser';
   let idleTimeoutMs = parseInt(process.env.KEEPALIVE_IDLE_MINUTES || '30', 10) * 60 * 1000;
@@ -47,11 +49,14 @@ module.exports = function createKeepalive({ safe, config, logger }) {
     try {
       const result = await safe.claudeExecAsync(
         ['--print', '--no-session-persistence', '--model', 'haiku', message],
-        { cwd: WORKSPACE, timeout: queryTimeout }
+        { cwd: WORKSPACE, timeout: queryTimeout },
       );
       return result.trim();
     } catch (err) {
-      logger.error('Keepalive Claude query failed', { module: 'keepalive', err: err.message?.substring(0, 100) });
+      logger.error('Keepalive Claude query failed', {
+        module: 'keepalive',
+        err: err.message?.substring(0, 100),
+      });
       return null;
     }
   }
@@ -62,15 +67,23 @@ module.exports = function createKeepalive({ safe, config, logger }) {
       const promptB = config ? config.getPrompt('keepalive-fact', {}) : '';
 
       if (turn === 'a') {
-        const q = await claudeQuery(promptA || 'Ask a short interesting question. Just the question.');
+        const q = await claudeQuery(
+          promptA || 'Ask a short interesting question. Just the question.',
+        );
         if (q) {
           const a = await claudeQuery(q);
-          if (a) logger.info('Keepalive refreshed', { module: 'keepalive', q: q.substring(0, 40), a: a.substring(0, 40) });
+          if (a)
+            logger.info('Keepalive refreshed', {
+              module: 'keepalive',
+              q: q.substring(0, 40),
+              a: a.substring(0, 40),
+            });
         }
         turn = 'b';
       } else {
         const q = await claudeQuery(promptB || 'Tell me a one-sentence fun fact.');
-        if (q) logger.info('Keepalive refreshed', { module: 'keepalive', fact: q.substring(0, 60) });
+        if (q)
+          logger.info('Keepalive refreshed', { module: 'keepalive', fact: q.substring(0, 60) });
         turn = 'a';
       }
     } catch (err) {
@@ -87,7 +100,10 @@ module.exports = function createKeepalive({ safe, config, logger }) {
         if (newRemaining > 0) {
           scheduleFromRemaining(newRemaining);
         } else {
-          logger.info('Fallback keepalive interval', { module: 'keepalive', intervalMin: FALLBACK_INTERVAL_MS / 60000 });
+          logger.info('Fallback keepalive interval', {
+            module: 'keepalive',
+            intervalMin: FALLBACK_INTERVAL_MS / 60000,
+          });
           timer = setTimeout(check, FALLBACK_INTERVAL_MS);
         }
       });
@@ -95,14 +111,21 @@ module.exports = function createKeepalive({ safe, config, logger }) {
     }
     const fraction = CHECK_RANGE_LOW + Math.random() * (CHECK_RANGE_HIGH - CHECK_RANGE_LOW);
     const sleepMs = Math.max(60000, remaining * fraction);
-    logger.info('Keepalive next check scheduled', { module: 'keepalive', remainingMin: Math.round(remaining / 60000), sleepMin: Math.round(sleepMs / 60000) });
+    logger.info('Keepalive next check scheduled', {
+      module: 'keepalive',
+      remainingMin: Math.round(remaining / 60000),
+      sleepMin: Math.round(sleepMs / 60000),
+    });
     timer = setTimeout(check, sleepMs);
   }
 
   function check() {
     if (!running) return;
     msUntilExpiryAsync().then((remaining) => {
-      logger.info('Keepalive check — refreshing', { module: 'keepalive', remainingMin: Math.round(remaining / 60000) });
+      logger.info('Keepalive check — refreshing', {
+        module: 'keepalive',
+        remainingMin: Math.round(remaining / 60000),
+      });
       doRefresh().then(() => {
         msUntilExpiryAsync().then((newRemaining) => {
           scheduleFromRemaining(newRemaining);
@@ -116,19 +139,33 @@ module.exports = function createKeepalive({ safe, config, logger }) {
       if (running) return;
       running = true;
       msUntilExpiryAsync().then((remaining) => {
-        logger.info('Keepalive started', { module: 'keepalive', mode, tokenExpiresMin: remaining > 0 ? Math.round(remaining / 60000) : 0 });
+        logger.info('Keepalive started', {
+          module: 'keepalive',
+          mode,
+          tokenExpiresMin: remaining > 0 ? Math.round(remaining / 60000) : 0,
+        });
         scheduleFromRemaining(remaining);
       });
     },
     stop() {
       if (!running) return;
       running = false;
-      if (timer) { clearTimeout(timer); timer = null; }
-      if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+        idleTimer = null;
+      }
       logger.info('Keepalive stopped', { module: 'keepalive' });
     },
-    isRunning() { return running; },
-    getMode() { return mode; },
+    isRunning() {
+      return running;
+    },
+    getMode() {
+      return mode;
+    },
     async getStatus() {
       const remaining = await msUntilExpiryAsync();
       const expiresAt = await getTokenExpiryAsync();
@@ -142,19 +179,29 @@ module.exports = function createKeepalive({ safe, config, logger }) {
     setMode(newMode, idleMinutes) {
       mode = newMode;
       if (idleMinutes) idleTimeoutMs = idleMinutes * 60 * 1000;
-      logger.info('Keepalive mode set', { module: 'keepalive', mode, idleMinutes: idleMinutes || idleTimeoutMs / 60000 });
+      logger.info('Keepalive mode set', {
+        module: 'keepalive',
+        mode,
+        idleMinutes: idleMinutes || idleTimeoutMs / 60000,
+      });
     },
     onBrowserConnect() {
       if (mode === 'browser' && !running) instance.start();
       if (mode === 'idle') {
-        if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+        if (idleTimer) {
+          clearTimeout(idleTimer);
+          idleTimer = null;
+        }
         if (!running) instance.start();
       }
     },
     onBrowserDisconnect(remainingBrowsers) {
       if (mode === 'browser' && remainingBrowsers === 0) instance.stop();
       if (mode === 'idle' && remainingBrowsers === 0) {
-        logger.info('No browsers — idle timeout starting', { module: 'keepalive', timeoutMin: idleTimeoutMs / 60000 });
+        logger.info('No browsers — idle timeout starting', {
+          module: 'keepalive',
+          timeoutMin: idleTimeoutMs / 60000,
+        });
         idleTimer = setTimeout(() => {
           logger.info('Keepalive idle timeout reached', { module: 'keepalive' });
           instance.stop();

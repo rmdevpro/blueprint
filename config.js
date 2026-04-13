@@ -1,6 +1,6 @@
 'use strict';
 
-const { readFile, readFileSync } = require('fs');
+const { readFile } = require('fs');
 const { watchFile } = require('fs');
 const { join } = require('path');
 const { promisify } = require('util');
@@ -27,13 +27,15 @@ function loadDefaultsSync() {
       return;
     }
     if (err instanceof SyntaxError) {
-      process.stderr.write(JSON.stringify({
-        timestamp: new Date().toISOString(),
-        level: 'ERROR',
-        message: 'defaults.json contains invalid JSON — cannot start safely',
-        module: 'config',
-        err: err.message,
-      }) + '\n');
+      process.stderr.write(
+        JSON.stringify({
+          timestamp: new Date().toISOString(),
+          level: 'ERROR',
+          message: 'defaults.json contains invalid JSON — cannot start safely',
+          module: 'config',
+          err: err.message,
+        }) + '\n',
+      );
       process.exit(1);
     }
     throw err;
@@ -57,13 +59,15 @@ async function init() {
       if (err.code === 'ENOENT') {
         _defaultsCache = {};
       } else if (err instanceof SyntaxError) {
-        process.stderr.write(JSON.stringify({
-          timestamp: new Date().toISOString(),
-          level: 'ERROR',
-          message: 'defaults.json hot-reload failed: invalid JSON — retaining previous config',
-          module: 'config',
-          err: err.message,
-        }) + '\n');
+        process.stderr.write(
+          JSON.stringify({
+            timestamp: new Date().toISOString(),
+            level: 'ERROR',
+            message: 'defaults.json hot-reload failed: invalid JSON — retaining previous config',
+            module: 'config',
+            err: err.message,
+          }) + '\n',
+        );
       }
       /* retain previous cache on other errors */
     }
@@ -110,12 +114,14 @@ function getPrompt(name, vars = {}) {
       });
     } catch (err) {
       if (err.code === 'ENOENT') {
-        process.stdout.write(JSON.stringify({
-          timestamp: new Date().toISOString(),
-          level: 'WARN',
-          message: `Prompt template not found: ${name}.md — returning empty string`,
-          module: 'config',
-        }) + '\n');
+        process.stdout.write(
+          JSON.stringify({
+            timestamp: new Date().toISOString(),
+            level: 'WARN',
+            message: `Prompt template not found: ${name}.md — returning empty string`,
+            module: 'config',
+          }) + '\n',
+        );
         return '';
       }
       throw err;

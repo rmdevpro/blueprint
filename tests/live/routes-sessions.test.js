@@ -2,9 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { get, post, put } = require('../helpers/http-client');
+const { get, post } = require('../helpers/http-client');
 const { resetBaseline, dockerExec } = require('../helpers/reset-state');
-const { queryCount, queryJson } = require('../helpers/db-query');
+const { queryCount } = require('../helpers/db-query');
 
 test('SES-03: creates bash terminal with correct ID format and tmux session', async () => {
   await resetBaseline();
@@ -16,8 +16,10 @@ test('SES-03: creates bash terminal with correct ID format and tmux session', as
   assert.ok(r.data.tmux, 'Response must include tmux session name');
   // Gray-box: verify the tmux session was actually spawned inside the container
   const tmuxList = dockerExec('tmux ls -F "#{session_name}" 2>/dev/null || echo ""');
-  assert.ok(tmuxList.includes(r.data.tmux),
-    `tmux session '${r.data.tmux}' must exist in container. Active sessions: ${tmuxList}`);
+  assert.ok(
+    tmuxList.includes(r.data.tmux),
+    `tmux session '${r.data.tmux}' must exist in container. Active sessions: ${tmuxList}`,
+  );
 });
 
 test('SES-17: /api/state returns session list with enriched data', async () => {
@@ -53,12 +55,16 @@ test('SES-03a: session creation produces DB row and tmux session', async () => {
   assert.ok(r.data.id, 'Response must include session ID');
   // Gray-box: verify DB row was created
   const countAfter = queryCount('sessions', "id LIKE 'new_%'");
-  assert.ok(countAfter > countBefore,
-    `Session count must increase after creation (before: ${countBefore}, after: ${countAfter})`);
+  assert.ok(
+    countAfter > countBefore,
+    `Session count must increase after creation (before: ${countBefore}, after: ${countAfter})`,
+  );
   // Gray-box: verify tmux session exists
   if (r.data.tmux) {
     const tmuxList = dockerExec('tmux ls -F "#{session_name}" 2>/dev/null || echo ""');
-    assert.ok(tmuxList.includes(r.data.tmux),
-      `tmux session '${r.data.tmux}' must exist after session creation`);
+    assert.ok(
+      tmuxList.includes(r.data.tmux),
+      `tmux session '${r.data.tmux}' must exist after session creation`,
+    );
   }
 });

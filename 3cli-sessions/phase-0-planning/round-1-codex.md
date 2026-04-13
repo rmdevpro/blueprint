@@ -1,12 +1,14 @@
 Here’s my plan for the refactor, grounded in the provided draft and the ERQ requirements, with additional safeguards for correctness, logging, and test coverage.
 
 **Goals**
+
 - Decompose `server.js` into focused modules without changing behavior.
 - Remove bare `catch {}` blocks with explicit, contextual handling.
 - Preserve runtime behavior and interfaces for tests and external callers.
 - Ensure compliance with REQ-001 (logging, validation, async correctness, config handling).
 
 **Target Module Breakdown**
+
 - `shared-state.js`: `sessionWsClients`, browser count getters/setters.
 - `tmux-lifecycle.js`: tmux naming, existence checks, cleanup timers, session limits.
 - `session-resolver.js`: `resolveSessionId`, `resolveStaleNewSessions`.
@@ -17,11 +19,13 @@ Here’s my plan for the refactor, grounded in the provided draft and the ERQ re
 - `server.js`: wiring/boot only.
 
 **Dependency / Wiring Rules**
+
 - Avoid cyclic dependencies; use dependency injection from `server.js`.
 - Shared mutable state goes through `shared-state.js`.
 - Cross-module callbacks (e.g., tmux session kill -> compaction state cleanup) injected in `server.js`.
 
 **Error Handling & Logging**
+
 - Replace all bare `catch {}` with:
   - `catch (err)` + debug/info when non-fatal and expected.
   - `catch (err)` + error when data loss, state corruption, or user-visible failure risk.
@@ -30,15 +34,18 @@ Here’s my plan for the refactor, grounded in the provided draft and the ERQ re
 - Do not log secrets or full request bodies.
 
 **Input Validation & Null Guards**
+
 - Validate external inputs at route boundaries:
   - IDs, paths, JSON bodies, query params.
 - Add explicit `null/undefined` checks before property access where needed.
 
 **Async Correctness**
+
 - Ensure no blocking I/O in async routes/handlers.
 - Keep sync utilities in non-async functions or migrate to async versions.
 
 **Extraction Order (Each Step Leaves Server Working)**
+
 1. `shared-state.js`: extract Map + browser count; update imports.
 2. `tmux-lifecycle.js`: extract tmux utilities, timers, limits; inject callbacks.
 3. `session-resolver.js`: extract session id resolution logic.
@@ -49,6 +56,7 @@ Here’s my plan for the refactor, grounded in the provided draft and the ERQ re
 8. Update tests/imports for new module locations and exports.
 
 **Testing & Verification**
+
 - After each extraction:
   - `node -e "require('./server')"` to verify module load.
   - Mock test suite (`npm test`).
@@ -59,10 +67,12 @@ Here’s my plan for the refactor, grounded in the provided draft and the ERQ re
 - Check for zero bare `catch {}` across new modules.
 
 **Parallel Container (Safe Validation)**
+
 - Create `docker-compose.refactor.yml` with separate port and data dirs.
 - Run test suites against refactor container, then swap only after green.
 
 **REQ-001 Compliance Checks**
+
 - Code clarity: modules are single-responsibility, names explicit.
 - Formatting/lint: run existing formatter/linter (if configured).
 - Tests: add/adjust tests for moved functions and error paths.

@@ -6,7 +6,13 @@ const { get, BASE_URL } = require('../helpers/http-client');
 const { dockerExec } = require('../helpers/reset-state');
 
 test('SRV-01: health endpoint returns 200 with ok status', async () => {
-  for (let i = 0; i < 60; i++) { try { const r = await fetch(`${BASE_URL}/health`); if (r.ok) break; } catch {} await new Promise(r => setTimeout(r, 2000)); }
+  for (let i = 0; i < 60; i++) {
+    try {
+      const r = await fetch(`${BASE_URL}/health`);
+      if (r.ok) break;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 2000));
+  }
   const r = await get('/health');
   assert.equal(r.status, 200);
   assert.equal(r.data.status, 'ok');

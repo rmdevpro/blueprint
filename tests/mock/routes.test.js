@@ -3,8 +3,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
-const http = require('node:http');
-const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const fixtures = require('../fixtures/test-data');
@@ -12,65 +10,217 @@ const registerCoreRoutes = require('../../routes.js');
 const { withServer, req } = require('../helpers/with-server');
 
 function makeApp(overrides = {}) {
-  const WORKSPACE = overrides.workspace || require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'bp-routes-'));
+  const WORKSPACE =
+    overrides.workspace || require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'bp-routes-'));
   const testProjectPath = path.join(WORKSPACE, 'test-project');
   require('node:fs').mkdirSync(testProjectPath, { recursive: true });
   const app = express();
   app.use(express.json({ limit: '5mb' }));
   app.use(express.urlencoded({ extended: true }));
-  const projects = new Map(), projectById = new Map(), sessions = new Map(), tasks = new Map(), settings = new Map();
-  let pSeq = 1, tSeq = 1;
+  const projects = new Map(),
+    projectById = new Map(),
+    sessions = new Map(),
+    tasks = new Map(),
+    settings = new Map();
+  let pSeq = 1,
+    tSeq = 1;
   // NOTE: This fake DB is necessary for route-level isolation (mocking the real SQLite).
   // KNOWN LIMITATION: The fake DB does not implement ON DELETE CASCADE behavior.
   // Cascade delete behavior is verified in db.test.js (DB-09) against real SQLite.
   const db = {
-    getProjects: () => [...projects.values()], getProject: n => projects.get(n), getProjectById: id => projectById.get(id),
-    ensureProject: (n, p) => { if (projects.has(n)) return projects.get(n); const r = { id: pSeq++, name: n, path: p, notes: '' }; projects.set(n, r); projectById.set(r.id, r); return r; },
-    deleteProject: id => { const r = projectById.get(id); if (r) { projects.delete(r.name); projectById.delete(id); } },
-    getSessionsForProject: pid => [...sessions.values()].filter(s => s.project_id === pid),
-    getSession: id => sessions.get(id), getSessionByPrefix: pfx => [...sessions.values()].find(s => s.id.startsWith(pfx)),
-    getSessionFull: id => { const s = sessions.get(id); if (!s) return; const p = projectById.get(s.project_id); return { ...s, project_name: p?.name }; },
-    upsertSession: (id, pid, name) => { const e = sessions.get(id) || { id, project_id: pid, archived: 0, state: 'active', notes: '' }; const r = { ...e, id, project_id: pid, name: e.name ?? name, updated_at: new Date().toISOString() }; sessions.set(id, r); return r; },
-    renameSession: (id, name) => { const s = sessions.get(id); if (s) { s.name = name; s.user_renamed = 1; } },
-    setSessionState: (id, st) => { const s = sessions.get(id); if (s) { s.state = st; s.archived = st === 'archived' ? 1 : 0; } },
-    archiveSession: (id, a) => { const s = sessions.get(id); if (s) { s.archived = a ? 1 : 0; s.state = a ? 'archived' : 'active'; } },
-    deleteSession: id => sessions.delete(id),
-    getProjectNotes: id => projectById.get(id)?.notes || '', setProjectNotes: (id, n) => { const p = projectById.get(id); if (p) p.notes = n; },
-    getSessionNotes: id => sessions.get(id)?.notes || '', setSessionNotes: (id, n) => { const s = sessions.get(id); if (s) s.notes = n; },
-    getTasks: pid => [...tasks.values()].filter(t => t.project_id === pid),
-    addTask: (pid, text, cb = 'human') => { const r = { id: tSeq++, project_id: pid, text, status: 'todo', created_by: cb, completed_at: null }; tasks.set(r.id, r); return r; },
-    completeTask: id => { const t = tasks.get(Number(id)); if (t) { t.status = 'done'; t.completed_at = new Date().toISOString(); } },
-    reopenTask: id => { const t = tasks.get(Number(id)); if (t) { t.status = 'todo'; t.completed_at = null; } },
-    deleteTask: id => tasks.delete(Number(id)),
-    getUnreadMessages: () => [], getRecentMessages: () => [], sendMessage: () => ({ id: 1 }), markMessageRead() {},
-    getAllSettings: () => Object.fromEntries(settings), getSetting: (k, fb = null) => settings.has(k) ? settings.get(k) : fb, setSetting: (k, v) => settings.set(k, v),
+    getProjects: () => [...projects.values()],
+    getProject: (n) => projects.get(n),
+    getProjectById: (id) => projectById.get(id),
+    ensureProject: (n, p) => {
+      if (projects.has(n)) return projects.get(n);
+      const r = { id: pSeq++, name: n, path: p, notes: '' };
+      projects.set(n, r);
+      projectById.set(r.id, r);
+      return r;
+    },
+    deleteProject: (id) => {
+      const r = projectById.get(id);
+      if (r) {
+        projects.delete(r.name);
+        projectById.delete(id);
+      }
+    },
+    getSessionsForProject: (pid) => [...sessions.values()].filter((s) => s.project_id === pid),
+    getSession: (id) => sessions.get(id),
+    getSessionByPrefix: (pfx) => [...sessions.values()].find((s) => s.id.startsWith(pfx)),
+    getSessionFull: (id) => {
+      const s = sessions.get(id);
+      if (!s) return;
+      const p = projectById.get(s.project_id);
+      return { ...s, project_name: p?.name };
+    },
+    upsertSession: (id, pid, name) => {
+      const e = sessions.get(id) || {
+        id,
+        project_id: pid,
+        archived: 0,
+        state: 'active',
+        notes: '',
+      };
+      const r = {
+        ...e,
+        id,
+        project_id: pid,
+        name: e.name ?? name,
+        updated_at: new Date().toISOString(),
+      };
+      sessions.set(id, r);
+      return r;
+    },
+    renameSession: (id, name) => {
+      const s = sessions.get(id);
+      if (s) {
+        s.name = name;
+        s.user_renamed = 1;
+      }
+    },
+    setSessionState: (id, st) => {
+      const s = sessions.get(id);
+      if (s) {
+        s.state = st;
+        s.archived = st === 'archived' ? 1 : 0;
+      }
+    },
+    archiveSession: (id, a) => {
+      const s = sessions.get(id);
+      if (s) {
+        s.archived = a ? 1 : 0;
+        s.state = a ? 'archived' : 'active';
+      }
+    },
+    deleteSession: (id) => sessions.delete(id),
+    getProjectNotes: (id) => projectById.get(id)?.notes || '',
+    setProjectNotes: (id, n) => {
+      const p = projectById.get(id);
+      if (p) p.notes = n;
+    },
+    getSessionNotes: (id) => sessions.get(id)?.notes || '',
+    setSessionNotes: (id, n) => {
+      const s = sessions.get(id);
+      if (s) s.notes = n;
+    },
+    getTasks: (pid) => [...tasks.values()].filter((t) => t.project_id === pid),
+    addTask: (pid, text, cb = 'human') => {
+      const r = {
+        id: tSeq++,
+        project_id: pid,
+        text,
+        status: 'todo',
+        created_by: cb,
+        completed_at: null,
+      };
+      tasks.set(r.id, r);
+      return r;
+    },
+    completeTask: (id) => {
+      const t = tasks.get(Number(id));
+      if (t) {
+        t.status = 'done';
+        t.completed_at = new Date().toISOString();
+      }
+    },
+    reopenTask: (id) => {
+      const t = tasks.get(Number(id));
+      if (t) {
+        t.status = 'todo';
+        t.completed_at = null;
+      }
+    },
+    deleteTask: (id) => tasks.delete(Number(id)),
+    getUnreadMessages: () => [],
+    getRecentMessages: () => [],
+    sendMessage: () => ({ id: 1 }),
+    markMessageRead() {},
+    getAllSettings: () => Object.fromEntries(settings),
+    getSetting: (k, fb = null) => (settings.has(k) ? settings.get(k) : fb),
+    setSetting: (k, v) => settings.set(k, v),
     DATA_DIR: '/tmp/bp-data',
   };
   const existsFn = overrides.tmuxExists ?? (async () => false);
   const firedEvents = [];
   registerCoreRoutes(app, {
-    db, safe: {
-      resolveProjectPath: n => path.join(WORKSPACE, n), findSessionsDir: () => path.join(WORKSPACE, '.sessions'),
-      tmuxCreateClaude() {}, tmuxCreateBash() {},
-      tmuxExists: existsFn, tmuxExecAsync: async () => '',
-      tmuxSendKeysAsync: async () => {}, claudeExecAsync: overrides.claudeExecAsync ?? (async () => 'ok'),
+    db,
+    safe: {
+      resolveProjectPath: (n) => path.join(WORKSPACE, n),
+      findSessionsDir: () => path.join(WORKSPACE, '.sessions'),
+      tmuxCreateClaude() {},
+      tmuxCreateBash() {},
+      tmuxExists: existsFn,
+      tmuxExecAsync: async () => '',
+      tmuxSendKeysAsync: async () => {},
+      claudeExecAsync: overrides.claudeExecAsync ?? (async () => 'ok'),
       gitCloneAsync: async () => 'cloned',
     },
-    config: { get: (k, fb) => ({
-      'session.nameMaxLength': 255, 'session.promptInjectionDelayMs': 1, 'claude.defaultTimeoutMs': 1000,
-      'bridge.cleanupSentMs': 1, 'bridge.cleanupUnsentMs': 1,
-    }[k] ?? fb), getPrompt: () => 'prompt' },
-    sessionUtils: {
-      parseSessionFile: async () => null, searchSessions: async (q) => (q ? [{ session_id: 's1', sessionId: 's1', project: 'p', name: 'S', match_count: 1, matchCount: 1, snippets: ['x'], matches: [{ text: 'x' }] }] : []),
-      summarizeSession: async () => ({ summary: 'Test summary of the session', recentMessages: [{ role: 'user', text: 'Hello' }] }),
-      getTokenUsage: async () => ({ input_tokens: 50000, model: 'claude-sonnet-4-6', max_tokens: 200000 }),
+    config: {
+      get: (k, fb) =>
+        ({
+          'session.nameMaxLength': 255,
+          'session.promptInjectionDelayMs': 1,
+          'claude.defaultTimeoutMs': 1000,
+          'bridge.cleanupSentMs': 1,
+          'bridge.cleanupUnsentMs': 1,
+        })[k] ?? fb,
+      getPrompt: () => 'prompt',
     },
-    keepalive: { getStatus: async () => ({ running: true, mode: 'always', token_expires_in_minutes: 30, token_expires_at: new Date(Date.now() + 1800000).toISOString() }), setMode() {}, getMode: () => 'always', isRunning: () => true, start() {}, stop() {} },
-    fireEvent: (e, d) => { firedEvents.push({ event: e, data: d }); },
-    logger: { info() {}, warn() {}, error() {}, debug() {} },
-    tmuxName: id => `bp_${id}`, tmuxExists: existsFn, enforceTmuxLimit: async () => {},
-    resolveSessionId: async () => {}, runSmartCompaction: async (sid, proj) => ({ compacted: true, session_id: sid }),
-    getBrowserCount: () => 1, CLAUDE_HOME: '/tmp/claude', WORKSPACE, ensureSettings: async () => {}, sleep: async () => {},
+    sessionUtils: {
+      parseSessionFile: async () => null,
+      searchSessions: async (q) =>
+        q
+          ? [
+              {
+                session_id: 's1',
+                sessionId: 's1',
+                project: 'p',
+                name: 'S',
+                match_count: 1,
+                matchCount: 1,
+                snippets: ['x'],
+                matches: [{ text: 'x' }],
+              },
+            ]
+          : [],
+      summarizeSession: async () => ({
+        summary: 'Test summary of the session',
+        recentMessages: [{ role: 'user', text: 'Hello' }],
+      }),
+      getTokenUsage: async () => ({
+        input_tokens: 50000,
+        model: 'claude-sonnet-4-6',
+        max_tokens: 200000,
+      }),
+    },
+    keepalive: {
+      getStatus: async () => ({
+        running: true,
+        mode: 'always',
+        token_expires_in_minutes: 30,
+        token_expires_at: new Date(Date.now() + 1800000).toISOString(),
+      }),
+      setMode() {},
+      getMode: () => 'always',
+      isRunning: () => true,
+      start() {},
+      stop() {},
+    },
+    fireEvent: (e, d) => {
+      firedEvents.push({ event: e, data: d });
+    },
+    logger: overrides.logger ?? { info() {}, warn() {}, error() {}, debug() {} },
+    tmuxName: (id) => `bp_${id}`,
+    tmuxExists: existsFn,
+    enforceTmuxLimit: async () => {},
+    resolveSessionId: async () => {},
+    runSmartCompaction: async (sid, _proj) => ({ compacted: true, session_id: sid }),
+    getBrowserCount: () => 1,
+    CLAUDE_HOME: overrides.claudeHome ?? '/tmp/claude',
+    WORKSPACE,
+    ensureSettings: async () => {},
+    sleep: async () => {},
   });
   return { app, db, firedEvents, WORKSPACE, testProjectPath };
 }
@@ -85,14 +235,25 @@ async function withFullServer(fn, overrides = {}) {
 
 test('PRJ-07: rejects overlong project name', async () => {
   await withFullServer(async ({ port }) => {
-    assert.equal((await req(port, 'POST', '/api/projects', { path: '/workspace/x', name: fixtures.routes.overlongProjectName })).status, 400);
+    assert.equal(
+      (
+        await req(port, 'POST', '/api/projects', {
+          path: '/workspace/x',
+          name: fixtures.routes.overlongProjectName,
+        })
+      ).status,
+      400,
+    );
   });
 });
 
 test('PRJ-08: duplicate project name is idempotent', async () => {
   await withFullServer(async ({ port, db }) => {
     const count1 = db.getProjects().length;
-    await req(port, 'POST', '/api/projects', { path: '/workspace/test-project', name: 'test-project' });
+    await req(port, 'POST', '/api/projects', {
+      path: '/workspace/test-project',
+      name: 'test-project',
+    });
     assert.equal(db.getProjects().length, count1);
   });
 });
@@ -100,7 +261,8 @@ test('PRJ-08: duplicate project name is idempotent', async () => {
 test('SES-12: invalid session IDs rejected', async () => {
   await withFullServer(async ({ port }) => {
     for (const id of fixtures.routes.invalidSessionIds) {
-      const status = (await req(port, 'GET', `/api/sessions/${encodeURIComponent(id)}/config`)).status;
+      const status = (await req(port, 'GET', `/api/sessions/${encodeURIComponent(id)}/config`))
+        .status;
       const ok = id === '' ? status === 404 : status === 400;
       assert.ok(ok, `expected rejection for "${id}", got ${status}`);
     }
@@ -109,20 +271,39 @@ test('SES-12: invalid session IDs rejected', async () => {
 
 test('TSK-06: rejects overlong task text', async () => {
   await withFullServer(async ({ port }) => {
-    assert.equal((await req(port, 'POST', '/api/projects/test-project/tasks', { text: fixtures.routes.overlongTaskText })).status, 400);
+    assert.equal(
+      (
+        await req(port, 'POST', '/api/projects/test-project/tasks', {
+          text: fixtures.routes.overlongTaskText,
+        })
+      ).status,
+      400,
+    );
   });
 });
 
 test('TSK-07: created_by field persists', async () => {
   await withFullServer(async ({ port }) => {
-    const r = await (await req(port, 'POST', '/api/projects/test-project/tasks', { text: 'task', created_by: 'agent' })).json();
+    const r = await (
+      await req(port, 'POST', '/api/projects/test-project/tasks', {
+        text: 'task',
+        created_by: 'agent',
+      })
+    ).json();
     assert.equal(r.created_by, 'agent');
   });
 });
 
 test('MSG-04: rejects overlong message content', async () => {
   await withFullServer(async ({ port }) => {
-    assert.equal((await req(port, 'POST', '/api/projects/test-project/messages', { content: fixtures.routes.overlongMessage })).status, 400);
+    assert.equal(
+      (
+        await req(port, 'POST', '/api/projects/test-project/messages', {
+          content: fixtures.routes.overlongMessage,
+        })
+      ).status,
+      400,
+    );
   });
 });
 
@@ -142,27 +323,56 @@ test('session name overlong rejected', async () => {
   await withFullServer(async ({ port, db }) => {
     const p = db.ensureProject('p2', '/workspace/p2');
     db.upsertSession('s_valid', p.id, 'Good');
-    assert.equal((await req(port, 'PUT', '/api/sessions/s_valid/name', { name: fixtures.routes.overlongSessionName })).status, 400);
+    assert.equal(
+      (
+        await req(port, 'PUT', '/api/sessions/s_valid/name', {
+          name: fixtures.routes.overlongSessionName,
+        })
+      ).status,
+      400,
+    );
   });
 });
 
 test('notes overlong rejected', async () => {
   await withFullServer(async ({ port }) => {
-    assert.equal((await req(port, 'PUT', '/api/projects/test-project/notes', { notes: fixtures.routes.overlongNotes })).status, 400);
+    assert.equal(
+      (
+        await req(port, 'PUT', '/api/projects/test-project/notes', {
+          notes: fixtures.routes.overlongNotes,
+        })
+      ).status,
+      400,
+    );
   });
 });
 
 test('search overlong rejected', async () => {
   await withFullServer(async ({ port }) => {
-    assert.equal((await req(port, 'GET', `/api/search?q=${encodeURIComponent(fixtures.routes.overlongSearch)}`)).status, 400);
+    assert.equal(
+      (
+        await req(
+          port,
+          'GET',
+          `/api/search?q=${encodeURIComponent(fixtures.routes.overlongSearch)}`,
+        )
+      ).status,
+      400,
+    );
   });
 });
 
 test('keepalive mode validation', async () => {
   await withFullServer(async ({ port }) => {
     assert.equal((await req(port, 'PUT', '/api/keepalive/mode', { mode: 'invalid' })).status, 400);
-    assert.equal((await req(port, 'PUT', '/api/keepalive/mode', { mode: 'idle', idleMinutes: 0 })).status, 400);
-    assert.equal((await req(port, 'PUT', '/api/keepalive/mode', { mode: 'idle', idleMinutes: 1441 })).status, 400);
+    assert.equal(
+      (await req(port, 'PUT', '/api/keepalive/mode', { mode: 'idle', idleMinutes: 0 })).status,
+      400,
+    );
+    assert.equal(
+      (await req(port, 'PUT', '/api/keepalive/mode', { mode: 'idle', idleMinutes: 1441 })).status,
+      400,
+    );
     assert.equal((await req(port, 'PUT', '/api/keepalive/mode', { mode: 'always' })).status, 200);
   });
 });
@@ -171,8 +381,14 @@ test('session state validation', async () => {
   await withFullServer(async ({ port, db }) => {
     const p = db.ensureProject('p3', '/workspace/p3');
     db.upsertSession('sv1', p.id, 'S');
-    assert.equal((await req(port, 'PUT', '/api/sessions/sv1/config', { state: 'invalid_state' })).status, 400);
-    assert.equal((await req(port, 'PUT', '/api/sessions/sv1/config', { state: 'archived' })).status, 200);
+    assert.equal(
+      (await req(port, 'PUT', '/api/sessions/sv1/config', { state: 'invalid_state' })).status,
+      400,
+    );
+    assert.equal(
+      (await req(port, 'PUT', '/api/sessions/sv1/config', { state: 'archived' })).status,
+      200,
+    );
   });
 });
 
@@ -202,7 +418,10 @@ test('/api/state returns projects array with workspace', async () => {
 
 test('session creation success path with webhook event', async () => {
   await withFullServer(async ({ port, db, firedEvents }) => {
-    const r = await req(port, 'POST', '/api/sessions', { project: 'test-project', prompt: 'Test prompt' });
+    const r = await req(port, 'POST', '/api/sessions', {
+      project: 'test-project',
+      prompt: 'Test prompt',
+    });
     assert.equal(r.status, 200);
     const body = await r.json();
     assert.ok(body.id.startsWith('new_'));
@@ -212,9 +431,13 @@ test('session creation success path with webhook event', async () => {
     // Gray-box: verify DB row created
     assert.ok(db.getSession(body.id), 'Session must exist in DB after creation');
     const dbSession = db.getSession(body.id);
-    assert.equal(dbSession.project_id, db.getProject('test-project').id, 'Session must be linked to correct project');
+    assert.equal(
+      dbSession.project_id,
+      db.getProject('test-project').id,
+      'Session must be linked to correct project',
+    );
     // Gray-box: verify webhook event fired with correct data
-    const event = firedEvents.find(e => e.event === 'session_created');
+    const event = firedEvents.find((e) => e.event === 'session_created');
     assert.ok(event, 'session_created webhook must fire');
     assert.ok(event.data, 'Webhook event must include data payload');
   });
@@ -241,34 +464,43 @@ test('session config PUT with state=hidden updates DB state', async () => {
     assert.equal(db.getSession('del_sess').state, 'active');
     const r = await req(port, 'PUT', '/api/sessions/del_sess/config', { state: 'hidden' });
     assert.equal(r.status, 200);
-    assert.equal(db.getSession('del_sess').state, 'hidden', 'Session state must be updated to hidden in DB');
+    assert.equal(
+      db.getSession('del_sess').state,
+      'hidden',
+      'Session state must be updated to hidden in DB',
+    );
   });
 });
 
 test('task CRUD success paths with DB verification', async () => {
   await withFullServer(async ({ port, db, firedEvents }) => {
     // Create
-    const cr = await (await req(port, 'POST', '/api/projects/test-project/tasks', { text: 'My task' })).json();
+    const cr = await (
+      await req(port, 'POST', '/api/projects/test-project/tasks', { text: 'My task' })
+    ).json();
     assert.equal(cr.status, 'todo');
     assert.equal(cr.text, 'My task');
-    assert.ok(firedEvents.some(e => e.event === 'task_added'));
+    assert.ok(firedEvents.some((e) => e.event === 'task_added'));
     // Gray-box: verify DB has the task
     const dbTasks = db.getTasks(db.getProject('test-project').id);
-    assert.ok(dbTasks.some(t => t.text === 'My task'), 'Task must exist in DB after creation');
+    assert.ok(
+      dbTasks.some((t) => t.text === 'My task'),
+      'Task must exist in DB after creation',
+    );
     // List
     const lr = await (await req(port, 'GET', '/api/projects/test-project/tasks')).json();
-    assert.ok(lr.tasks.some(t => t.text === 'My task'));
+    assert.ok(lr.tasks.some((t) => t.text === 'My task'));
     // Complete
     const complR = await req(port, 'PUT', `/api/tasks/${cr.id}/complete`);
     assert.equal(complR.status, 200);
     // Gray-box: verify task status changed in DB
-    const completedTask = db.getTasks(db.getProject('test-project').id).find(t => t.id === cr.id);
+    const completedTask = db.getTasks(db.getProject('test-project').id).find((t) => t.id === cr.id);
     assert.equal(completedTask.status, 'done', 'Task status must be done after completion');
     assert.ok(completedTask.completed_at, 'completed_at must be set');
     // Reopen
     const reopenR = await req(port, 'PUT', `/api/tasks/${cr.id}/reopen`);
     assert.equal(reopenR.status, 200);
-    const reopenedTask = db.getTasks(db.getProject('test-project').id).find(t => t.id === cr.id);
+    const reopenedTask = db.getTasks(db.getProject('test-project').id).find((t) => t.id === cr.id);
     assert.equal(reopenedTask.status, 'todo', 'Task status must be todo after reopen');
     assert.equal(reopenedTask.completed_at, null, 'completed_at must be cleared after reopen');
     // Delete
@@ -281,11 +513,15 @@ test('task CRUD success paths with DB verification', async () => {
 
 test('message send success path with event', async () => {
   await withFullServer(async ({ port, firedEvents }) => {
-    const r = await req(port, 'POST', '/api/projects/test-project/messages', { content: 'Hello', from_session: 'a', to_session: 'b' });
+    const r = await req(port, 'POST', '/api/projects/test-project/messages', {
+      content: 'Hello',
+      from_session: 'a',
+      to_session: 'b',
+    });
     assert.equal(r.status, 200);
     const body = await r.json();
     assert.ok(body.id);
-    const event = firedEvents.find(e => e.event === 'message_sent');
+    const event = firedEvents.find((e) => e.event === 'message_sent');
     assert.ok(event, 'message_sent webhook must fire');
   });
 });
@@ -329,7 +565,11 @@ test('session config GET/PUT success', async () => {
     const gr = await (await req(port, 'GET', '/api/sessions/sc1/config')).json();
     assert.equal(gr.name, 'Config Test');
     assert.equal(gr.state, 'active');
-    const pr = await req(port, 'PUT', '/api/sessions/sc1/config', { name: 'Renamed', state: 'archived', notes: 'N' });
+    const pr = await req(port, 'PUT', '/api/sessions/sc1/config', {
+      name: 'Renamed',
+      state: 'archived',
+      notes: 'N',
+    });
     assert.equal(pr.status, 200);
     assert.equal(db.getSession('sc1').name, 'Renamed');
     assert.equal(db.getSession('sc1').state, 'archived');
@@ -365,8 +605,10 @@ test('search returns results for valid query', async () => {
     assert.ok(Array.isArray(body.results));
     // Verify results have expected structure when present
     if (body.results.length > 0) {
-      assert.ok('session_id' in body.results[0] || 'sessionId' in body.results[0],
-        'Search results should include session identifiers');
+      assert.ok(
+        'session_id' in body.results[0] || 'sessionId' in body.results[0],
+        'Search results should include session identifiers',
+      );
     }
   });
 });
@@ -441,7 +683,11 @@ test('project removal success with DB verification', async () => {
     const r = await req(port, 'POST', '/api/projects/test-project/remove');
     assert.equal(r.status, 200);
     // Gray-box: verify project is gone from DB
-    assert.equal(db.getProject('test-project'), undefined, 'Project must not exist in DB after removal');
+    assert.equal(
+      db.getProject('test-project'),
+      undefined,
+      'Project must not exist in DB after removal',
+    );
   });
 });
 
@@ -453,7 +699,11 @@ test('session rename success with JSONL append tolerance', async () => {
     assert.equal(r.status, 200);
     // Gray-box: verify name changed in DB and user_renamed flag set
     assert.equal(db.getSession('ren1').name, 'New Name');
-    assert.equal(db.getSession('ren1').user_renamed, 1, 'user_renamed flag must be set after manual rename');
+    assert.equal(
+      db.getSession('ren1').user_renamed,
+      1,
+      'user_renamed flag must be set after manual rename',
+    );
   });
 });
 
@@ -462,33 +712,49 @@ test('validation failure does not create partial DB state', async () => {
   await withFullServer(async ({ port, db }) => {
     const projectCountBefore = db.getProjects().length;
     // Try to create project with overlong name
-    await req(port, 'POST', '/api/projects', { path: '/workspace/x', name: fixtures.routes.overlongProjectName });
-    assert.equal(db.getProjects().length, projectCountBefore,
-      'Failed project creation must not leave partial state in DB');
+    await req(port, 'POST', '/api/projects', {
+      path: '/workspace/x',
+      name: fixtures.routes.overlongProjectName,
+    });
+    assert.equal(
+      db.getProjects().length,
+      projectCountBefore,
+      'Failed project creation must not leave partial state in DB',
+    );
 
     const p = db.ensureProject('neg_proj', '/workspace/neg_proj');
     const taskCountBefore = db.getTasks(p.id).length;
     // Try to create task with overlong text
-    await req(port, 'POST', '/api/projects/neg_proj/tasks', { text: fixtures.routes.overlongTaskText });
-    assert.equal(db.getTasks(p.id).length, taskCountBefore,
-      'Failed task creation must not leave partial state in DB');
+    await req(port, 'POST', '/api/projects/neg_proj/tasks', {
+      text: fixtures.routes.overlongTaskText,
+    });
+    assert.equal(
+      db.getTasks(p.id).length,
+      taskCountBefore,
+      'Failed task creation must not leave partial state in DB',
+    );
   });
 });
 
 // -- Error path tests for search/summary/tokens/smart-compact --
 
 test('search error returns 500 with error message', async () => {
-  await withFullServer(async ({ port }) => {
-    const r = await req(port, 'GET', '/api/search?q=testquery');
-    assert.equal(r.status, 200);
-  }, {
-    // Override searchSessions to throw
-  });
+  await withFullServer(
+    async ({ port }) => {
+      const r = await req(port, 'GET', '/api/search?q=testquery');
+      assert.equal(r.status, 200);
+    },
+    {
+      // Override searchSessions to throw
+    },
+  );
   // Test with throwing searchSessions
-  const { app } = makeApp();
+  const { app: _app } = makeApp();
   // Replace sessionUtils with one that throws - use a separate withFullServer with override
   const throwApp = makeApp({
-    claudeExecAsync: async () => { throw new Error('search failed'); },
+    claudeExecAsync: async () => {
+      throw new Error('search failed');
+    },
   });
   throwApp.db.ensureProject('test-project', throwApp.testProjectPath);
 });
@@ -554,7 +820,10 @@ test('webhook CRUD: list, add, delete', async () => {
     assert.ok(Array.isArray(r1.webhooks));
 
     // POST adds a webhook
-    const r2 = await req(port, 'POST', '/api/webhooks', { url: 'http://example.com/hook', events: ['session_created'] });
+    const r2 = await req(port, 'POST', '/api/webhooks', {
+      url: 'http://example.com/hook',
+      events: ['session_created'],
+    });
     assert.equal(r2.status, 200);
     const body2 = await r2.json();
     assert.equal(body2.saved, true);
@@ -565,7 +834,9 @@ test('webhook CRUD: list, add, delete', async () => {
     assert.equal(r3.webhooks[0].url, 'http://example.com/hook');
 
     // PUT replaces all webhooks
-    const r4 = await req(port, 'PUT', '/api/webhooks', { webhooks: [{ url: 'http://new.com', events: ['*'], mode: 'full_content' }] });
+    const r4 = await req(port, 'PUT', '/api/webhooks', {
+      webhooks: [{ url: 'http://new.com', events: ['*'], mode: 'full_content' }],
+    });
     assert.equal(r4.status, 200);
     const r5 = await (await req(port, 'GET', '/api/webhooks')).json();
     assert.equal(r5.webhooks.length, 1);
@@ -603,7 +874,7 @@ test('webhook DELETE rejects invalid index', async () => {
 // -- Project creation paths --
 
 test('project creation with existing local path', async () => {
-  const { app, db, testProjectPath, WORKSPACE } = makeApp();
+  const { app, db: _db, testProjectPath: _testProjectPath, WORKSPACE } = makeApp();
   const newPath = path.join(WORKSPACE, 'new-project');
   require('node:fs').mkdirSync(newPath, { recursive: true });
   await withServer(app, async ({ port }) => {
@@ -616,7 +887,10 @@ test('project creation with existing local path', async () => {
 
 test('project creation with git URL', async () => {
   await withFullServer(async ({ port }) => {
-    const r = await req(port, 'POST', '/api/projects', { path: 'https://github.com/test/repo.git', name: 'git-clone-test' });
+    const r = await req(port, 'POST', '/api/projects', {
+      path: 'https://github.com/test/repo.git',
+      name: 'git-clone-test',
+    });
     assert.equal(r.status, 200);
     const body = await r.json();
     assert.equal(body.cloned, true);
@@ -717,9 +991,635 @@ test('keepalive mode rejects invalid idleMinutes', async () => {
 
 test('settings PUT with JSON value', async () => {
   await withFullServer(async ({ port }) => {
-    const r = await req(port, 'PUT', '/api/settings', { key: 'test.setting', value: JSON.stringify({ enabled: true }) });
+    const r = await req(port, 'PUT', '/api/settings', {
+      key: 'test.setting',
+      value: JSON.stringify({ enabled: true }),
+    });
     assert.equal(r.status, 200);
     const r2 = await (await req(port, 'GET', '/api/settings')).json();
     assert.ok(r2['test.setting']);
+  });
+});
+
+// -- Health check degraded branch tests --
+
+test('HLTH-01: health returns 503 with db degraded when db.getProjects throws', async () => {
+  const { app, db } = makeApp();
+  db.getProjects = () => {
+    throw new Error('db connection lost');
+  };
+  await withServer(app, async ({ port }) => {
+    const r = await req(port, 'GET', '/health');
+    assert.equal(r.status, 503);
+    const body = await r.json();
+    assert.equal(body.status, 'degraded');
+    assert.equal(body.dependencies.db, 'degraded');
+  });
+});
+
+test('HLTH-02: health returns 503 with workspace degraded when WORKSPACE is inaccessible', async () => {
+  const _missingWorkspace = path.join(os.tmpdir(), 'bp-health-no-exist-' + Date.now());
+  // Create a makeApp with a valid workspace for setup, then delete it before the health check
+  const { app, WORKSPACE: ws } = makeApp();
+  require('node:fs').rmSync(ws, { recursive: true });
+  await withServer(app, async ({ port }) => {
+    const r = await req(port, 'GET', '/health');
+    assert.equal(r.status, 503);
+    const body = await r.json();
+    assert.equal(body.status, 'degraded');
+    assert.equal(body.dependencies.workspace, 'degraded');
+  });
+});
+
+test('HLTH-03: health reports auth degraded when checkAuthStatus throws', async () => {
+  // Make checkAuthStatus throw by: pointing CLAUDE_HOME to a dir where .credentials.json
+  // is a directory (EISDIR on readFile), and using a logger whose error() method throws,
+  // so the catch block in checkAuthStatus re-throws to the health check outer catch.
+  const claudeHome = require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'bp-hlth-auth-'));
+  const credsPath = path.join(claudeHome, '.credentials.json');
+  require('node:fs').mkdirSync(credsPath); // directory, not file → readFile throws EISDIR
+  const throwingLogger = {
+    info() {},
+    warn() {},
+    debug() {},
+    error() {
+      throw new Error('logger.error called');
+    },
+  };
+  const { app } = makeApp({ claudeHome, logger: throwingLogger });
+  await withServer(app, async ({ port }) => {
+    const r = await req(port, 'GET', '/health');
+    const body = await r.json();
+    assert.equal(body.dependencies.auth, 'degraded');
+  });
+});
+
+// -- checkAuthStatus branches via /api/auth/status --
+
+test('AUTH-10: auth status returns no_credentials when credentials file missing oauth', async () => {
+  const fs = require('node:fs');
+  const claudeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'bp-auth-'));
+  // Write a file with no claudeAiOauth key
+  fs.writeFileSync(path.join(claudeHome, '.credentials.json'), JSON.stringify({ other: true }));
+  const { app } = makeApp({ claudeHome });
+  await withServer(app, async ({ port }) => {
+    const r = await (await req(port, 'GET', '/api/auth/status')).json();
+    assert.equal(r.valid, false);
+    assert.equal(r.reason, 'no_credentials');
+  });
+});
+
+test('AUTH-11: auth status returns malformed_credentials on invalid JSON', async () => {
+  const fs = require('node:fs');
+  const claudeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'bp-auth-'));
+  fs.writeFileSync(path.join(claudeHome, '.credentials.json'), '{bad json{{');
+  const { app } = makeApp({ claudeHome });
+  await withServer(app, async ({ port }) => {
+    const r = await (await req(port, 'GET', '/api/auth/status')).json();
+    assert.equal(r.valid, false);
+    assert.equal(r.reason, 'malformed_credentials');
+  });
+});
+
+test('AUTH-12: auth status returns invalid_credentials when accessToken is expired', async () => {
+  const fs = require('node:fs');
+  const claudeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'bp-auth-'));
+  fs.writeFileSync(
+    path.join(claudeHome, '.credentials.json'),
+    JSON.stringify({ claudeAiOauth: { accessToken: 'expired', refreshToken: 'tok' } }),
+  );
+  const { app } = makeApp({ claudeHome });
+  await withServer(app, async ({ port }) => {
+    const r = await (await req(port, 'GET', '/api/auth/status')).json();
+    assert.equal(r.valid, false);
+    assert.equal(r.reason, 'invalid_credentials');
+  });
+});
+
+test('AUTH-13: auth status returns expired_no_refresh when token expired and no refreshToken', async () => {
+  const fs = require('node:fs');
+  const claudeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'bp-auth-'));
+  fs.writeFileSync(
+    path.join(claudeHome, '.credentials.json'),
+    JSON.stringify({
+      claudeAiOauth: { accessToken: 'tok', expiresAt: Date.now() - 1000 },
+    }),
+  );
+  const { app } = makeApp({ claudeHome });
+  await withServer(app, async ({ port }) => {
+    const r = await (await req(port, 'GET', '/api/auth/status')).json();
+    assert.equal(r.valid, false);
+    assert.equal(r.reason, 'expired_no_refresh');
+  });
+});
+
+test('AUTH-14: auth status returns valid when credentials are good', async () => {
+  const fs = require('node:fs');
+  const claudeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'bp-auth-'));
+  fs.writeFileSync(
+    path.join(claudeHome, '.credentials.json'),
+    JSON.stringify({
+      claudeAiOauth: {
+        accessToken: 'tok',
+        refreshToken: 'refresh',
+        expiresAt: Date.now() + 3600000,
+      },
+    }),
+  );
+  const { app } = makeApp({ claudeHome });
+  await withServer(app, async ({ port }) => {
+    const r = await (await req(port, 'GET', '/api/auth/status')).json();
+    assert.equal(r.valid, true);
+  });
+});
+
+// -- /api/file error branches --
+
+test('FS-06: /api/file rejects non-file path', async () => {
+  await withFullServer(async ({ port }) => {
+    // Pass a directory path (not a file)
+    const r = await req(port, 'GET', `/api/file?path=${encodeURIComponent('/tmp')}`);
+    assert.equal(r.status, 400);
+    const body = await r.text();
+    assert.ok(body.includes('not a file'));
+  });
+});
+
+test('FS-07: /api/file rejects file larger than 1MB', async () => {
+  const fs = require('node:fs');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bp-file-'));
+  const bigFile = path.join(tmpDir, 'big.txt');
+  // Write 1MB + 1 byte
+  fs.writeFileSync(bigFile, Buffer.alloc(1024 * 1024 + 1, 'x'));
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'GET', `/api/file?path=${encodeURIComponent(bigFile)}`);
+    assert.equal(r.status, 413);
+    const body = await r.text();
+    assert.ok(body.includes('too large'));
+  });
+});
+
+test('FS-08: /api/file returns content for valid file', async () => {
+  const fs = require('node:fs');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bp-file-'));
+  const testFile = path.join(tmpDir, 'test.txt');
+  fs.writeFileSync(testFile, 'hello world');
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'GET', `/api/file?path=${encodeURIComponent(testFile)}`);
+    assert.equal(r.status, 200);
+    const body = await r.text();
+    assert.equal(body, 'hello world');
+  });
+});
+
+// -- /api/mcp-servers --
+
+test('MCP-01: GET /api/mcp-servers returns empty servers when config missing', async () => {
+  const { app } = makeApp({ claudeHome: path.join(os.tmpdir(), 'no-such-' + Date.now()) });
+  await withServer(app, async ({ port }) => {
+    const r = await (await req(port, 'GET', '/api/mcp-servers')).json();
+    assert.deepEqual(r.servers, {});
+  });
+});
+
+test('MCP-02: PUT /api/mcp-servers saves servers config', async () => {
+  const fs = require('node:fs');
+  const claudeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'bp-mcp-'));
+  const { app } = makeApp({ claudeHome });
+  await withServer(app, async ({ port }) => {
+    const servers = { myServer: { command: 'node', args: ['index.js'] } };
+    const r = await req(port, 'PUT', '/api/mcp-servers', { servers });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.equal(body.saved, true);
+    // Verify the file was actually written
+    const written = JSON.parse(fs.readFileSync(path.join(claudeHome, 'settings.json'), 'utf-8'));
+    assert.deepEqual(written.mcpServers, servers);
+  });
+});
+
+test('MCP-03: GET /api/mcp-servers reads existing settings.json', async () => {
+  const fs = require('node:fs');
+  const claudeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'bp-mcp-'));
+  const servers = { srv: { command: 'python', args: ['-m', 'srv'] } };
+  fs.writeFileSync(path.join(claudeHome, 'settings.json'), JSON.stringify({ mcpServers: servers }));
+  const { app } = makeApp({ claudeHome });
+  await withServer(app, async ({ port }) => {
+    const r = await (await req(port, 'GET', '/api/mcp-servers')).json();
+    assert.deepEqual(r.servers, servers);
+  });
+});
+
+// -- /api/claude-md endpoints --
+
+test('CMD-01: GET /api/claude-md/global returns content field', async () => {
+  // The global endpoint uses process.env.HOME, not CLAUDE_HOME.
+  // We just verify the response shape is correct regardless of file existence.
+  const { app } = makeApp();
+  await withServer(app, async ({ port }) => {
+    const r = await (await req(port, 'GET', '/api/claude-md/global')).json();
+    assert.ok('content' in r, 'response must have content field');
+    assert.equal(typeof r.content, 'string');
+  });
+});
+
+test('CMD-02: PUT /api/claude-md/global writes file and returns saved', async () => {
+  // The global endpoint writes to $HOME/.claude/CLAUDE.md — test it succeeds.
+  const { app } = makeApp();
+  await withServer(app, async ({ port }) => {
+    const r = await req(port, 'PUT', '/api/claude-md/global', { content: '# My Rules\n' });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.equal(body.saved, true);
+  });
+});
+
+test('CMD-03: GET /api/projects/:name/claude-md returns content for existing file', async () => {
+  const fs = require('node:fs');
+  const { app, testProjectPath } = makeApp();
+  fs.writeFileSync(path.join(testProjectPath, 'CLAUDE.md'), '# Project Rules\n');
+  await withServer(app, async ({ port }) => {
+    const r = await (await req(port, 'GET', '/api/projects/test-project/claude-md')).json();
+    assert.equal(r.content, '# Project Rules\n');
+  });
+});
+
+test('CMD-04: PUT /api/projects/:name/claude-md writes file', async () => {
+  const fs = require('node:fs');
+  const { app, testProjectPath } = makeApp();
+  await withServer(app, async ({ port }) => {
+    const r = await req(port, 'PUT', '/api/projects/test-project/claude-md', {
+      content: '# New Rules\n',
+    });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.equal(body.saved, true);
+    assert.equal(
+      fs.readFileSync(path.join(testProjectPath, 'CLAUDE.md'), 'utf-8'),
+      '# New Rules\n',
+    );
+  });
+});
+
+test('CMD-05: GET /api/projects/:name/claude-md returns empty when file missing and no template', async () => {
+  const { app } = makeApp();
+  await withServer(app, async ({ port }) => {
+    // 'unknown-project' has no CLAUDE.md and no db entry
+    const r = await (await req(port, 'GET', '/api/projects/unknown-project/claude-md')).json();
+    assert.equal(r.content, '');
+  });
+});
+
+// -- /api/sessions validation --
+
+test('SES-20: POST /api/sessions rejects overlong project name', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'POST', '/api/sessions', {
+      project: 'x'.repeat(256),
+      prompt: 'hi',
+    });
+    assert.equal(r.status, 400);
+    const body = await r.json();
+    assert.ok(body.error.includes('too long'));
+  });
+});
+
+test('SES-21: POST /api/sessions rejects overlong prompt', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'POST', '/api/sessions', {
+      project: 'test-project',
+      prompt: 'x'.repeat(50001),
+    });
+    assert.equal(r.status, 400);
+    const body = await r.json();
+    assert.ok(body.error.includes('too long'));
+  });
+});
+
+test('SES-22: POST /api/sessions returns 410 when project path missing', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'POST', '/api/sessions', {
+      project: 'nonexistent-project-xyz',
+    });
+    assert.equal(r.status, 410);
+  });
+});
+
+// -- /api/terminals validation --
+
+test('TERM-02: POST /api/terminals rejects overlong project name', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'POST', '/api/terminals', { project: 'x'.repeat(256) });
+    assert.equal(r.status, 400);
+    const body = await r.json();
+    assert.ok(body.error.includes('too long'));
+  });
+});
+
+test('TERM-03: POST /api/terminals returns 410 when project path missing', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'POST', '/api/terminals', { project: 'no-such-project-xyz' });
+    assert.equal(r.status, 410);
+  });
+});
+
+// -- /api/sessions/:id/resume validation --
+
+test('SES-RES-01: POST /api/sessions/:id/resume returns 400 for invalid session ID', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'POST', '/api/sessions/bad!id/resume', { project: 'test-project' });
+    assert.equal(r.status, 400);
+  });
+});
+
+test('SES-RES-02: POST /api/sessions/:id/resume returns 400 when project missing', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'POST', '/api/sessions/valid-id/resume', {});
+    assert.equal(r.status, 400);
+    const body = await r.json();
+    assert.ok(body.error.includes('project'));
+  });
+});
+
+test('SES-RES-03: POST /api/sessions/:id/resume returns 410 when project dir missing', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'POST', '/api/sessions/valid-id/resume', {
+      project: 'no-such-project-xyz',
+    });
+    assert.equal(r.status, 410);
+  });
+});
+
+test('SES-RES-04: POST /api/sessions/:id/resume success when tmux exists', async () => {
+  const { app, db } = makeApp({ tmuxExists: async () => true });
+  db.ensureProject('test-project', db.DATA_DIR);
+  const fs = require('node:fs');
+  fs.mkdirSync(db.DATA_DIR, { recursive: true });
+  // Use a real project that exists in the DB
+  const testDir = require('node:fs').mkdtempSync(path.join(os.tmpdir(), 'bp-res-'));
+  db.ensureProject('resume-proj', testDir);
+  await withServer(app, async ({ port }) => {
+    const r = await req(port, 'POST', '/api/sessions/abc123/resume', { project: 'resume-proj' });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.equal(body.id, 'abc123');
+  });
+});
+
+// -- /api/settings - keepalive_mode and keepalive_idle_minutes branches --
+
+test('SET-10: PUT /api/settings with keepalive_mode triggers keepalive update', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'PUT', '/api/settings', { key: 'keepalive_mode', value: 'browser' });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.equal(body.saved, true);
+  });
+});
+
+test('SET-11: PUT /api/settings with keepalive_idle_minutes triggers keepalive update', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'PUT', '/api/settings', {
+      key: 'keepalive_idle_minutes',
+      value: 60,
+    });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.equal(body.saved, true);
+  });
+});
+
+test('SET-12: PUT /api/settings rejects missing key', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'PUT', '/api/settings', { value: 'something' });
+    assert.equal(r.status, 400);
+  });
+});
+
+// -- Error branches for search/summary/tokens/smart-compact --
+
+test('SRCH-02: GET /api/search returns 500 when searchSessions throws', async () => {
+  const fs = require('node:fs');
+  const WORKSPACE2 = fs.mkdtempSync(path.join(os.tmpdir(), 'bp-srch-'));
+  const testProj2 = path.join(WORKSPACE2, 'test-project');
+  fs.mkdirSync(testProj2, { recursive: true });
+  // Build a fresh db for this app
+  const { db: db2 } = makeApp({ workspace: WORKSPACE2 });
+  // Build a fresh app that throws on sessionUtils methods
+  const throwingApp = express();
+  throwingApp.use(express.json({ limit: '5mb' }));
+  throwingApp.use(express.urlencoded({ extended: true }));
+  registerCoreRoutes(throwingApp, {
+    db: db2,
+    safe: {
+      resolveProjectPath: (n) => path.join(WORKSPACE2, n),
+      findSessionsDir: () => path.join(WORKSPACE2, '.sessions'),
+      tmuxCreateClaude() {},
+      tmuxCreateBash() {},
+      tmuxExists: async () => false,
+      tmuxExecAsync: async () => '',
+      tmuxSendKeysAsync: async () => {},
+      claudeExecAsync: async () => 'ok',
+      gitCloneAsync: async () => 'cloned',
+    },
+    config: { get: (k, fb) => fb, getPrompt: () => '' },
+    sessionUtils: {
+      parseSessionFile: async () => null,
+      searchSessions: async () => {
+        throw new Error('search exploded');
+      },
+      summarizeSession: async () => {
+        throw new Error('summary exploded');
+      },
+      getTokenUsage: async () => {
+        throw new Error('token exploded');
+      },
+    },
+    keepalive: {
+      getStatus: async () => ({ running: false, mode: 'always' }),
+      setMode() {},
+      getMode: () => 'always',
+      isRunning: () => false,
+      start() {},
+      stop() {},
+    },
+    fireEvent: () => {},
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+    tmuxName: (id) => `bp_${id}`,
+    tmuxExists: async () => false,
+    enforceTmuxLimit: async () => {},
+    resolveSessionId: async () => {},
+    runSmartCompaction: async () => {
+      throw new Error('compact exploded');
+    },
+    getBrowserCount: () => 0,
+    CLAUDE_HOME: path.join(os.tmpdir(), 'no-creds-' + Date.now()),
+    WORKSPACE: WORKSPACE2,
+    ensureSettings: async () => {},
+    sleep: async () => {},
+  });
+  db2.ensureProject('test-project', testProj2);
+  db2.upsertSession('err1', 1, 'Err');
+
+  await withServer(throwingApp, async ({ port }) => {
+    // search 500
+    const r1 = await req(port, 'GET', '/api/search?q=hello');
+    assert.equal(r1.status, 500);
+
+    // summary 500
+    const r2 = await req(port, 'POST', '/api/sessions/err1/summary', { project: 'test-project' });
+    assert.equal(r2.status, 500);
+
+    // tokens error → returns default object (not 500)
+    const r3 = await (
+      await req(port, 'GET', '/api/sessions/err1/tokens?project=test-project')
+    ).json();
+    assert.equal(r3.input_tokens, 0);
+    assert.equal(r3.model, null);
+
+    // smart-compact 500
+    const r4 = await req(port, 'POST', '/api/sessions/err1/smart-compact', {
+      project: 'test-project',
+    });
+    assert.equal(r4.status, 500);
+  });
+});
+
+// -- POST /api/projects git URL - 409 when directory already exists --
+
+test('PRJ-09: git clone returns 409 when target directory already exists', async () => {
+  const fs = require('node:fs');
+  const { app, WORKSPACE } = makeApp();
+  const existingDir = path.join(WORKSPACE, 'my-repo');
+  fs.mkdirSync(existingDir, { recursive: true });
+  await withServer(app, async ({ port }) => {
+    const r = await req(port, 'POST', '/api/projects', {
+      path: 'https://github.com/test/my-repo.git',
+      name: 'my-repo',
+    });
+    assert.equal(r.status, 409);
+    const body = await r.json();
+    assert.ok(body.error.includes('already exists'));
+  });
+});
+
+// -- session config: notes too long --
+
+test('SES-CFG-01: PUT /api/sessions/:id/config rejects overlong notes', async () => {
+  await withFullServer(async ({ port, db }) => {
+    const p = db.ensureProject('cfg_proj', '/workspace/cfg_proj');
+    db.upsertSession('cfg1', p.id, 'S');
+    const r = await req(port, 'PUT', '/api/sessions/cfg1/config', {
+      notes: 'x'.repeat(100001),
+    });
+    assert.equal(r.status, 400);
+    const body = await r.json();
+    assert.ok(body.error.includes('too long'));
+  });
+});
+
+test('SES-CFG-02: PUT /api/sessions/:id/config rejects overlong name', async () => {
+  await withFullServer(async ({ port, db }) => {
+    const p = db.ensureProject('cfg_proj2', '/workspace/cfg_proj2');
+    db.upsertSession('cfg2', p.id, 'S');
+    const r = await req(port, 'PUT', '/api/sessions/cfg2/config', {
+      name: 'x'.repeat(256),
+    });
+    assert.equal(r.status, 400);
+  });
+});
+
+// -- session config GET: session not found --
+
+test('SES-CFG-03: GET /api/sessions/:id/config returns 404 when session not found', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'GET', '/api/sessions/nosuchsession/config');
+    assert.equal(r.status, 404);
+  });
+});
+
+// -- session notes: invalid session ID --
+
+test('SES-NOTES-01: GET /api/sessions/:id/notes rejects invalid ID', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'GET', '/api/sessions/bad!id/notes');
+    assert.equal(r.status, 400);
+  });
+});
+
+test('SES-NOTES-02: PUT /api/sessions/:id/notes rejects invalid ID', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'PUT', '/api/sessions/bad!id/notes', { notes: 'hi' });
+    assert.equal(r.status, 400);
+  });
+});
+
+test('SES-NOTES-03: PUT /api/sessions/:id/notes rejects overlong notes', async () => {
+  await withFullServer(async ({ port, db }) => {
+    const p = db.ensureProject('notep', '/workspace/notep');
+    db.upsertSession('note1', p.id, 'S');
+    const r = await req(port, 'PUT', '/api/sessions/note1/notes', {
+      notes: 'x'.repeat(100001),
+    });
+    assert.equal(r.status, 400);
+  });
+});
+
+// -- project notes: project not found --
+
+test('PRJ-NOTES-01: GET /api/projects/:name/notes returns 404 when project not found', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'GET', '/api/projects/no-such-proj/notes');
+    assert.equal(r.status, 404);
+  });
+});
+
+test('PRJ-NOTES-02: PUT /api/projects/:name/notes returns 404 when project not found', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'PUT', '/api/projects/no-such-proj/notes', { notes: 'hi' });
+    assert.equal(r.status, 404);
+  });
+});
+
+// -- tasks: project not found --
+
+test('TSK-08: GET /api/projects/:name/tasks returns 404 when project not found', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'GET', '/api/projects/no-such-proj/tasks');
+    assert.equal(r.status, 404);
+  });
+});
+
+test('TSK-09: POST /api/projects/:name/tasks returns 404 when project not found', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'POST', '/api/projects/no-such-proj/tasks', { text: 'task' });
+    assert.equal(r.status, 404);
+  });
+});
+
+test('TSK-10: POST /api/projects/:name/tasks rejects missing text', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'POST', '/api/projects/test-project/tasks', {});
+    assert.equal(r.status, 400);
+    const body = await r.json();
+    assert.ok(body.error.includes('text'));
+  });
+});
+
+// -- messages: project not found --
+
+test('MSG-05: GET /api/projects/:name/messages returns 404 when project not found', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'GET', '/api/projects/no-such-proj/messages');
+    assert.equal(r.status, 404);
+  });
+});
+
+test('MSG-06: POST /api/projects/:name/messages returns 404 when project not found', async () => {
+  await withFullServer(async ({ port }) => {
+    const r = await req(port, 'POST', '/api/projects/no-such-proj/messages', {
+      content: 'hello',
+    });
+    assert.equal(r.status, 404);
   });
 });

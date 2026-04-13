@@ -3,10 +3,19 @@
 const ptyDefault = require('node-pty');
 
 module.exports = function createWsTerminal({
-  safe, keepalive, logger, config, sessionWsClients,
-  getBrowserCount, incrementBrowserCount, decrementBrowserCount,
-  tmuxExists, cancelTmuxCleanup, scheduleTmuxCleanup,
-  startJsonlWatcher, stopJsonlWatcher,
+  safe,
+  keepalive,
+  logger,
+  config,
+  sessionWsClients,
+  getBrowserCount: _getBrowserCount,
+  incrementBrowserCount,
+  decrementBrowserCount,
+  tmuxExists,
+  cancelTmuxCleanup,
+  scheduleTmuxCleanup,
+  startJsonlWatcher,
+  stopJsonlWatcher,
   spawnPty,
 }) {
   const highWater = config ? config.get('ws.bufferHighWaterMark', 1048576) : 1048576;
@@ -37,7 +46,12 @@ module.exports = function createWsTerminal({
         env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
       });
     } catch (err) {
-      logger.error('Failed to spawn PTY process', { module: 'ws-terminal', op: 'handleTerminalConnection', tmuxSession, err: err.message });
+      logger.error('Failed to spawn PTY process', {
+        module: 'ws-terminal',
+        op: 'handleTerminalConnection',
+        tmuxSession,
+        err: err.message,
+      });
       ws.close();
       return;
     }
@@ -45,7 +59,12 @@ module.exports = function createWsTerminal({
     const browserCount = incrementBrowserCount();
     keepalive.onBrowserConnect();
     cancelTmuxCleanup(tmuxSession);
-    logger.info('PTY attached to tmux session', { module: 'ws-terminal', tmuxSession, pid: ptyProcess.pid, browsers: browserCount });
+    logger.info('PTY attached to tmux session', {
+      module: 'ws-terminal',
+      tmuxSession,
+      pid: ptyProcess.pid,
+      browsers: browserCount,
+    });
 
     sessionWsClients.set(tmuxSession, ws);
     startJsonlWatcher(tmuxSession);
@@ -88,7 +107,11 @@ module.exports = function createWsTerminal({
       if (msg.startsWith('{')) {
         try {
           const ctrl = JSON.parse(msg);
-          if (ctrl.type === 'resize' && typeof ctrl.cols === 'number' && typeof ctrl.rows === 'number') {
+          if (
+            ctrl.type === 'resize' &&
+            typeof ctrl.cols === 'number' &&
+            typeof ctrl.rows === 'number'
+          ) {
             ptyProcess.resize(ctrl.cols, ctrl.rows);
             return;
           }
@@ -96,7 +119,7 @@ module.exports = function createWsTerminal({
             ws.send(JSON.stringify({ type: 'pong' }));
             return;
           }
-        } catch (parseErr) {
+        } catch (_parseErr) {
           /* expected: not all messages starting with '{' are valid JSON control frames */
           logger.debug('Non-JSON-control message received', { module: 'ws-terminal', tmuxSession });
         }
@@ -104,15 +127,25 @@ module.exports = function createWsTerminal({
       try {
         ptyProcess.write(msg);
       } catch (err) {
-        logger.error('Failed to write to PTY', { module: 'ws-terminal', op: 'ws.on(message)', tmuxSession, err: err.message });
+        logger.error('Failed to write to PTY', {
+          module: 'ws-terminal',
+          op: 'ws.on(message)',
+          tmuxSession,
+          err: err.message,
+        });
       }
     });
 
-    ws.on('pong', () => { ws.isAlive = true; });
+    ws.on('pong', () => {
+      ws.isAlive = true;
+    });
 
     const pingInterval = setInterval(() => {
       if (ws.isAlive === false) {
-        logger.info('WebSocket connection timeout — closing', { module: 'ws-terminal', tmuxSession });
+        logger.info('WebSocket connection timeout — closing', {
+          module: 'ws-terminal',
+          tmuxSession,
+        });
         return ws.terminate();
       }
       ws.isAlive = false;
@@ -124,7 +157,11 @@ module.exports = function createWsTerminal({
       if (checkBufferInterval) clearInterval(checkBufferInterval);
       const remaining = decrementBrowserCount();
       keepalive.onBrowserDisconnect(remaining);
-      logger.info('Browser disconnected from tmux', { module: 'ws-terminal', tmuxSession, browsers: remaining });
+      logger.info('Browser disconnected from tmux', {
+        module: 'ws-terminal',
+        tmuxSession,
+        browsers: remaining,
+      });
       if (ptyProcess) ptyProcess.kill();
       sessionWsClients.delete(tmuxSession);
       stopJsonlWatcher(tmuxSession);
@@ -132,7 +169,12 @@ module.exports = function createWsTerminal({
     });
 
     ws.on('error', (err) => {
-      logger.error('WebSocket error', { module: 'ws-terminal', op: 'ws.on(error)', tmuxSession, err: err.message });
+      logger.error('WebSocket error', {
+        module: 'ws-terminal',
+        op: 'ws.on(error)',
+        tmuxSession,
+        err: err.message,
+      });
       if (ptyProcess) ptyProcess.kill();
     });
   }

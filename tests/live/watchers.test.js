@@ -17,8 +17,7 @@ test('WAT-08: Blueprint MCP server registered in settings.json with correct conf
     assert.ok(cfg.mcpServers.blueprint, 'Blueprint MCP server should be registered');
     // Behavioral: verify the MCP config has required fields (not just that the key exists)
     const bp = cfg.mcpServers.blueprint;
-    assert.ok(bp.command || bp.url,
-      'Blueprint MCP server config must have a command or url field');
+    assert.ok(bp.command || bp.url, 'Blueprint MCP server config must have a command or url field');
   }
 });
 
@@ -36,16 +35,20 @@ test('WAT-11: settings file watcher detects changes via WebSocket', async () => 
   // Write a test setting directly to the settings file inside the container
   // to simulate an external change that the watcher should detect
   const testKey = `test_watcher_${Date.now()}`;
-  dockerExec(`sqlite3 /storage/blueprint.db "INSERT OR REPLACE INTO settings (key, value) VALUES ('${testKey}', '\"watcher_test\"')"`);
+  dockerExec(
+    `sqlite3 /storage/blueprint.db "INSERT OR REPLACE INTO settings (key, value) VALUES ('${testKey}', '\"watcher_test\"')"`,
+  );
 
   // Give the watcher time to detect the change
-  await new Promise(r => setTimeout(r, 2000));
+  await new Promise((r) => setTimeout(r, 2000));
 
   const after = await get('/api/settings');
   assert.equal(after.status, 200);
   // The settings endpoint reads from DB, so changes should be visible
-  assert.ok(after.data[testKey] !== undefined || true,
-    'Setting written directly to DB should be readable via API');
+  assert.ok(
+    after.data[testKey] !== undefined || true,
+    'Setting written directly to DB should be readable via API',
+  );
 
   // Cleanup
   dockerExec(`sqlite3 /storage/blueprint.db "DELETE FROM settings WHERE key='${testKey}'"`);
@@ -54,10 +57,16 @@ test('WAT-11: settings file watcher detects changes via WebSocket', async () => 
 test('WAT-12: JSONL watcher monitors Claude sessions directories', async () => {
   // Verify that the JSONL watcher infrastructure works by checking that
   // the Claude projects directory exists (sessions are stored per-project)
-  const claudeProjectsDir = dockerExec('ls -d /storage/.claude/projects 2>/dev/null || echo missing');
-  assert.ok(claudeProjectsDir !== 'missing',
-    'Claude projects directory must exist for JSONL watcher to monitor');
+  const claudeProjectsDir = dockerExec(
+    'ls -d /storage/.claude/projects 2>/dev/null || echo missing',
+  );
+  assert.ok(
+    claudeProjectsDir !== 'missing',
+    'Claude projects directory must exist for JSONL watcher to monitor',
+  );
   // Verify .jsonl files exist from stub-claude sessions
-  const jsonlCount = parseInt(dockerExec('find /storage/.claude/projects -name "*.jsonl" 2>/dev/null | wc -l').trim() || '0');
+  const jsonlCount = parseInt(
+    dockerExec('find /storage/.claude/projects -name "*.jsonl" 2>/dev/null | wc -l').trim() || '0',
+  );
   assert.ok(jsonlCount >= 0, `Found ${jsonlCount} JSONL files in sessions directories`);
 });

@@ -33,13 +33,17 @@ test('FS-03: /api/file reads file content for accessible path', async () => {
     // Acceptable: route restricts file access outside workspace
     assert.ok(true, 'Route restricts access to files outside workspace');
   } else {
-    assert.fail(`Expected 200 (readable) or 403 (restricted), got ${r.status}. ` +
-      `400 would indicate a route bug, 500 would indicate an unhandled crash.`);
+    assert.fail(
+      `Expected 200 (readable) or 403 (restricted), got ${r.status}. ` +
+        `400 would indicate a route bug, 500 would indicate an unhandled crash.`,
+    );
   }
 });
 
 test('FS-04: /api/file rejects path traversal', async () => {
   const r = await get('/api/file?path=../../../etc/shadow');
-  assert.ok(r.status === 400 || r.status === 403,
-    `Path traversal must be rejected with 400 or 403, got ${r.status}`);
+  assert.ok(
+    r.status === 400 || r.status === 403,
+    `Path traversal must be rejected with 400 or 403, got ${r.status}`,
+  );
 });

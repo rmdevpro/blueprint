@@ -6,11 +6,13 @@ const rawLevel = (process.env.LOG_LEVEL || 'INFO').toUpperCase();
 const _currentLevel = LOG_LEVELS[rawLevel] ?? LOG_LEVELS.INFO;
 
 if (LOG_LEVELS[rawLevel] === undefined) {
-  process.stdout.write(JSON.stringify({
-    timestamp: new Date().toISOString(),
-    level: 'WARN',
-    message: `Unrecognized LOG_LEVEL '${rawLevel}', defaulting to INFO`
-  }) + '\n');
+  process.stdout.write(
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      level: 'WARN',
+      message: `Unrecognized LOG_LEVEL '${rawLevel}', defaulting to INFO`,
+    }) + '\n',
+  );
 }
 
 function emit(level, stream, message, context) {
@@ -27,8 +29,16 @@ function emit(level, stream, message, context) {
 }
 
 module.exports = {
-  debug(message, context = {}) { emit('DEBUG', process.stdout, message, context); },
-  info(message, context = {}) { emit('INFO', process.stdout, message, context); },
-  warn(message, context = {}) { emit('WARN', process.stdout, message, context); },
-  error(message, context = {}) { emit('ERROR', process.stderr, message, context); },
+  debug(message, context = {}) {
+    emit('DEBUG', process.stdout, message, context);
+  },
+  info(message, context = {}) {
+    emit('INFO', process.stdout, message, context);
+  },
+  warn(message, context = {}) {
+    emit('WARN', process.stdout, message, context);
+  },
+  error(message, context = {}) {
+    emit('ERROR', process.stderr, message, context);
+  },
 };

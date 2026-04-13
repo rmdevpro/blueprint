@@ -40,9 +40,10 @@ async function parseSessionFile(filepath) {
       try {
         const entry = JSON.parse(line);
         if (!name && entry.type === 'user' && entry.message?.content) {
-          const text = typeof entry.message.content === 'string'
-            ? entry.message.content
-            : entry.message.content[0]?.text || '';
+          const text =
+            typeof entry.message.content === 'string'
+              ? entry.message.content
+              : entry.message.content[0]?.text || '';
           name = text.substring(0, 80);
           if (text.length > 80) name += '...';
         }
@@ -57,7 +58,10 @@ async function parseSessionFile(filepath) {
         }
       } catch (parseErr) {
         if (!(parseErr instanceof SyntaxError)) {
-          logger.debug('Unexpected error parsing JSONL line in parseSessionFile', { module: 'session-utils', err: parseErr.message });
+          logger.debug('Unexpected error parsing JSONL line in parseSessionFile', {
+            module: 'session-utils',
+            err: parseErr.message,
+          });
         }
         /* expected: malformed JSONL lines during active session writes */
       }
@@ -69,14 +73,25 @@ async function parseSessionFile(filepath) {
       messageCount,
     };
 
-    db.upsertSessionMeta(sessionId, filepath, mtime, size, result.name, result.timestamp, result.messageCount);
+    db.upsertSessionMeta(
+      sessionId,
+      filepath,
+      mtime,
+      size,
+      result.name,
+      result.timestamp,
+      result.messageCount,
+    );
     return result;
   } catch (err) {
     if (err.code === 'ENOENT') {
       /* expected: session file may not exist yet */
       return null;
     }
-    logger.error('Unexpected error in parseSessionFile', { module: 'session-utils', err: err.message });
+    logger.error('Unexpected error in parseSessionFile', {
+      module: 'session-utils',
+      err: err.message,
+    });
     return null;
   }
 }
@@ -109,8 +124,10 @@ async function searchSessions(query, projectFilter, maxResults = 15) {
           try {
             const e = JSON.parse(line);
             if (!firstName && e.type === 'user' && e.message?.content) {
-              const t = typeof e.message.content === 'string'
-                ? e.message.content : e.message.content[0]?.text || '';
+              const t =
+                typeof e.message.content === 'string'
+                  ? e.message.content
+                  : e.message.content[0]?.text || '';
               firstName = t.substring(0, 80);
             }
             const text = extractMessageText(e);
@@ -119,7 +136,10 @@ async function searchSessions(query, projectFilter, maxResults = 15) {
             }
           } catch (parseErr) {
             if (!(parseErr instanceof SyntaxError)) {
-              logger.debug('Unexpected error parsing JSONL line in searchSessions', { module: 'session-utils', err: parseErr.message });
+              logger.debug('Unexpected error parsing JSONL line in searchSessions', {
+                module: 'session-utils',
+                err: parseErr.message,
+              });
             }
             /* expected: malformed JSONL line */
           }
@@ -135,7 +155,7 @@ async function searchSessions(query, projectFilter, maxResults = 15) {
             name: sessionName,
             match_count: matches.length,
             matchCount: matches.length,
-            snippets: matches.slice(0, 3).map(m => m.text),
+            snippets: matches.slice(0, 3).map((m) => m.text),
             matches: matches.slice(0, 3),
           });
         }
@@ -144,7 +164,11 @@ async function searchSessions(query, projectFilter, maxResults = 15) {
       if (err.code === 'ENOENT') {
         /* expected: no sessions dir for this project */
       } else {
-        logger.error('Error reading sessions dir in searchSessions', { module: 'session-utils', project: dbProj.name, err: err.message });
+        logger.error('Error reading sessions dir in searchSessions', {
+          module: 'session-utils',
+          project: dbProj.name,
+          err: err.message,
+        });
       }
     }
   }
@@ -175,31 +199,41 @@ async function summarizeSession(sessionId, project) {
       }
     } catch (parseErr) {
       if (!(parseErr instanceof SyntaxError)) {
-        logger.debug('Unexpected error parsing JSONL line in summarizeSession', { module: 'session-utils', err: parseErr.message });
+        logger.debug('Unexpected error parsing JSONL line in summarizeSession', {
+          module: 'session-utils',
+          err: parseErr.message,
+        });
       }
       /* expected: malformed JSONL line */
     }
   }
 
-  if (messages.length === 0) return { summary: 'Empty session.', recent_messages: [], recentMessages: [] };
+  if (messages.length === 0)
+    return { summary: 'Empty session.', recent_messages: [], recentMessages: [] };
 
-  const transcript = messages.map(m =>
-    `${m.role === 'user' ? 'Human' : 'Claude'}: ${m.text}`
-  ).join('\n\n');
+  const transcript = messages
+    .map((m) => `${m.role === 'user' ? 'Human' : 'Claude'}: ${m.text}`)
+    .join('\n\n');
 
   const prompt = config.getPrompt('summarize-session', { TRANSCRIPT: transcript });
   const summaryModel = config.get('session.summaryModel', 'claude-sonnet-4-6');
   const claudeTimeout = config.get('claude.defaultTimeoutMs', 120000);
 
   try {
-    const summary = (await safe.claudeExecAsync(
-      ['--print', '--no-session-persistence', '--model', summaryModel, prompt],
-      { cwd: projectPath, timeout: claudeTimeout }
-    )).trim();
+    const summary = (
+      await safe.claudeExecAsync(
+        ['--print', '--no-session-persistence', '--model', summaryModel, prompt],
+        { cwd: projectPath, timeout: claudeTimeout },
+      )
+    ).trim();
     const recent = messages.slice(-3);
     return { summary, recent_messages: recent, recentMessages: recent };
   } catch (err) {
-    logger.error('Failed to generate session summary', { module: 'session-utils', sessionId: sessionId.substring(0, 8), err: err.message });
+    logger.error('Failed to generate session summary', {
+      module: 'session-utils',
+      sessionId: sessionId.substring(0, 8),
+      err: err.message,
+    });
     const recent = messages.slice(-3);
     return {
       summary: 'Failed to generate summary: ' + (err.message?.substring(0, 100) || 'unknown error'),
@@ -229,7 +263,10 @@ async function getTokenUsage(sessionId, project) {
           const m = entry.message.model || '';
           if (m.includes('synthetic') || m.includes('system')) continue;
           const usage = entry.message.usage;
-          const total = (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
+          const total =
+            (usage.input_tokens || 0) +
+            (usage.cache_read_input_tokens || 0) +
+            (usage.cache_creation_input_tokens || 0);
           if (total === 0) continue;
           inputTokens = total;
           model = m || null;
@@ -237,7 +274,10 @@ async function getTokenUsage(sessionId, project) {
         }
       } catch (parseErr) {
         if (!(parseErr instanceof SyntaxError)) {
-          logger.debug('Unexpected error parsing JSONL line in getTokenUsage', { module: 'session-utils', err: parseErr.message });
+          logger.debug('Unexpected error parsing JSONL line in getTokenUsage', {
+            module: 'session-utils',
+            err: parseErr.message,
+          });
         }
         /* expected: malformed JSONL line */
       }
@@ -246,14 +286,18 @@ async function getTokenUsage(sessionId, project) {
     return {
       input_tokens: inputTokens,
       model,
-      max_tokens: (model?.includes('opus') || model?.includes('1m')) ? 1000000 : 200000,
+      max_tokens: model?.includes('opus') || model?.includes('1m') ? 1000000 : 200000,
     };
   } catch (err) {
     if (err.code === 'ENOENT') {
       /* expected: session file may not exist yet */
       return { input_tokens: 0, model: null, max_tokens: 200000 };
     }
-    logger.error('Unexpected error in getTokenUsage', { module: 'session-utils', sessionId: sessionId.substring(0, 8), err: err.message });
+    logger.error('Unexpected error in getTokenUsage', {
+      module: 'session-utils',
+      sessionId: sessionId.substring(0, 8),
+      err: err.message,
+    });
     return { input_tokens: 0, model: null, max_tokens: 200000 };
   }
 }
@@ -268,14 +312,21 @@ async function getSessionSlug(sessionId, projectPath) {
         if (entry.slug) return entry.slug;
       } catch (parseErr) {
         if (!(parseErr instanceof SyntaxError)) {
-          logger.debug('Unexpected error parsing JSONL line in getSessionSlug', { module: 'session-utils', err: parseErr.message });
+          logger.debug('Unexpected error parsing JSONL line in getSessionSlug', {
+            module: 'session-utils',
+            err: parseErr.message,
+          });
         }
         /* expected: malformed JSONL line */
       }
     }
   } catch (err) {
     if (err.code !== 'ENOENT') {
-      logger.error('Unexpected error in getSessionSlug', { module: 'session-utils', sessionId: sessionId.substring(0, 8), err: err.message });
+      logger.error('Unexpected error in getSessionSlug', {
+        module: 'session-utils',
+        sessionId: sessionId.substring(0, 8),
+        err: err.message,
+      });
     }
     /* expected for ENOENT: session file may not exist */
   }

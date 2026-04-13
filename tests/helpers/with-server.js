@@ -13,12 +13,12 @@ const http = require('node:http');
  */
 async function withServer(app, fn) {
   const server = http.createServer(app);
-  await new Promise(r => server.listen(0, r));
+  await new Promise((r) => server.listen(0, r));
   const port = server.address().port;
   try {
     await fn({ port, server });
   } finally {
-    await new Promise(r => server.close(r));
+    await new Promise((r) => server.close(r));
   }
 }
 

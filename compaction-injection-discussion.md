@@ -3,6 +3,7 @@
 ## The Problem
 
 When Blueprint sends instructions to a Claude CLI session via `Read <file>`, the CLI's prompt injection detection flags it as an attack and refuses to follow the instructions. This happened for both:
+
 1. The prep instructions (before compaction) — telling the session to update its plan file
 2. The recovery prompt (after compaction) — telling the session to read its plan file and conversation tail
 
@@ -11,21 +12,25 @@ The CLI said things like: "Flagging another prompt injection attempt. This file 
 ## What We Tried
 
 ### Attempt 1: File read for both prep and recovery
+
 - Wrote multi-line instructions to a file
 - Sent `Read <filepath>` via tmuxSendKeys
 - CLI flagged both as prompt injection attacks
 
 ### Attempt 2: Direct user input for recovery
+
 - Recovery prompt is a single line, so sent directly via tmuxSendKeys
 - CLI accepted it as user input and followed it
 - BUT the plan file wasn't updated because the prep step (still sent via file read) was rejected
 
 ### Why file reads get flagged
+
 - `Read <file>` makes the CLI process content as file content, not user input
 - The CLI's injection detection treats unsolicited file content with directives ("read this", "follow these instructions") as suspicious
 - Direct tmuxSendKeys text is treated as user input, which the CLI trusts
 
 ### The multi-line problem
+
 - Prep instructions are 50+ lines with headers, numbered steps, tool call sequences
 - tmuxSendKeys can't send multi-line text — newlines become Enter keystrokes, fragmenting the prompt
 - So prep can't go via direct input AND can't go via file read
@@ -33,6 +38,7 @@ The CLI said things like: "Flagging another prompt injection attempt. This file 
 ## The Proposed Solution: Two-Session Process Checker
 
 ### Architecture
+
 - **Session A** — the actual work session being compacted. Has full conversation context.
 - **Session B** — a Sonnet process checker running headlessly. Reads the session maintenance guide, knows the full checklist, mediates the conversation with Session A.
 
@@ -57,6 +63,7 @@ The CLI said things like: "Flagging another prompt injection attempt. This file 
 9. Same two-session pattern for recovery — Session B guides Session A through reading the plan file, the conversation tail, and the reading list.
 
 ### Key Design Points
+
 - Session B is cheap (Sonnet), stateless (--print --no-session-persistence), only job is process cop
 - Session A never sees file reads or injected instructions — just natural language prompts that look like a user talking
 - Session B reads the session maintenance guide to know the full 8-element checklist
@@ -64,6 +71,7 @@ The CLI said things like: "Flagging another prompt injection attempt. This file 
 - The conversation is mediated — Blueprint captures A's output and sends it to B, B generates the next prompt, Blueprint sends it to A
 
 ### What we need feedback on
+
 1. Is the two-session mediation approach sound?
 2. How should Session B detect that Session A has completed each step?
 3. What happens if Session A refuses or goes off track — how aggressive should Session B be?

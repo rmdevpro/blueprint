@@ -3,7 +3,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { post } = require('../helpers/http-client');
-const { query, queryCount } = require('../helpers/db-query');
 
 test('CMP: smart-compact API rejects invalid session with 400', async () => {
   const r = await post('/api/sessions/nonexistent_session/smart-compact', { project: 'test' });
@@ -15,12 +14,21 @@ test('CMP: smart-compact API rejects invalid session with 400', async () => {
   // We assert the specific expected behavior:
   if (r.status === 200) {
     // If 200, the response MUST indicate compaction did NOT happen
-    assert.equal(r.data.compacted, false,
-      'Smart-compact for nonexistent session must return compacted:false');
-    assert.ok(r.data.reason, 'Response must include a reason explaining why compaction was skipped');
+    assert.equal(
+      r.data.compacted,
+      false,
+      'Smart-compact for nonexistent session must return compacted:false',
+    );
+    assert.ok(
+      r.data.reason,
+      'Response must include a reason explaining why compaction was skipped',
+    );
   } else {
-    assert.equal(r.status, 400,
-      `Expected 400 for nonexistent session, got ${r.status}. A 500 would indicate an unhandled crash.`);
+    assert.equal(
+      r.status,
+      400,
+      `Expected 400 for nonexistent session, got ${r.status}. A 500 would indicate an unhandled crash.`,
+    );
   }
 });
 
@@ -29,6 +37,8 @@ test('CMP: smart-compact requires project parameter', async () => {
   assert.equal(r.status, 400, 'Missing project parameter must return 400');
   // Verify the error message mentions the missing parameter
   const body = typeof r.data === 'string' ? r.data : JSON.stringify(r.data);
-  assert.ok(body.toLowerCase().includes('project'),
-    `Error response must mention 'project' parameter, got: ${body.substring(0, 200)}`);
+  assert.ok(
+    body.toLowerCase().includes('project'),
+    `Error response must mention 'project' parameter, got: ${body.substring(0, 200)}`,
+  );
 });

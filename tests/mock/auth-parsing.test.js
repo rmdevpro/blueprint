@@ -29,28 +29,40 @@ const indexHtmlPath = path.join(__dirname, '../../public/index.html');
 const indexHtml = fs.readFileSync(indexHtmlPath, 'utf-8');
 
 test('AUTH-ANSI: application defines checkForAuthIssue function', () => {
-  assert.ok(indexHtml.includes('function checkForAuthIssue'),
-    'public/index.html must define checkForAuthIssue function');
+  assert.ok(
+    indexHtml.includes('function checkForAuthIssue'),
+    'public/index.html must define checkForAuthIssue function',
+  );
 });
 
 test('AUTH-ANSI: application uses OAUTH_URL_START constant for auth detection', () => {
-  assert.ok(indexHtml.includes("const OAUTH_URL_START = 'https://claude.com/cai/oauth/authorize?'"),
-    'Application must define OAUTH_URL_START constant');
-  assert.ok(indexHtml.includes('.indexOf(OAUTH_URL_START)'),
-    'Application must use OAUTH_URL_START in its auth detection logic');
+  assert.ok(
+    indexHtml.includes("const OAUTH_URL_START = 'https://claude.com/cai/oauth/authorize?'"),
+    'Application must define OAUTH_URL_START constant',
+  );
+  assert.ok(
+    indexHtml.includes('.indexOf(OAUTH_URL_START)'),
+    'Application must use OAUTH_URL_START in its auth detection logic',
+  );
 });
 
 test('AUTH-ANSI: application includes ANSI stripping regex', () => {
-  assert.ok(indexHtml.includes(String.raw`/\x1b\[[0-9;]*[a-zA-Z]/g`),
-    'Application must use ANSI stripping regex for terminal output cleaning');
+  assert.ok(
+    indexHtml.includes(String.raw`/\x1b\[[0-9;]*[a-zA-Z]/g`),
+    'Application must use ANSI stripping regex for terminal output cleaning',
+  );
 });
 
 test('AUTH-ANSI: application searches for Paste marker after URL', () => {
-  assert.ok(indexHtml.includes(".indexOf('Paste'"),
-    'Application must look for Paste marker to delimit the auth URL');
+  assert.ok(
+    indexHtml.includes(".indexOf('Paste'"),
+    'Application must look for Paste marker to delimit the auth URL',
+  );
 });
 
 test('AUTH-ANSI: checkForAuthIssue calls showAuthModal on detection', () => {
-  assert.ok(indexHtml.includes('showAuthModal'),
-    'checkForAuthIssue must trigger showAuthModal when auth URL is detected');
+  assert.ok(
+    indexHtml.includes('showAuthModal'),
+    'checkForAuthIssue must trigger showAuthModal when auth URL is detected',
+  );
 });

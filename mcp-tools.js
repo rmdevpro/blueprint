@@ -8,7 +8,7 @@ const sessionUtils = require('./session-utils');
 const config = require('./config');
 const logger = require('./logger');
 
-const CLAUDE_HOME = safe.CLAUDE_HOME;
+const _CLAUDE_HOME = safe.CLAUDE_HOME;
 const WORKSPACE = safe.WORKSPACE;
 
 const db = require('./db');
@@ -27,21 +27,33 @@ function validateTaskId(taskId) {
 }
 
 function registerMcpRoutes(app) {
-
   app.get('/api/mcp/tools', (req, res) => {
     res.json({
       tools: [
-        { name: 'blueprint_search_sessions', description: 'Search across all session conversations for a keyword or phrase.' },
-        { name: 'blueprint_summarize_session', description: 'Get an AI-generated summary of a session.' },
-        { name: 'blueprint_list_sessions', description: 'List all sessions for a project with names, timestamps, and message counts.' },
+        {
+          name: 'blueprint_search_sessions',
+          description: 'Search across all session conversations for a keyword or phrase.',
+        },
+        {
+          name: 'blueprint_summarize_session',
+          description: 'Get an AI-generated summary of a session.',
+        },
+        {
+          name: 'blueprint_list_sessions',
+          description:
+            'List all sessions for a project with names, timestamps, and message counts.',
+        },
         { name: 'blueprint_get_project_notes', description: 'Read the shared project notes.' },
-        { name: 'blueprint_get_session_notes', description: 'Read a session\'s private notes.' },
+        { name: 'blueprint_get_session_notes', description: "Read a session's private notes." },
         { name: 'blueprint_get_tasks', description: 'List all tasks for a project.' },
         { name: 'blueprint_add_task', description: 'Add a task to the shared project task list.' },
         { name: 'blueprint_complete_task', description: 'Mark a task as done.' },
-        { name: 'blueprint_get_project_claude_md', description: 'Read a project\'s CLAUDE.md file.' },
-        { name: 'blueprint_read_plan', description: 'Read a session\'s plan file.' },
-        { name: 'blueprint_update_plan', description: 'Write or update a session\'s plan file.' },
+        {
+          name: 'blueprint_get_project_claude_md',
+          description: "Read a project's CLAUDE.md file.",
+        },
+        { name: 'blueprint_read_plan', description: "Read a session's plan file." },
+        { name: 'blueprint_update_plan', description: "Write or update a session's plan file." },
         { name: 'blueprint_smart_compaction', description: 'Run smart compaction on a session.' },
         { name: 'blueprint_ask_quorum', description: 'Ask a question to a multi-model quorum.' },
         { name: 'blueprint_send_message', description: 'Send a message to another session.' },
@@ -60,7 +72,11 @@ function registerMcpRoutes(app) {
     try {
       const realPath = await realpath(fullPath);
       let realBase;
-      try { realBase = await realpath(planBase); } catch (_e) { realBase = planBase; }
+      try {
+        realBase = await realpath(planBase);
+      } catch (_e) {
+        realBase = planBase;
+      }
       return realPath === realBase || realPath.startsWith(realBase + sep);
     } catch (err) {
       if (err.code === 'ENOENT') return true;
@@ -74,13 +90,16 @@ function registerMcpRoutes(app) {
       let result;
       switch (tool) {
         case 'blueprint_search_sessions': {
-          if (!args.query || args.query.length < 2) return res.status(400).json({ error: 'query must be at least 2 characters' });
-          if (args.query.length > 200) return res.status(400).json({ error: 'query too long (max 200)' });
+          if (!args.query || args.query.length < 2)
+            return res.status(400).json({ error: 'query must be at least 2 characters' });
+          if (args.query.length > 200)
+            return res.status(400).json({ error: 'query too long (max 200)' });
           result = await sessionUtils.searchSessions(args.query, args.project);
           break;
         }
         case 'blueprint_summarize_session': {
-          if (!validateMcpSessionId(args.session_id)) return res.status(400).json({ error: 'invalid session_id format' });
+          if (!validateMcpSessionId(args.session_id))
+            return res.status(400).json({ error: 'invalid session_id format' });
           result = await sessionUtils.summarizeSession(args.session_id, args.project);
           break;
         }
@@ -93,7 +112,8 @@ function registerMcpRoutes(app) {
           break;
         }
         case 'blueprint_get_session_notes': {
-          if (!validateMcpSessionId(args.session_id)) return res.status(400).json({ error: 'invalid session_id format' });
+          if (!validateMcpSessionId(args.session_id))
+            return res.status(400).json({ error: 'invalid session_id format' });
           result = { notes: db.getSessionNotes(args.session_id) };
           break;
         }
@@ -105,55 +125,70 @@ function registerMcpRoutes(app) {
         case 'blueprint_add_task': {
           const project = db.getProject(args.project);
           if (!project) throw new Error('Project not found');
-          if (!args.text || args.text.length > 1000) return res.status(400).json({ error: 'text required (max 1000 chars)' });
+          if (!args.text || args.text.length > 1000)
+            return res.status(400).json({ error: 'text required (max 1000 chars)' });
           result = db.addTask(project.id, args.text, 'agent');
           break;
         }
         case 'blueprint_complete_task': {
-          if (!validateTaskId(args.task_id)) return res.status(400).json({ error: 'valid numeric task_id required' });
+          if (!validateTaskId(args.task_id))
+            return res.status(400).json({ error: 'valid numeric task_id required' });
           db.completeTask(Number(args.task_id));
           result = { completed: true };
           break;
         }
         case 'blueprint_get_project_claude_md': {
           const claudeMdPath = join(safe.resolveProjectPath(args.project), 'CLAUDE.md');
-          try { result = { content: await readFile(claudeMdPath, 'utf-8') }; } catch (err) {
-            if (err.code === 'ENOENT') { result = { content: '' }; }
-            else throw err;
+          try {
+            result = { content: await readFile(claudeMdPath, 'utf-8') };
+          } catch (err) {
+            if (err.code === 'ENOENT') {
+              result = { content: '' };
+            } else throw err;
           }
           break;
         }
         case 'blueprint_read_plan': {
-          if (!validateMcpSessionId(args.session_id)) return res.status(400).json({ error: 'invalid session_id format' });
+          if (!validateMcpSessionId(args.session_id))
+            return res.status(400).json({ error: 'invalid session_id format' });
           const planBase = join(db.DATA_DIR, 'plans');
           const planFile = pathResolve(planBase, args.project, `${args.session_id}.md`);
-          if (!(await isPlanPathSafe(planBase, planFile))) return res.status(403).json({ error: 'Path traversal blocked' });
-          try { result = { content: await readFile(planFile, 'utf-8') }; } catch (err) {
-            if (err.code === 'ENOENT') { result = { content: '', exists: false }; }
-            else throw err;
+          if (!(await isPlanPathSafe(planBase, planFile)))
+            return res.status(403).json({ error: 'Path traversal blocked' });
+          try {
+            result = { content: await readFile(planFile, 'utf-8') };
+          } catch (err) {
+            if (err.code === 'ENOENT') {
+              result = { content: '', exists: false };
+            } else throw err;
           }
           break;
         }
         case 'blueprint_update_plan': {
-          if (!validateMcpSessionId(args.session_id)) return res.status(400).json({ error: 'invalid session_id format' });
+          if (!validateMcpSessionId(args.session_id))
+            return res.status(400).json({ error: 'invalid session_id format' });
           if (!args.content) return res.status(400).json({ error: 'content required' });
-          if (args.content.length > CONTENT_MAX_LEN) return res.status(400).json({ error: `content too long (max ${CONTENT_MAX_LEN})` });
+          if (args.content.length > CONTENT_MAX_LEN)
+            return res.status(400).json({ error: `content too long (max ${CONTENT_MAX_LEN})` });
           const planBase = join(db.DATA_DIR, 'plans');
           const planDir = pathResolve(planBase, args.project);
           const planFile = pathResolve(planDir, `${args.session_id}.md`);
-          if (!(await isPlanPathSafe(planBase, planFile))) return res.status(403).json({ error: 'Path traversal blocked' });
+          if (!(await isPlanPathSafe(planBase, planFile)))
+            return res.status(403).json({ error: 'Path traversal blocked' });
           await mkdir(planDir, { recursive: true });
           await writeFile(planFile, args.content);
           result = { saved: true, path: planFile };
           break;
         }
         case 'blueprint_get_token_usage': {
-          if (!validateMcpSessionId(args.session_id)) return res.status(400).json({ error: 'invalid session_id format' });
+          if (!validateMcpSessionId(args.session_id))
+            return res.status(400).json({ error: 'invalid session_id format' });
           result = await sessionUtils.getTokenUsage(args.session_id, args.project);
           break;
         }
         case 'blueprint_set_session_config': {
-          if (!validateMcpSessionId(args.session_id)) return res.status(400).json({ error: 'invalid session_id format' });
+          if (!validateMcpSessionId(args.session_id))
+            return res.status(400).json({ error: 'invalid session_id format' });
           if (args.name !== undefined) db.renameSession(args.session_id, args.name);
           if (args.state !== undefined) db.setSessionState(args.session_id, args.state);
           if (args.notes !== undefined) db.setSessionNotes(args.session_id, args.notes);
@@ -161,13 +196,15 @@ function registerMcpRoutes(app) {
           break;
         }
         case 'blueprint_reopen_task': {
-          if (!validateTaskId(args.task_id)) return res.status(400).json({ error: 'valid numeric task_id required' });
+          if (!validateTaskId(args.task_id))
+            return res.status(400).json({ error: 'valid numeric task_id required' });
           db.reopenTask(Number(args.task_id));
           result = { reopened: true };
           break;
         }
         case 'blueprint_delete_task': {
-          if (!validateTaskId(args.task_id)) return res.status(400).json({ error: 'valid numeric task_id required' });
+          if (!validateTaskId(args.task_id))
+            return res.status(400).json({ error: 'valid numeric task_id required' });
           db.deleteTask(Number(args.task_id));
           result = { deleted: true };
           break;
@@ -180,27 +217,38 @@ function registerMcpRoutes(app) {
           break;
         }
         case 'blueprint_set_session_notes': {
-          if (!validateMcpSessionId(args.session_id)) return res.status(400).json({ error: 'invalid session_id format' });
+          if (!validateMcpSessionId(args.session_id))
+            return res.status(400).json({ error: 'invalid session_id format' });
           db.setSessionNotes(args.session_id, args.notes);
           result = { saved: true };
           break;
         }
         case 'blueprint_smart_compaction': {
-          const r = await fetch(`http://localhost:${process.env.BLUEPRINT_PORT || 3000}/api/sessions/${args.session_id || 'current'}/smart-compact`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project: args.project }),
-          });
+          const r = await fetch(
+            `http://localhost:${process.env.BLUEPRINT_PORT || 3000}/api/sessions/${args.session_id || 'current'}/smart-compact`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ project: args.project }),
+            },
+          );
           if (!r.ok) throw new Error(`Smart compaction internal call failed: ${r.status}`);
           result = await r.json();
           break;
         }
         case 'blueprint_ask_quorum': {
-          const r = await fetch(`http://localhost:${process.env.BLUEPRINT_PORT || 3000}/api/quorum/ask`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ question: args.question, project: args.project, mode: args.mode || 'new' }),
-          });
+          const r = await fetch(
+            `http://localhost:${process.env.BLUEPRINT_PORT || 3000}/api/quorum/ask`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                question: args.question,
+                project: args.project,
+                mode: args.mode || 'new',
+              }),
+            },
+          );
           if (!r.ok) throw new Error(`Quorum internal call failed: ${r.status}`);
           result = await r.json();
           break;
@@ -209,8 +257,10 @@ function registerMcpRoutes(app) {
           const project = db.getProject(args.project);
           if (!project) throw new Error('Project not found');
           if (!args.content) return res.status(400).json({ error: 'content required' });
-          if (args.content.length > CONTENT_MAX_LEN) return res.status(400).json({ error: `content too long (max ${CONTENT_MAX_LEN})` });
-          if (!validateMcpSessionId(args.to_session)) return res.status(400).json({ error: 'invalid to_session format' });
+          if (args.content.length > CONTENT_MAX_LEN)
+            return res.status(400).json({ error: `content too long (max ${CONTENT_MAX_LEN})` });
+          if (!validateMcpSessionId(args.to_session))
+            return res.status(400).json({ error: 'invalid to_session format' });
 
           const bridgeDir = join(WORKSPACE, '.blueprint', 'bridges');
           await mkdir(bridgeDir, { recursive: true });
@@ -225,13 +275,24 @@ function registerMcpRoutes(app) {
             if (!(await safe.tmuxExists(tmuxSessName))) throw new Error('not running');
             const claudeTimeout = config.get('claude.defaultTimeoutMs', 120000);
             await safe.claudeExecAsync(
-              ['--resume', args.to_session, '--dangerously-skip-permissions', '--no-session-persistence', '--print', bridgeFile],
-              { cwd: safe.resolveProjectPath(args.project), timeout: claudeTimeout }
+              [
+                '--resume',
+                args.to_session,
+                '--dangerously-skip-permissions',
+                '--no-session-persistence',
+                '--print',
+                bridgeFile,
+              ],
+              { cwd: safe.resolveProjectPath(args.project), timeout: claudeTimeout },
             );
             sent = true;
           } catch (err) {
             if (err.message !== 'not running') {
-              logger.error('Failed to deliver message to session', { module: 'mcp-tools', op: 'blueprint_send_message', err: err.message });
+              logger.error('Failed to deliver message to session', {
+                module: 'mcp-tools',
+                op: 'blueprint_send_message',
+                err: err.message,
+              });
             }
             /* expected: session not running */
           }
@@ -241,19 +302,33 @@ function registerMcpRoutes(app) {
 
           if (sent) {
             setTimeout(async () => {
-              try { await unlink(bridgeFile); } catch (cleanupErr) {
-                if (cleanupErr.code !== 'ENOENT') logger.debug('Bridge file cleanup failed', { module: 'mcp-tools', err: cleanupErr.message });
+              try {
+                await unlink(bridgeFile);
+              } catch (cleanupErr) {
+                if (cleanupErr.code !== 'ENOENT')
+                  logger.debug('Bridge file cleanup failed', {
+                    module: 'mcp-tools',
+                    err: cleanupErr.message,
+                  });
               }
             }, bridgeCleanupSentMs);
           } else {
             setTimeout(async () => {
-              try { await unlink(bridgeFile); } catch (cleanupErr) {
-                if (cleanupErr.code !== 'ENOENT') logger.debug('Bridge file cleanup failed', { module: 'mcp-tools', err: cleanupErr.message });
+              try {
+                await unlink(bridgeFile);
+              } catch (cleanupErr) {
+                if (cleanupErr.code !== 'ENOENT')
+                  logger.debug('Bridge file cleanup failed', {
+                    module: 'mcp-tools',
+                    err: cleanupErr.message,
+                  });
               }
             }, bridgeCleanupUnsentMs);
           }
 
-          result = sent ? { sent: true, delivered: true } : { sent: false, note: 'Target session not running. Message saved in DB.' };
+          result = sent
+            ? { sent: true, delivered: true }
+            : { sent: false, note: 'Target session not running. Message saved in DB.' };
           break;
         }
         default:
@@ -287,7 +362,12 @@ async function listSessions(project) {
       const sessionId = basename(file, '.jsonl');
       const meta = await sessionUtils.parseSessionFile(join(sDir, file));
       if (meta) {
-        sessions.push({ session_id: sessionId, name: meta.name || 'Untitled', timestamp: meta.timestamp, message_count: meta.messageCount });
+        sessions.push({
+          session_id: sessionId,
+          name: meta.name || 'Untitled',
+          timestamp: meta.timestamp,
+          message_count: meta.messageCount,
+        });
       }
     }
   } catch (err) {

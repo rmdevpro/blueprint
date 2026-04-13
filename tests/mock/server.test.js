@@ -11,8 +11,27 @@ const fixtures = require('../fixtures/test-data');
 const ROOT = path.join(__dirname, '..', '..');
 
 test('ENG-20: all application modules importable', () => {
-  const modules = ['config', 'logger', 'db', 'safe-exec', 'session-utils', 'tmux-lifecycle', 'session-resolver', 'watchers', 'ws-terminal', 'keepalive', 'compaction', 'quorum', 'webhooks', 'shared-state', 'mcp-tools', 'mcp-external', 'openai-compat'];
-  for (const m of modules) assert.doesNotThrow(() => require(path.join(ROOT, m)), `Failed to require ${m}`);
+  const modules = [
+    'config',
+    'logger',
+    'db',
+    'safe-exec',
+    'session-utils',
+    'tmux-lifecycle',
+    'session-resolver',
+    'watchers',
+    'ws-terminal',
+    'keepalive',
+    'compaction',
+    'quorum',
+    'webhooks',
+    'shared-state',
+    'mcp-tools',
+    'mcp-external',
+    'openai-compat',
+  ];
+  for (const m of modules)
+    assert.doesNotThrow(() => require(path.join(ROOT, m)), `Failed to require ${m}`);
 });
 
 test('ENG-04: package.json dependencies are exact-version pinned', async () => {
@@ -25,7 +44,28 @@ test('ENG-04: package.json dependencies are exact-version pinned', async () => {
 });
 
 test('ENG-09: no bare catch {} blocks in application code', () => {
-  const files = ['server.js', 'routes.js', 'compaction.js', 'watchers.js', 'tmux-lifecycle.js', 'ws-terminal.js', 'session-resolver.js', 'session-utils.js', 'safe-exec.js', 'keepalive.js', 'config.js', 'logger.js', 'db.js', 'shared-state.js', 'mcp-tools.js', 'mcp-external.js', 'mcp-server.js', 'openai-compat.js', 'quorum.js', 'webhooks.js'];
+  const files = [
+    'server.js',
+    'routes.js',
+    'compaction.js',
+    'watchers.js',
+    'tmux-lifecycle.js',
+    'ws-terminal.js',
+    'session-resolver.js',
+    'session-utils.js',
+    'safe-exec.js',
+    'keepalive.js',
+    'config.js',
+    'logger.js',
+    'db.js',
+    'shared-state.js',
+    'mcp-tools.js',
+    'mcp-external.js',
+    'mcp-server.js',
+    'openai-compat.js',
+    'quorum.js',
+    'webhooks.js',
+  ];
   for (const file of files) {
     const fp = path.join(ROOT, file);
     if (!fs.existsSync(fp)) continue;
@@ -36,7 +76,13 @@ test('ENG-09: no bare catch {} blocks in application code', () => {
 });
 
 test('ENG-12: no blocking I/O in async functions', () => {
-  const asyncFiles = ['compaction.js', 'watchers.js', 'session-resolver.js', 'keepalive.js', 'routes.js'];
+  const asyncFiles = [
+    'compaction.js',
+    'watchers.js',
+    'session-resolver.js',
+    'keepalive.js',
+    'routes.js',
+  ];
   for (const file of asyncFiles) {
     const content = fs.readFileSync(path.join(ROOT, file), 'utf-8');
     const syncCalls = content.match(/\breadFileSync\b|\bwriteFileSync\b|\bexecSync\b/g);
@@ -65,8 +111,10 @@ test('SRV-05: uncaught exception exits with structured error', async () => {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stderr = '';
-  child.stderr.on('data', c => { stderr += String(c); });
-  const code = await new Promise(r => child.on('exit', r));
+  child.stderr.on('data', (c) => {
+    stderr += String(c);
+  });
+  const code = await new Promise((r) => child.on('exit', r));
   assert.notEqual(code, 0);
   assert.match(stderr, /test-uncaught-exception/);
 });

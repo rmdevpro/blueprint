@@ -24,7 +24,10 @@ async function withDb(fn) {
 
 test('DB-01: schema creates 6 tables with WAL mode', async () => {
   await withDb(async (db) => {
-    const tables = db.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(r => r.name);
+    const tables = db.db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all()
+      .map((r) => r.name);
     for (const t of ['projects', 'sessions', 'tasks', 'settings', 'messages', 'session_meta']) {
       assert.ok(tables.includes(t), `missing table ${t}`);
     }
@@ -38,9 +41,15 @@ test('DB-02: migrations are idempotent', async () => {
   process.env.BLUEPRINT_DATA = dir;
   try {
     const db1 = freshRequire(DB_PATH);
-    const cols1 = db1.db.prepare("PRAGMA table_info(sessions)").all().map(r => r.name);
+    const cols1 = db1.db
+      .prepare('PRAGMA table_info(sessions)')
+      .all()
+      .map((r) => r.name);
     const db2 = freshRequire(DB_PATH);
-    const cols2 = db2.db.prepare("PRAGMA table_info(sessions)").all().map(r => r.name);
+    const cols2 = db2.db
+      .prepare('PRAGMA table_info(sessions)')
+      .all()
+      .map((r) => r.name);
     assert.deepEqual(cols2.sort(), cols1.sort());
   } finally {
     if (prev === undefined) delete process.env.BLUEPRINT_DATA;

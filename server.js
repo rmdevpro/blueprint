@@ -5,38 +5,45 @@ const { createServer } = require('http');
 const { WebSocketServer } = require('ws');
 const { join } = require('path');
 
-const logger       = require('./logger');
-const sharedState  = require('./shared-state');
-const db           = require('./db');
-const safe         = require('./safe-exec');
-const config       = require('./config');
+const logger = require('./logger');
+const sharedState = require('./shared-state');
+const db = require('./db');
+const safe = require('./safe-exec');
+const config = require('./config');
 const sessionUtils = require('./session-utils');
 const { fireEvent } = require('./webhooks');
 
-const createKeepalive       = require('./keepalive');
-const createTmuxLifecycle   = require('./tmux-lifecycle');
+const createKeepalive = require('./keepalive');
+const createTmuxLifecycle = require('./tmux-lifecycle');
 const createSessionResolver = require('./session-resolver');
-const createCompaction      = require('./compaction');
-const createWatchers        = require('./watchers');
-const createWsTerminal      = require('./ws-terminal');
-const registerCoreRoutes    = require('./routes');
+const createCompaction = require('./compaction');
+const createWatchers = require('./watchers');
+const createWsTerminal = require('./ws-terminal');
+const registerCoreRoutes = require('./routes');
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const CLAUDE_HOME = safe.CLAUDE_HOME;
-const WORKSPACE   = safe.WORKSPACE;
-const MAX_TMUX_SESSIONS  = parseInt(process.env.MAX_TMUX_SESSIONS || '5', 10);
+const WORKSPACE = safe.WORKSPACE;
+const MAX_TMUX_SESSIONS = parseInt(process.env.MAX_TMUX_SESSIONS || '5', 10);
 const TMUX_CLEANUP_DELAY = parseInt(process.env.TMUX_CLEANUP_MINUTES || '30', 10) * 60 * 1000;
 
 // ── Global error handlers ───────────────────────────────────────────────────
 
 process.on('uncaughtException', (err) => {
-  logger.error('Uncaught exception — exiting', { module: 'server', err: err.message, stack: err.stack ? err.stack.substring(0, 500) : undefined });
+  logger.error('Uncaught exception — exiting', {
+    module: 'server',
+    err: err.message,
+    stack: err.stack ? err.stack.substring(0, 500) : undefined,
+  });
   process.exit(1);
 });
 process.on('unhandledRejection', (reason) => {
-  logger.error('Unhandled rejection', { module: 'server', err: reason instanceof Error ? reason.message : String(reason) });
+  logger.error('Unhandled rejection', {
+    module: 'server',
+    err: reason instanceof Error ? reason.message : String(reason),
+  });
 });
 
 // ── Construct modules with explicit deps ────────────────────────────────────
@@ -46,27 +53,44 @@ const keepalive = createKeepalive({ safe, config, logger });
 const tmux = createTmuxLifecycle({ safe, MAX_TMUX_SESSIONS, TMUX_CLEANUP_DELAY, logger });
 
 const compaction = createCompaction({
-  db, safe, config, sessionUtils,
-  tmuxName: tmux.tmuxName, tmuxExists: tmux.tmuxExists, sleep: tmux.sleep,
+  db,
+  safe,
+  config,
+  sessionUtils,
+  tmuxName: tmux.tmuxName,
+  tmuxExists: tmux.tmuxExists,
+  sleep: tmux.sleep,
   logger,
 });
 
 const resolver = createSessionResolver({
-  db, safe, config,
-  tmuxName: tmux.tmuxName, tmuxExists: tmux.tmuxExists, sleep: tmux.sleep,
+  db,
+  safe,
+  config,
+  tmuxName: tmux.tmuxName,
+  tmuxExists: tmux.tmuxExists,
+  sleep: tmux.sleep,
   logger,
 });
 
 const watchers = createWatchers({
-  db, safe, config, sessionUtils,
+  db,
+  safe,
+  config,
+  sessionUtils,
   sessionWsClients: sharedState.sessionWsClients,
   checkCompactionNeeds: compaction.checkCompactionNeeds,
-  tmuxName: tmux.tmuxName, tmuxExists: tmux.tmuxExists,
-  CLAUDE_HOME, logger,
+  tmuxName: tmux.tmuxName,
+  tmuxExists: tmux.tmuxExists,
+  CLAUDE_HOME,
+  logger,
 });
 
 const terminal = createWsTerminal({
-  safe, keepalive, logger, config,
+  safe,
+  keepalive,
+  logger,
+  config,
   sessionWsClients: sharedState.sessionWsClients,
   getBrowserCount: sharedState.getBrowserCount,
   incrementBrowserCount: sharedState.incrementBrowserCount,
@@ -82,28 +106,43 @@ tmux.setOnSessionKilled((tmuxSession) => compaction.deleteCompactionState(tmuxSe
 
 // ── Express setup ───────────────────────────────────────────────────────────
 
-const app    = express();
+const app = express();
 const server = createServer(app);
-const wss    = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true });
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use(express.static(join(__dirname, 'public')));
-app.use('/lib/xterm',           express.static(join(__dirname, 'node_modules/@xterm/xterm')));
-app.use('/lib/xterm-fit',       express.static(join(__dirname, 'node_modules/@xterm/addon-fit')));
-app.use('/lib/xterm-web-links', express.static(join(__dirname, 'node_modules/@xterm/addon-web-links')));
-app.use('/lib/jqueryfiletree',  express.static(join(__dirname, 'node_modules/jqueryfiletree/dist')));
-app.use('/lib/jquery',          express.static(join(__dirname, 'node_modules/jquery/dist')));
+app.use('/lib/xterm', express.static(join(__dirname, 'node_modules/@xterm/xterm')));
+app.use('/lib/xterm-fit', express.static(join(__dirname, 'node_modules/@xterm/addon-fit')));
+app.use(
+  '/lib/xterm-web-links',
+  express.static(join(__dirname, 'node_modules/@xterm/addon-web-links')),
+);
+app.use('/lib/jqueryfiletree', express.static(join(__dirname, 'node_modules/jqueryfiletree/dist')));
+app.use('/lib/jquery', express.static(join(__dirname, 'node_modules/jquery/dist')));
 
 // ── Route registration ──────────────────────────────────────────────────────
 
-const { checkAuthStatus, trustDir } = registerCoreRoutes(app, {
-  db, safe, config, sessionUtils, keepalive, fireEvent, logger,
-  tmuxName: tmux.tmuxName, tmuxExists: tmux.tmuxExists, enforceTmuxLimit: tmux.enforceTmuxLimit,
-  resolveSessionId: resolver.resolveSessionId, runSmartCompaction: compaction.runSmartCompaction,
-  getBrowserCount: sharedState.getBrowserCount, CLAUDE_HOME, WORKSPACE,
-  ensureSettings: watchers.ensureSettings, sleep: tmux.sleep,
+const { checkAuthStatus } = registerCoreRoutes(app, {
+  db,
+  safe,
+  config,
+  sessionUtils,
+  keepalive,
+  fireEvent,
+  logger,
+  tmuxName: tmux.tmuxName,
+  tmuxExists: tmux.tmuxExists,
+  enforceTmuxLimit: tmux.enforceTmuxLimit,
+  resolveSessionId: resolver.resolveSessionId,
+  runSmartCompaction: compaction.runSmartCompaction,
+  getBrowserCount: sharedState.getBrowserCount,
+  CLAUDE_HOME,
+  WORKSPACE,
+  ensureSettings: watchers.ensureSettings,
+  sleep: tmux.sleep,
 });
 
 // ── WebSocket upgrade handler ───────────────────────────────────────────────
@@ -111,7 +150,10 @@ const { checkAuthStatus, trustDir } = registerCoreRoutes(app, {
 server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const match = url.pathname.match(/^\/ws\/(.+)$/);
-  if (!match) { socket.destroy(); return; }
+  if (!match) {
+    socket.destroy();
+    return;
+  }
   wss.handleUpgrade(req, socket, head, (ws) => terminal.handleTerminalConnection(ws, match[1]));
 });
 
@@ -136,8 +178,11 @@ if (require.main === module) {
       await tmux.cleanOrphanedTmuxSessions();
       await tmux.cleanBridgeFiles(join(db.DATA_DIR, 'bridges'));
 
-      resolver.resolveStaleNewSessions().catch(err =>
-        logger.error('Startup stale-session resolution error', { module: 'server', err: err.message })
+      resolver.resolveStaleNewSessions().catch((err) =>
+        logger.error('Startup stale-session resolution error', {
+          module: 'server',
+          err: err.message,
+        }),
       );
 
       server.listen(PORT, '0.0.0.0', () => {
@@ -146,15 +191,25 @@ if (require.main === module) {
         watchers.startCompactionMonitor();
         watchers.startSettingsWatcher();
 
-        watchers.registerMcpServer().catch(err =>
-          logger.error('Post-startup MCP registration failed', { module: 'server', err: err.message })
+        watchers.registerMcpServer().catch((err) =>
+          logger.error('Post-startup MCP registration failed', {
+            module: 'server',
+            err: err.message,
+          }),
         );
-        watchers.trustProjectDirs().catch(err =>
-          logger.error('Post-startup trust project dirs failed', { module: 'server', err: err.message })
+        watchers.trustProjectDirs().catch((err) =>
+          logger.error('Post-startup trust project dirs failed', {
+            module: 'server',
+            err: err.message,
+          }),
         );
       });
     } catch (err) {
-      logger.error('Fatal startup error', { module: 'server', err: err.message, stack: err.stack ? err.stack.substring(0, 500) : undefined });
+      logger.error('Fatal startup error', {
+        module: 'server',
+        err: err.message,
+        stack: err.stack ? err.stack.substring(0, 500) : undefined,
+      });
       process.exit(1);
     }
   })();

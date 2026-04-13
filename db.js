@@ -4,7 +4,8 @@ const Database = require('better-sqlite3');
 const { join } = require('path');
 const { mkdirSync } = require('fs');
 
-const DATA_DIR = process.env.BLUEPRINT_DATA || join(process.env.HOME || '/home/hopper', '.blueprint');
+const DATA_DIR =
+  process.env.BLUEPRINT_DATA || join(process.env.HOME || '/home/hopper', '.blueprint');
 mkdirSync(DATA_DIR, { recursive: true });
 
 const db = new Database(join(DATA_DIR, 'blueprint.db'));
@@ -12,12 +13,38 @@ db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
 // ── Schema Migrations (idempotent) ─────────────────────────────────────────
-try { db.exec("ALTER TABLE projects ADD COLUMN notes TEXT DEFAULT ''"); } catch (_e) { /* column exists */ }
-try { db.exec("ALTER TABLE sessions ADD COLUMN notes TEXT DEFAULT ''"); } catch (_e) { /* column exists */ }
-try { db.exec("ALTER TABLE sessions ADD COLUMN state TEXT DEFAULT 'active'"); } catch (_e) { /* column exists */ }
-try { db.exec("ALTER TABLE sessions ADD COLUMN model_override TEXT"); } catch (_e) { /* column exists */ }
-try { db.exec("ALTER TABLE sessions ADD COLUMN user_renamed INTEGER DEFAULT 0"); } catch (_e) { /* column exists */ }
-try { db.exec("UPDATE sessions SET state = 'archived' WHERE archived = 1 AND (state IS NULL OR state = 'active')"); } catch (_e) { /* already migrated */ }
+try {
+  db.exec("ALTER TABLE projects ADD COLUMN notes TEXT DEFAULT ''");
+} catch (_e) {
+  /* column exists */
+}
+try {
+  db.exec("ALTER TABLE sessions ADD COLUMN notes TEXT DEFAULT ''");
+} catch (_e) {
+  /* column exists */
+}
+try {
+  db.exec("ALTER TABLE sessions ADD COLUMN state TEXT DEFAULT 'active'");
+} catch (_e) {
+  /* column exists */
+}
+try {
+  db.exec('ALTER TABLE sessions ADD COLUMN model_override TEXT');
+} catch (_e) {
+  /* column exists */
+}
+try {
+  db.exec('ALTER TABLE sessions ADD COLUMN user_renamed INTEGER DEFAULT 0');
+} catch (_e) {
+  /* column exists */
+}
+try {
+  db.exec(
+    "UPDATE sessions SET state = 'archived' WHERE archived = 1 AND (state IS NULL OR state = 'active')",
+  );
+} catch (_e) {
+  /* already migrated */
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS projects (
@@ -86,7 +113,9 @@ const stmts = {
 
   getSessions: db.prepare('SELECT * FROM sessions WHERE project_id = ? ORDER BY updated_at DESC'),
   getSession: db.prepare('SELECT * FROM sessions WHERE id = ?'),
-  getSessionByPrefix: db.prepare('SELECT s.*, p.name as project_name, p.path as project_path FROM sessions s JOIN projects p ON s.project_id = p.id WHERE s.id LIKE ? LIMIT 1'),
+  getSessionByPrefix: db.prepare(
+    'SELECT s.*, p.name as project_name, p.path as project_path FROM sessions s JOIN projects p ON s.project_id = p.id WHERE s.id LIKE ? LIMIT 1',
+  ),
   upsertSession: db.prepare(`
     INSERT INTO sessions (id, project_id, name, updated_at)
     VALUES (?, ?, ?, datetime('now'))
@@ -94,10 +123,18 @@ const stmts = {
       name = COALESCE(sessions.name, excluded.name),
       updated_at = excluded.updated_at
   `),
-  renameSession: db.prepare("UPDATE sessions SET name = ?, user_renamed = 1, updated_at = datetime('now') WHERE id = ?"),
-  archiveSession: db.prepare("UPDATE sessions SET archived = ?, state = CASE WHEN ? = 1 THEN 'archived' ELSE 'active' END, updated_at = datetime('now') WHERE id = ?"),
-  setSessionStateStmt: db.prepare("UPDATE sessions SET archived = ?, state = ?, updated_at = datetime('now') WHERE id = ?"),
-  getSessionFull: db.prepare('SELECT s.*, p.name as project_name FROM sessions s JOIN projects p ON s.project_id = p.id WHERE s.id = ?'),
+  renameSession: db.prepare(
+    "UPDATE sessions SET name = ?, user_renamed = 1, updated_at = datetime('now') WHERE id = ?",
+  ),
+  archiveSession: db.prepare(
+    "UPDATE sessions SET archived = ?, state = CASE WHEN ? = 1 THEN 'archived' ELSE 'active' END, updated_at = datetime('now') WHERE id = ?",
+  ),
+  setSessionStateStmt: db.prepare(
+    "UPDATE sessions SET archived = ?, state = ?, updated_at = datetime('now') WHERE id = ?",
+  ),
+  getSessionFull: db.prepare(
+    'SELECT s.*, p.name as project_name FROM sessions s JOIN projects p ON s.project_id = p.id WHERE s.id = ?',
+  ),
   deleteSession: db.prepare('DELETE FROM sessions WHERE id = ?'),
   getSessionNotes: db.prepare('SELECT notes FROM sessions WHERE id = ?'),
   setSessionNotes: db.prepare('UPDATE sessions SET notes = ? WHERE id = ?'),
@@ -106,8 +143,10 @@ const stmts = {
   setProjectNotes: db.prepare('UPDATE projects SET notes = ? WHERE id = ?'),
 
   getTasks: db.prepare('SELECT * FROM tasks WHERE project_id = ? ORDER BY created_at ASC'),
-  addTask: db.prepare("INSERT INTO tasks (project_id, text, created_by) VALUES (?, ?, ?)"),
-  completeTask: db.prepare("UPDATE tasks SET status = 'done', completed_at = datetime('now') WHERE id = ?"),
+  addTask: db.prepare('INSERT INTO tasks (project_id, text, created_by) VALUES (?, ?, ?)'),
+  completeTask: db.prepare(
+    "UPDATE tasks SET status = 'done', completed_at = datetime('now') WHERE id = ?",
+  ),
   reopenTask: db.prepare("UPDATE tasks SET status = 'todo', completed_at = NULL WHERE id = ?"),
   deleteTask: db.prepare('DELETE FROM tasks WHERE id = ?'),
 
@@ -125,9 +164,15 @@ const stmts = {
   `),
   deleteSessionMeta: db.prepare('DELETE FROM session_meta WHERE session_id = ?'),
 
-  getMessages: db.prepare('SELECT * FROM messages WHERE project_id = ? AND to_session = ? AND read = 0 ORDER BY created_at ASC'),
-  getAllMessages: db.prepare('SELECT * FROM messages WHERE project_id = ? ORDER BY created_at DESC LIMIT 50'),
-  sendMessage: db.prepare("INSERT INTO messages (project_id, from_session, to_session, content) VALUES (?, ?, ?, ?)"),
+  getMessages: db.prepare(
+    'SELECT * FROM messages WHERE project_id = ? AND to_session = ? AND read = 0 ORDER BY created_at ASC',
+  ),
+  getAllMessages: db.prepare(
+    'SELECT * FROM messages WHERE project_id = ? ORDER BY created_at DESC LIMIT 50',
+  ),
+  sendMessage: db.prepare(
+    'INSERT INTO messages (project_id, from_session, to_session, content) VALUES (?, ?, ?, ?)',
+  ),
   markRead: db.prepare('UPDATE messages SET read = 1 WHERE id = ?'),
 };
 
@@ -135,69 +180,113 @@ module.exports = {
   db,
   DATA_DIR,
 
-  getProjects() { return stmts.getProjects.all(); },
-  getProject(name) { return stmts.getProject.get(name); },
-  getProjectById(id) { return stmts.getProjectById.get(id); },
+  getProjects() {
+    return stmts.getProjects.all();
+  },
+  getProject(name) {
+    return stmts.getProject.get(name);
+  },
+  getProjectById(id) {
+    return stmts.getProjectById.get(id);
+  },
   ensureProject(name, path) {
     stmts.insertProject.run(name, path);
     return stmts.getProject.get(name);
   },
-  deleteProject(id) { db.prepare('DELETE FROM projects WHERE id = ?').run(id); },
+  deleteProject(id) {
+    db.prepare('DELETE FROM projects WHERE id = ?').run(id);
+  },
 
-  getSessionsForProject(projectId) { return stmts.getSessions.all(projectId); },
-  getSession(id) { return stmts.getSession.get(id); },
-  getSessionByPrefix(prefix) { return stmts.getSessionByPrefix.get(prefix + '%'); },
+  getSessionsForProject(projectId) {
+    return stmts.getSessions.all(projectId);
+  },
+  getSession(id) {
+    return stmts.getSession.get(id);
+  },
+  getSessionByPrefix(prefix) {
+    return stmts.getSessionByPrefix.get(prefix + '%');
+  },
   upsertSession(id, projectId, name) {
     stmts.upsertSession.run(id, projectId, name);
     return stmts.getSession.get(id);
   },
-  renameSession(id, name) { stmts.renameSession.run(name, id); },
+  renameSession(id, name) {
+    stmts.renameSession.run(name, id);
+  },
   archiveSession(id, archived) {
     const arch = archived ? 1 : 0;
     stmts.archiveSession.run(arch, arch, id);
   },
-  deleteSession(id) { stmts.deleteSession.run(id); },
+  deleteSession(id) {
+    stmts.deleteSession.run(id);
+  },
 
   getProjectNotes(projectId) {
     const row = stmts.getProjectNotes.get(projectId);
     return row?.notes || '';
   },
-  setProjectNotes(projectId, notes) { stmts.setProjectNotes.run(notes, projectId); },
+  setProjectNotes(projectId, notes) {
+    stmts.setProjectNotes.run(notes, projectId);
+  },
   getSessionNotes(sessionId) {
     const row = stmts.getSessionNotes.get(sessionId);
     return row?.notes || '';
   },
-  setSessionNotes(sessionId, notes) { stmts.setSessionNotes.run(notes, sessionId); },
+  setSessionNotes(sessionId, notes) {
+    stmts.setSessionNotes.run(notes, sessionId);
+  },
 
-  getTasks(projectId) { return stmts.getTasks.all(projectId); },
+  getTasks(projectId) {
+    return stmts.getTasks.all(projectId);
+  },
   addTask(projectId, text, createdBy = 'human') {
     const info = stmts.addTask.run(projectId, text, createdBy);
     return { id: info.lastInsertRowid, text, status: 'todo', created_by: createdBy };
   },
-  completeTask(id) { stmts.completeTask.run(id); },
-  reopenTask(id) { stmts.reopenTask.run(id); },
-  deleteTask(id) { stmts.deleteTask.run(id); },
+  completeTask(id) {
+    stmts.completeTask.run(id);
+  },
+  reopenTask(id) {
+    stmts.reopenTask.run(id);
+  },
+  deleteTask(id) {
+    stmts.deleteTask.run(id);
+  },
 
-  getUnreadMessages(projectId, toSession) { return stmts.getMessages.all(projectId, toSession); },
-  getRecentMessages(projectId) { return stmts.getAllMessages.all(projectId); },
+  getUnreadMessages(projectId, toSession) {
+    return stmts.getMessages.all(projectId, toSession);
+  },
+  getRecentMessages(projectId) {
+    return stmts.getAllMessages.all(projectId);
+  },
   sendMessage(projectId, fromSession, toSession, content) {
     const info = stmts.sendMessage.run(projectId, fromSession, toSession, content);
     return { id: info.lastInsertRowid };
   },
-  markMessageRead(id) { stmts.markRead.run(id); },
+  markMessageRead(id) {
+    stmts.markRead.run(id);
+  },
 
-  getSessionFull(id) { return stmts.getSessionFull.get(id); },
+  getSessionFull(id) {
+    return stmts.getSessionFull.get(id);
+  },
   setSessionState(id, state) {
     const archived = state === 'archived' ? 1 : 0;
     stmts.setSessionStateStmt.run(archived, state, id);
   },
 
-  getSessionMeta(sessionId) { return stmts.getSessionMeta.get(sessionId); },
-  getSessionMetaByPath(filePath) { return stmts.getSessionMetaByPath.get(filePath); },
+  getSessionMeta(sessionId) {
+    return stmts.getSessionMeta.get(sessionId);
+  },
+  getSessionMetaByPath(filePath) {
+    return stmts.getSessionMetaByPath.get(filePath);
+  },
   upsertSessionMeta(sessionId, filePath, mtime, size, name, timestamp, messageCount) {
     stmts.upsertSessionMeta.run(sessionId, filePath, mtime, size, name, timestamp, messageCount);
   },
-  deleteSessionMeta(sessionId) { stmts.deleteSessionMeta.run(sessionId); },
+  deleteSessionMeta(sessionId) {
+    stmts.deleteSessionMeta.run(sessionId);
+  },
   cleanStaleMeta(validSessionIds) {
     const all = db.prepare('SELECT session_id FROM session_meta').all();
     for (const row of all) {
