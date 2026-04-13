@@ -32,7 +32,6 @@ services:
 networks:
   blueprint-test:
     driver: bridge
-    internal: true
 
 volumes:
   blueprint-test_workspace:
