@@ -2,7 +2,8 @@ FROM node:20.18.0-bullseye
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tmux sqlite3 \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && npm install -g @anthropic-ai/claude-code
 
 RUN groupadd -r hopper && useradd -r -g hopper -m -s /bin/bash hopper
 
