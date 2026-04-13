@@ -57,6 +57,7 @@ test('CST: create session and verify token usage API returns structured data', a
 });
 
 test('CST: compaction thresholds are configured and queryable', async () => {
+  await resetBaseline();
   const healthResult = await get('/health');
   assert.equal(healthResult.status, 200, 'Server must be healthy');
 
