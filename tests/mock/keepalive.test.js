@@ -77,11 +77,10 @@ test('KA-09: idle mode stops after timeout when no browsers', async () => {
   const env = await makeEnv({
     credentials: { claudeAiOauth: { expiresAt: Date.now() + 60000 } },
   });
-  env.keepalive.setMode('idle', 0.001); // ~60ms
+  env.keepalive.setMode('idle', 0.001);
   env.keepalive.onBrowserConnect();
   assert.equal(env.keepalive.isRunning(), true);
   env.keepalive.onBrowserDisconnect(0);
-  // After idle timeout fires
   await new Promise(r => setTimeout(r, 200));
   assert.equal(env.keepalive.isRunning(), false);
 });
@@ -92,4 +91,59 @@ test('setMode updates mode', async () => {
   assert.equal(env.keepalive.getMode(), 'always');
   env.keepalive.setMode('browser');
   assert.equal(env.keepalive.getMode(), 'browser');
+});
+
+test('KA: claudeQuery failure returns null and logs error', async () => {
+  const env = await makeEnv({
+    credentials: { claudeAiOauth: { expiresAt: Date.now() - 10000 } },
+    claudeResponses: [new Error('timeout')],
+  });
+  // Start with expired token triggers immediate doRefresh → claudeQuery throws
+  env.keepalive.start();
+  await new Promise(r => setTimeout(r, 150));
+  env.keepalive.stop();
+  assert.ok(env.logs.some(l => l.level === 'error' && /query failed/i.test(l.msg)),
+    'Should log error when claude query throws');
+});
+
+test('KA: start with expired token triggers immediate refresh', async () => {
+  const env = await makeEnv({
+    credentials: { claudeAiOauth: { expiresAt: Date.now() - 10000 } },
+    claudeResponses: ['question?', 'answer!'],
+  });
+  env.keepalive.start();
+  await new Promise(r => setTimeout(r, 100));
+  env.keepalive.stop();
+  assert.ok(env.claudeCalls.length >= 1, 'Should have attempted claude queries');
+  assert.ok(env.logs.some(l => /expired|refreshing|refreshed/i.test(l.msg)));
+});
+
+test('KA: double start is idempotent', async () => {
+  const env = await makeEnv({ credentials: { claudeAiOauth: { expiresAt: Date.now() + 60000 } } });
+  env.keepalive.start();
+  env.keepalive.start();
+  assert.equal(env.keepalive.isRunning(), true);
+  env.keepalive.stop();
+});
+
+test('KA: double stop is idempotent', async () => {
+  const env = await makeEnv({});
+  env.keepalive.stop();
+  env.keepalive.stop();
+  assert.equal(env.keepalive.isRunning(), false);
+});
+
+test('KA: idle mode reconnect cancels idle timer', async () => {
+  const env = await makeEnv({
+    credentials: { claudeAiOauth: { expiresAt: Date.now() + 60000 } },
+  });
+  env.keepalive.setMode('idle', 0.001);
+  env.keepalive.onBrowserConnect();
+  env.keepalive.onBrowserDisconnect(0);
+  // Reconnect before idle timeout fires
+  env.keepalive.onBrowserConnect();
+  await new Promise(r => setTimeout(r, 200));
+  // Should still be running because reconnect cancelled the timer
+  assert.equal(env.keepalive.isRunning(), true);
+  env.keepalive.stop();
 });

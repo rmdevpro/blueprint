@@ -39,9 +39,7 @@ test('ENG-12: no blocking I/O in async functions', () => {
   const asyncFiles = ['compaction.js', 'watchers.js', 'session-resolver.js', 'keepalive.js', 'routes.js'];
   for (const file of asyncFiles) {
     const content = fs.readFileSync(path.join(ROOT, file), 'utf-8');
-    // Check for sync fs calls inside async functions (excluding the expected sync ones in safe-exec)
     const syncCalls = content.match(/\breadFileSync\b|\bwriteFileSync\b|\bexecSync\b/g);
-    // These should not appear in async-context modules
     if (syncCalls && file !== 'config.js') {
       assert.fail(`${file} contains blocking I/O call: ${syncCalls.join(', ')}`);
     }
@@ -49,7 +47,6 @@ test('ENG-12: no blocking I/O in async functions', () => {
 });
 
 test('SRV-05: uncaught exception exits with structured error', async () => {
-  // Ensure fixture paths exist
   await fsp.mkdir(fixtures.paths.workspace, { recursive: true });
   await fsp.mkdir(fixtures.paths.claudeHome, { recursive: true });
   await fsp.mkdir(fixtures.paths.data, { recursive: true });

@@ -23,11 +23,19 @@ describe('usability (browser)', () => {
     await resetBaseline(page);
   });
 
-  it('USR-01: full page renders without errors', async () => {
-    // Verify key structural elements are present
-    assert.ok(await page.locator('#sidebar').isVisible());
-    assert.ok(await page.locator('#main').isVisible());
-    assert.ok(await page.locator('#tab-bar').isVisible());
+  it('USR-01: full page renders with functional layout and loaded data', async () => {
+    assert.ok(await page.locator('#sidebar').isVisible(), 'Sidebar must be visible');
+    assert.ok(await page.locator('#main').isVisible(), 'Main content area must be visible');
+    assert.ok(await page.locator('#tab-bar').isVisible(), 'Tab bar must be visible');
+    // Behavioral: verify the page loaded real data from the server, not just empty containers
+    const projectListContent = await page.locator('#project-list').innerHTML();
+    assert.ok(projectListContent.length > 0,
+      'Project list must contain rendered content (not just an empty container)');
+    // Verify sidebar and main have non-zero layout dimensions (no collapsed layout)
+    const sidebarWidth = await page.locator('#sidebar').evaluate(el => el.offsetWidth);
+    const mainWidth = await page.locator('#main').evaluate(el => el.offsetWidth);
+    assert.ok(sidebarWidth > 50, `Sidebar must have reasonable width, got: ${sidebarWidth}`);
+    assert.ok(mainWidth > 100, `Main area must have reasonable width, got: ${mainWidth}`);
     await page.screenshot({ path: `${SS}/usability--full-page.png`, fullPage: true });
     assert.equal(errors.length, 0, errors.join(', '));
   });
@@ -39,7 +47,6 @@ describe('usability (browser)', () => {
     await page.click('.settings-close');
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
-    // Programmatic assertion: check CSS variable reflects blueprint-dark theme
     const bg = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim());
     assert.ok(bg.includes('081220'), `Expected blueprint-dark theme after reload, got bg: ${bg}`);
     await page.screenshot({ path: `${SS}/usability--settings-persist.png` });

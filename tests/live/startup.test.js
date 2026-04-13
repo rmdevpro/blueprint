@@ -28,7 +28,4 @@ test('SRV-02: serves xterm.js and jquery', async () => {
 test('SRV-04: container alive and server listening', () => {
   const alive = dockerExec('echo alive');
   assert.equal(alive, 'alive');
-  // Gray-box: verify server log shows listening message
-  const logs = dockerExec('cat /proc/1/fd/1 2>/dev/null | head -20 || echo ""');
-  // Container is running if we got here
 });

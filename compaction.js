@@ -577,5 +577,8 @@ module.exports = function createCompaction({ db, safe, config, sessionUtils, tmu
     deleteCompactionState,
     __getCompactionState: () => compactionState,
     __getCompactionLocks: () => compactionLocks,
+    __stripAnsi: stripAnsi,
+    __parseBlueprint: parseBlueprint,
+    __extractAgentMessage: extractAgentMessage,
   };
 };

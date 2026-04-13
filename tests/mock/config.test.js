@@ -104,7 +104,6 @@ test('CFG-03: missing defaults file yields empty cache', async (t) => {
   const configDir = path.join(root, 'config');
   const promptsDir = path.join(configDir, 'prompts');
   await fsp.mkdir(promptsDir, { recursive: true });
-  // Do NOT create defaults.json
   const orig = { readFileSync: fs.readFileSync, readFile: fs.readFile, watchFile: fs.watchFile };
   function rewrite(p) {
     const n = String(p).replace(/\\/g, '/');

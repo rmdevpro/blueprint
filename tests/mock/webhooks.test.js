@@ -20,14 +20,12 @@ test('WHK-08 / WHK-09 / WHK-11: fireEvent sends filtered payloads with correct m
   fireEvent('session_created', { session_id: 's1', project: 'p' });
   fireEvent('task_added', { task_id: 7, project: 'p', text: 'T' });
 
-  // Hook a (wildcard, event_only): session_created + task_added = 2
-  // Hook b (task_added only, full_content): task_added = 1
   assert.equal(requests.length, 3);
   assert.equal(requests[0].event, 'session_created');
-  assert.ok(requests[0].ids); // event_only mode
+  assert.ok(requests[0].ids);
   assert.ok(!requests[0].data);
   assert.equal(requests[2].event, 'task_added');
-  assert.ok(requests[2].data); // full_content mode
+  assert.ok(requests[2].data);
   assert.equal(requests[2].data.text, 'T');
 });
 
@@ -49,5 +47,5 @@ test('WHK-11: event filtering prevents non-matching events', (t) => {
   t.mock.method(http, 'request', () => ({ on() {}, write(b) { requests.push(b); }, end() {}, setTimeout() {} }));
   const { fireEvent } = freshRequire(path.join(__dirname, '../../webhooks.js'));
   fireEvent('session_created', { session_id: 's1' });
-  assert.equal(requests.length, 0); // session_created should be filtered out
+  assert.equal(requests.length, 0);
 });

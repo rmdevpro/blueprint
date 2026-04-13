@@ -23,11 +23,21 @@ describe('settings (browser)', () => {
     await resetBaseline(page);
   });
 
-  it('BRW-13: theme change applies CSS variables', async () => {
+  it('BRW-13: theme change applies CSS variables and persists to server', async () => {
     await page.click('#sidebar-footer button');
     await page.locator('#setting-theme').selectOption('light');
     const bg = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim());
     assert.ok(bg.includes('#f5f5f5') || bg.includes('245'), `Expected light bg, got: ${bg}`);
+    // Gray-box: verify the setting was persisted to the server via API
+    const serverSettings = await page.evaluate(async () => {
+      const r = await fetch('/api/settings');
+      return r.json();
+    });
+    // The theme setting should be stored on the server
+    const storedTheme = serverSettings.theme ? JSON.parse(serverSettings.theme) : null;
+    assert.ok(storedTheme === 'light' || serverSettings.theme === '"light"',
+      `Theme setting must be persisted to server as 'light', got: ${serverSettings.theme}`);
+    // Switch back to dark
     await page.locator('#setting-theme').selectOption('dark');
     await page.screenshot({ path: `${SS}/settings--theme.png` });
     assert.equal(errors.length, 0, errors.join(', '));
@@ -42,14 +52,20 @@ describe('settings (browser)', () => {
     assert.equal(errors.length, 0, errors.join(', '));
   });
 
-  it('BRW-15: settings persist after page reload', async () => {
+  it('BRW-15: settings persist after page reload with server verification', async () => {
     await page.click('#sidebar-footer button');
     await page.locator('#setting-theme').selectOption('blueprint-dark');
     await page.waitForTimeout(600);
     await page.click('.settings-close');
+    // Gray-box: verify server received the setting BEFORE reload
+    const preReloadSettings = await page.evaluate(async () => {
+      const r = await fetch('/api/settings');
+      return r.json();
+    });
+    assert.ok(preReloadSettings.theme,
+      'Theme setting must be saved to server before reload');
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
-    // Verify the theme CSS variable was reapplied after reload
     const bg = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim());
     assert.ok(bg.includes('#081220') || bg.includes('081220'), `Expected blueprint-dark bg after reload, got: ${bg}`);
     await page.screenshot({ path: `${SS}/settings--persist.png` });

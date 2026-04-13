@@ -140,12 +140,9 @@ test('DB-09: delete project cascades sessions, tasks, messages', async () => {
     db.upsertSession('s1', p.id, 'S');
     db.addTask(p.id, 'T');
     db.sendMessage(p.id, 'a', 'b', 'M');
-    const beforeSess = db.db.prepare('SELECT COUNT(*) AS c FROM sessions').get().c;
-    const beforeTask = db.db.prepare('SELECT COUNT(*) AS c FROM tasks').get().c;
-    const beforeMsg = db.db.prepare('SELECT COUNT(*) AS c FROM messages').get().c;
-    assert.ok(beforeSess > 0);
-    assert.ok(beforeTask > 0);
-    assert.ok(beforeMsg > 0);
+    assert.ok(db.db.prepare('SELECT COUNT(*) AS c FROM sessions').get().c > 0);
+    assert.ok(db.db.prepare('SELECT COUNT(*) AS c FROM tasks').get().c > 0);
+    assert.ok(db.db.prepare('SELECT COUNT(*) AS c FROM messages').get().c > 0);
     db.deleteProject(p.id);
     assert.equal(db.db.prepare('SELECT COUNT(*) AS c FROM sessions').get().c, 0);
     assert.equal(db.db.prepare('SELECT COUNT(*) AS c FROM tasks').get().c, 0);
@@ -177,12 +174,10 @@ test('DB-11: getSessionFull joins project name', async () => {
 test('DB-12: concurrent upsertSession calls do not corrupt', async () => {
   await withDb(async (db) => {
     const p = db.ensureProject('proj', '/workspace/proj');
-    // Simulate concurrent writes
     db.upsertSession('s1', p.id, 'First');
     db.upsertSession('s1', p.id, 'Second');
     const s = db.getSession('s1');
     assert.ok(s);
-    // COALESCE keeps first non-null name
     assert.equal(s.name, 'First');
   });
 });

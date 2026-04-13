@@ -39,9 +39,7 @@ test('WAT-03: debounces rapid changes into one callback', async () => {
   try {
     env.w.startJsonlWatcher('bp_abc123');
     const entry = [...env.watched.values()][0];
-    // Fire 3 rapid changes
     entry.listener(); entry.listener(); entry.listener();
-    // Only one non-cleared timer should exist
     const active = env.timers.filter(t => !t.cleared);
     assert.equal(active.length, 1);
     await active[0].fn();
@@ -55,7 +53,7 @@ test('WAT-04: stopJsonlWatcher removes watch and timer', () => {
   const env = makeEnv({ sessionByPrefix: { abc: { id: 'abc', project_id: 1 } }, projectsById: { 1: { id: 1, name: 'p', path: '/tmp' } } });
   try {
     env.w.startJsonlWatcher('bp_abc');
-    [...env.watched.values()][0].listener(); // trigger debounce timer
+    [...env.watched.values()][0].listener();
     env.w.stopJsonlWatcher('bp_abc');
     assert.equal(env.unwatchCalls.length, 1);
     assert.equal(env.timers[0].cleared, true);
@@ -78,4 +76,382 @@ test('WAT: watcher does not start when session not in DB', () => {
     env.w.startJsonlWatcher('bp_unknown');
     assert.equal(env.watched.size, 0);
   } finally { env.cleanup(); }
+});
+
+test('WAT: watcher does not start when project not in DB', () => {
+  const env = makeEnv({ sessionByPrefix: { xyz: { id: 'xyz', project_id: 99 } }, projectsById: {} });
+  try {
+    env.w.startJsonlWatcher('bp_xyz');
+    assert.equal(env.watched.size, 0, 'Should not watch when project missing');
+  } finally { env.cleanup(); }
+});
+
+test('WAT: stopJsonlWatcher is idempotent when no watcher exists', () => {
+  const env = makeEnv({});
+  try {
+    // Should not throw
+    env.w.stopJsonlWatcher('bp_nonexistent');
+    assert.equal(env.unwatchCalls.length, 0);
+  } finally { env.cleanup(); }
+});
+
+test('WAT: JSONL watcher callback handles ENOENT gracefully', async () => {
+  const ws = { readyState: 1, send: () => {} };
+  const env = makeEnv({
+    sessionByPrefix: { err1: { id: 'err1', project_id: 1 } },
+    projectsById: { 1: { id: 1, name: 'p', path: '/tmp' } },
+    sessionWsClients: new Map([['bp_err1', ws]]),
+  });
+  // Override sessionUtils.getTokenUsage to throw ENOENT
+  const origW = createWatchers;
+  const w2 = createWatchers({
+    db: { getSessionByPrefix: p => ({ err1: { id: 'err1', project_id: 1 } }[p]), getProjectById: id => ({ 1: { id: 1, name: 'p', path: '/tmp' } }[id]), getProjects: () => [] },
+    safe: { findSessionsDir: () => '/tmp/sessions' },
+    config: { get: (k, fb) => fb },
+    sessionUtils: { getTokenUsage: async () => { const e = new Error('gone'); e.code = 'ENOENT'; throw e; } },
+    sessionWsClients: new Map([['bp_err1', ws]]),
+    checkCompactionNeeds: async () => {},
+    tmuxName: id => `bp_${id}`,
+    tmuxExists: async () => false,
+    CLAUDE_HOME: '/tmp/claude',
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+  });
+  try {
+    w2.startJsonlWatcher('bp_err1');
+    const entry = [...env.watched.values()][0];
+    if (entry) {
+      entry.listener();
+      const active = env.timers.filter(t => !t.cleared);
+      if (active.length > 0) {
+        // Should not throw — ENOENT is handled
+        await active[0].fn();
+      }
+    }
+  } finally { env.cleanup(); }
+});
+
+// ── startSettingsWatcher tests ─────────────────────────────────────────────
+
+test('WAT-SW-01: startSettingsWatcher registers a file watcher', () => {
+  const env = makeEnv({});
+  try {
+    env.w.startSettingsWatcher();
+    assert.ok(env.watched.size >= 1, 'Should register settings watcher');
+    // Calling again should be idempotent
+    env.w.startSettingsWatcher();
+    assert.ok(env.watched.size >= 1, 'Second call should be idempotent');
+  } finally { env.cleanup(); }
+});
+
+test('WAT-SW-02: settings watcher sends update to connected websockets', async () => {
+  const fsp = require('node:fs/promises');
+  const path = require('node:path');
+  const wsMessages = [];
+  const ws = { readyState: 1, send: m => wsMessages.push(JSON.parse(m)) };
+  const swc = new Map([['bp_s1', ws]]);
+
+  const tmpClaudeHome = await fsp.mkdtemp(path.join(require('node:os').tmpdir(), 'bp-wat-sw-'));
+  await fsp.writeFile(path.join(tmpClaudeHome, 'settings.json'), JSON.stringify({ model: 'opus', effortLevel: 'high' }));
+
+  const env = makeEnv({ sessionWsClients: swc });
+  // We need a watcher with the real CLAUDE_HOME pointing to our temp dir
+  const w2 = createWatchers({
+    db: { getSessionByPrefix: () => null, getProjectById: () => null, getProjects: () => [] },
+    safe: { findSessionsDir: () => '/tmp/sessions' },
+    config: { get: (k, fb) => fb },
+    sessionUtils: { getTokenUsage: async () => ({}) },
+    sessionWsClients: swc,
+    checkCompactionNeeds: async () => {},
+    tmuxName: id => `bp_${id}`,
+    tmuxExists: async () => false,
+    CLAUDE_HOME: tmpClaudeHome,
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+  });
+  try {
+    w2.startSettingsWatcher();
+    // Find the watcher callback
+    const settingsPath = path.join(tmpClaudeHome, 'settings.json');
+    const watcher = env.watched.get(settingsPath);
+    if (watcher) {
+      await watcher.listener();
+      assert.equal(wsMessages.length, 1, 'Should send one settings_update');
+      assert.equal(wsMessages[0].type, 'settings_update');
+      assert.equal(wsMessages[0].model, 'opus');
+    }
+  } finally { env.cleanup(); }
+});
+
+test('WAT-SW-03: settings watcher handles invalid JSON gracefully', async () => {
+  const fsp = require('node:fs/promises');
+  const path = require('node:path');
+  const tmpClaudeHome = await fsp.mkdtemp(path.join(require('node:os').tmpdir(), 'bp-wat-sw-bad-'));
+  await fsp.writeFile(path.join(tmpClaudeHome, 'settings.json'), 'not valid json{');
+
+  const swc = new Map();
+  const env = makeEnv({ sessionWsClients: swc });
+  const w2 = createWatchers({
+    db: { getSessionByPrefix: () => null, getProjectById: () => null, getProjects: () => [] },
+    safe: { findSessionsDir: () => '/tmp/sessions' },
+    config: { get: (k, fb) => fb },
+    sessionUtils: { getTokenUsage: async () => ({}) },
+    sessionWsClients: swc,
+    checkCompactionNeeds: async () => {},
+    tmuxName: id => `bp_${id}`,
+    tmuxExists: async () => false,
+    CLAUDE_HOME: tmpClaudeHome,
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+  });
+  try {
+    w2.startSettingsWatcher();
+    const settingsPath = path.join(tmpClaudeHome, 'settings.json');
+    const watcher = env.watched.get(settingsPath);
+    if (watcher) {
+      // Should not throw
+      await watcher.listener();
+    }
+  } finally { env.cleanup(); }
+});
+
+// ── registerMcpServer tests ────────────────────────────────────────────────
+
+test('WAT-MCP-01: registerMcpServer creates settings.json when not present', async () => {
+  const fsp = require('node:fs/promises');
+  const path = require('node:path');
+  const tmpClaudeHome = await fsp.mkdtemp(path.join(require('node:os').tmpdir(), 'bp-wat-mcp-'));
+
+  const env = makeEnv({});
+  const w2 = createWatchers({
+    db: { getSessionByPrefix: () => null, getProjectById: () => null, getProjects: () => [] },
+    safe: { findSessionsDir: () => '/tmp/sessions' },
+    config: { get: (k, fb) => fb },
+    sessionUtils: { getTokenUsage: async () => ({}) },
+    sessionWsClients: new Map(),
+    checkCompactionNeeds: async () => {},
+    tmuxName: id => `bp_${id}`,
+    tmuxExists: async () => false,
+    CLAUDE_HOME: tmpClaudeHome,
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+  });
+  try {
+    await w2.registerMcpServer();
+    const content = JSON.parse(await fsp.readFile(path.join(tmpClaudeHome, 'settings.json'), 'utf-8'));
+    assert.ok(content.mcpServers.blueprint, 'Should have blueprint MCP server registered');
+    assert.equal(content.mcpServers.blueprint.command, 'node');
+  } finally { env.cleanup(); }
+});
+
+test('WAT-MCP-02: registerMcpServer skips when already registered correctly', async () => {
+  const fsp = require('node:fs/promises');
+  const path = require('node:path');
+  const tmpClaudeHome = await fsp.mkdtemp(path.join(require('node:os').tmpdir(), 'bp-wat-mcp2-'));
+  const expectedArgs = [path.join(__dirname, '../../mcp-server.js')];
+  await fsp.writeFile(path.join(tmpClaudeHome, 'settings.json'), JSON.stringify({
+    mcpServers: { blueprint: { command: 'node', args: expectedArgs } },
+  }));
+
+  const env = makeEnv({});
+  const w2 = createWatchers({
+    db: { getSessionByPrefix: () => null, getProjectById: () => null, getProjects: () => [] },
+    safe: { findSessionsDir: () => '/tmp/sessions' },
+    config: { get: (k, fb) => fb },
+    sessionUtils: { getTokenUsage: async () => ({}) },
+    sessionWsClients: new Map(),
+    checkCompactionNeeds: async () => {},
+    tmuxName: id => `bp_${id}`,
+    tmuxExists: async () => false,
+    CLAUDE_HOME: tmpClaudeHome,
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+  });
+  try {
+    await w2.registerMcpServer();
+    // Should not have overwritten — file should still be the same
+    const content = JSON.parse(await fsp.readFile(path.join(tmpClaudeHome, 'settings.json'), 'utf-8'));
+    assert.ok(content.mcpServers.blueprint);
+  } finally { env.cleanup(); }
+});
+
+test('WAT-MCP-03: registerMcpServer handles corrupt settings.json', async () => {
+  const fsp = require('node:fs/promises');
+  const path = require('node:path');
+  const tmpClaudeHome = await fsp.mkdtemp(path.join(require('node:os').tmpdir(), 'bp-wat-mcp3-'));
+  await fsp.writeFile(path.join(tmpClaudeHome, 'settings.json'), 'corrupt{json');
+
+  const errors = [];
+  const env = makeEnv({});
+  const w2 = createWatchers({
+    db: { getSessionByPrefix: () => null, getProjectById: () => null, getProjects: () => [] },
+    safe: { findSessionsDir: () => '/tmp/sessions' },
+    config: { get: (k, fb) => fb },
+    sessionUtils: { getTokenUsage: async () => ({}) },
+    sessionWsClients: new Map(),
+    checkCompactionNeeds: async () => {},
+    tmuxName: id => `bp_${id}`,
+    tmuxExists: async () => false,
+    CLAUDE_HOME: tmpClaudeHome,
+    logger: { info() {}, warn() {}, error: (msg) => errors.push(msg), debug() {} },
+  });
+  try {
+    await w2.registerMcpServer();
+    // Should log an error about corrupt JSON and return without writing
+    assert.ok(errors.some(e => /corrupt/i.test(e)), 'Should report corrupt settings');
+  } finally { env.cleanup(); }
+});
+
+// ── trustProjectDirs tests ─────────────────────────────────────────────────
+
+test('WAT-TPD-01: trustProjectDirs creates .claude.json when not present', async () => {
+  const fsp = require('node:fs/promises');
+  const path = require('node:path');
+  const tmpClaudeHome = await fsp.mkdtemp(path.join(require('node:os').tmpdir(), 'bp-wat-tpd-'));
+
+  const env = makeEnv({});
+  const w2 = createWatchers({
+    db: { getSessionByPrefix: () => null, getProjectById: () => null, getProjects: () => [{ path: '/workspace/proj1' }] },
+    safe: { findSessionsDir: () => '/tmp/sessions' },
+    config: { get: (k, fb) => fb },
+    sessionUtils: { getTokenUsage: async () => ({}) },
+    sessionWsClients: new Map(),
+    checkCompactionNeeds: async () => {},
+    tmuxName: id => `bp_${id}`,
+    tmuxExists: async () => false,
+    CLAUDE_HOME: tmpClaudeHome,
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+  });
+  try {
+    await w2.trustProjectDirs();
+    const content = JSON.parse(await fsp.readFile(path.join(tmpClaudeHome, '.claude.json'), 'utf-8'));
+    assert.ok(content.projects['/workspace/proj1'], 'Should trust the project dir');
+    assert.equal(content.projects['/workspace/proj1'].hasTrustDialogAccepted, true);
+  } finally { env.cleanup(); }
+});
+
+test('WAT-TPD-02: trustProjectDirs skips already trusted projects', async () => {
+  const fsp = require('node:fs/promises');
+  const path = require('node:path');
+  const tmpClaudeHome = await fsp.mkdtemp(path.join(require('node:os').tmpdir(), 'bp-wat-tpd2-'));
+  await fsp.writeFile(path.join(tmpClaudeHome, '.claude.json'), JSON.stringify({
+    projects: { '/workspace/proj1': { hasTrustDialogAccepted: true } },
+  }));
+
+  const env = makeEnv({});
+  const w2 = createWatchers({
+    db: { getSessionByPrefix: () => null, getProjectById: () => null, getProjects: () => [{ path: '/workspace/proj1' }] },
+    safe: { findSessionsDir: () => '/tmp/sessions' },
+    config: { get: (k, fb) => fb },
+    sessionUtils: { getTokenUsage: async () => ({}) },
+    sessionWsClients: new Map(),
+    checkCompactionNeeds: async () => {},
+    tmuxName: id => `bp_${id}`,
+    tmuxExists: async () => false,
+    CLAUDE_HOME: tmpClaudeHome,
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+  });
+  try {
+    await w2.trustProjectDirs();
+    // Should not have modified the file (no new projects)
+    const content = JSON.parse(await fsp.readFile(path.join(tmpClaudeHome, '.claude.json'), 'utf-8'));
+    assert.ok(content.projects['/workspace/proj1'].hasTrustDialogAccepted);
+  } finally { env.cleanup(); }
+});
+
+test('WAT-TPD-03: trustProjectDirs handles corrupt .claude.json', async () => {
+  const fsp = require('node:fs/promises');
+  const path = require('node:path');
+  const tmpClaudeHome = await fsp.mkdtemp(path.join(require('node:os').tmpdir(), 'bp-wat-tpd3-'));
+  await fsp.writeFile(path.join(tmpClaudeHome, '.claude.json'), 'bad json!!!');
+
+  const errors = [];
+  const env = makeEnv({});
+  const w2 = createWatchers({
+    db: { getSessionByPrefix: () => null, getProjectById: () => null, getProjects: () => [{ path: '/workspace/p' }] },
+    safe: { findSessionsDir: () => '/tmp/sessions' },
+    config: { get: (k, fb) => fb },
+    sessionUtils: { getTokenUsage: async () => ({}) },
+    sessionWsClients: new Map(),
+    checkCompactionNeeds: async () => {},
+    tmuxName: id => `bp_${id}`,
+    tmuxExists: async () => false,
+    CLAUDE_HOME: tmpClaudeHome,
+    logger: { info() {}, warn() {}, error: (msg) => errors.push(msg), debug() {} },
+  });
+  try {
+    await w2.trustProjectDirs();
+    assert.ok(errors.some(e => /corrupt/i.test(e)), 'Should report corrupt .claude.json');
+  } finally { env.cleanup(); }
+});
+
+// ── ensureSettings tests ───────────────────────────────────────────────────
+
+test('WAT-ES-01: ensureSettings creates settings.json when missing', async () => {
+  const fsp = require('node:fs/promises');
+  const path = require('node:path');
+  const tmpClaudeHome = await fsp.mkdtemp(path.join(require('node:os').tmpdir(), 'bp-wat-es-'));
+
+  const env = makeEnv({});
+  const w2 = createWatchers({
+    db: { getSessionByPrefix: () => null, getProjectById: () => null, getProjects: () => [] },
+    safe: { findSessionsDir: () => '/tmp/sessions' },
+    config: { get: (k, fb) => fb },
+    sessionUtils: { getTokenUsage: async () => ({}) },
+    sessionWsClients: new Map(),
+    checkCompactionNeeds: async () => {},
+    tmuxName: id => `bp_${id}`,
+    tmuxExists: async () => false,
+    CLAUDE_HOME: tmpClaudeHome,
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+  });
+  try {
+    await w2.ensureSettings();
+    const content = JSON.parse(await fsp.readFile(path.join(tmpClaudeHome, 'settings.json'), 'utf-8'));
+    assert.equal(content.skipDangerousModePermissionPrompt, true);
+  } finally { env.cleanup(); }
+});
+
+test('WAT-ES-02: ensureSettings does nothing when settings.json already exists', async () => {
+  const fsp = require('node:fs/promises');
+  const path = require('node:path');
+  const tmpClaudeHome = await fsp.mkdtemp(path.join(require('node:os').tmpdir(), 'bp-wat-es2-'));
+  await fsp.writeFile(path.join(tmpClaudeHome, 'settings.json'), JSON.stringify({ customKey: true }));
+
+  const env = makeEnv({});
+  const w2 = createWatchers({
+    db: { getSessionByPrefix: () => null, getProjectById: () => null, getProjects: () => [] },
+    safe: { findSessionsDir: () => '/tmp/sessions' },
+    config: { get: (k, fb) => fb },
+    sessionUtils: { getTokenUsage: async () => ({}) },
+    sessionWsClients: new Map(),
+    checkCompactionNeeds: async () => {},
+    tmuxName: id => `bp_${id}`,
+    tmuxExists: async () => false,
+    CLAUDE_HOME: tmpClaudeHome,
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+  });
+  try {
+    await w2.ensureSettings();
+    // File should still have customKey, not overwritten
+    const content = JSON.parse(await fsp.readFile(path.join(tmpClaudeHome, 'settings.json'), 'utf-8'));
+    assert.equal(content.customKey, true);
+  } finally { env.cleanup(); }
+});
+
+// ── startCompactionMonitor tests ───────────────────────────────────────────
+
+test('WAT-CM-01: startCompactionMonitor registers interval and is idempotent', () => {
+  const origSI = global.setInterval, origCI = global.clearInterval;
+  const intervals = [];
+  global.setInterval = (fn, ms) => { const h = { fn, ms }; intervals.push(h); return h; };
+  global.clearInterval = () => {};
+
+  const env = makeEnv({});
+  try {
+    env.w.startCompactionMonitor();
+    assert.equal(intervals.length, 1, 'Should register one interval');
+    // Calling again should be idempotent
+    env.w.startCompactionMonitor();
+    assert.equal(intervals.length, 1, 'Second call should not register another interval');
+  } finally {
+    global.setInterval = origSI;
+    global.clearInterval = origCI;
+    env.cleanup();
+  }
 });

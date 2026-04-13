@@ -100,3 +100,142 @@ test('RES-08: concurrent JSONL creation resolves to first file', async (t) => {
   assert.ok(env.db.getSession('file_a'));
   assert.equal(env.db.getSession('new_1'), undefined);
 });
+
+test('RES-09: resolveSessionId handles tmux rename failure (no server running)', async (t) => {
+  const dir = '/sessions/_workspace_proj';
+  const sessions = new Map();
+  const db = {
+    sessions,
+    getProjects: () => [{ id: 1, name: 'proj', path: '/workspace/proj' }],
+    getSessionsForProject: (pid) => [...sessions.values()].filter(s => s.project_id === pid),
+    getSession: (id) => sessions.get(id),
+    upsertSession: (id, pid, name) => { const r = { id, project_id: pid, name, notes: '', state: 'active', user_renamed: 0 }; sessions.set(id, r); return r; },
+    renameSession: (id, name) => { const r = sessions.get(id); if (r) { r.name = name; r.user_renamed = 1; } },
+    setSessionNotes: (id, notes) => { const r = sessions.get(id); if (r) r.notes = notes; },
+    setSessionState: (id, state) => { const r = sessions.get(id); if (r) r.state = state; },
+    deleteSession: (id) => sessions.delete(id),
+  };
+  const resolver = createSessionResolver({
+    db,
+    safe: { findSessionsDir: () => dir, tmuxExecAsync: async () => { throw new Error('no server running'); } },
+    tmuxName: id => `bp_${id}`,
+    tmuxExists: async () => false,
+    sleep: async () => {},
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+    config: { get: (k, fb) => ({ 'resolver.maxAttempts': 1, 'resolver.sleepMs': 1 }[k] ?? fb) },
+  });
+  sessions.set('new_t1', { id: 'new_t1', project_id: 1, name: 'T', notes: '', state: 'active', user_renamed: 0 });
+  t.mock.method(require('node:fs/promises'), 'readdir', async () => ['real1.jsonl']);
+  await resolver.resolveSessionId('new_t1', { tmux: 'bp_new_t1', sessionsDir: dir, existingFiles: new Set(), projectId: 1 });
+  // Resolution should succeed despite rename failure
+  assert.ok(db.getSession('real1'), 'Should resolve to real1');
+  assert.equal(db.getSession('new_t1'), undefined);
+});
+
+test('RES-10: resolveSessionId handles tmux rename failure (other error)', async (t) => {
+  const dir = '/sessions/_workspace_proj';
+  const sessions = new Map();
+  const db = {
+    sessions,
+    getSession: (id) => sessions.get(id),
+    upsertSession: (id, pid, name) => { const r = { id, project_id: pid, name, notes: '', state: 'active', user_renamed: 0 }; sessions.set(id, r); return r; },
+    renameSession: () => {},
+    setSessionNotes: () => {},
+    setSessionState: () => {},
+    deleteSession: (id) => sessions.delete(id),
+  };
+  const resolver = createSessionResolver({
+    db,
+    safe: { findSessionsDir: () => dir, tmuxExecAsync: async () => { throw new Error('session not found: bp_new_t2'); } },
+    tmuxName: id => `bp_${id}`,
+    tmuxExists: async () => false,
+    sleep: async () => {},
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+    config: { get: (k, fb) => ({ 'resolver.maxAttempts': 1, 'resolver.sleepMs': 1 }[k] ?? fb) },
+  });
+  sessions.set('new_t2', { id: 'new_t2', project_id: 1, name: 'T', notes: '', state: 'active', user_renamed: 0 });
+  t.mock.method(require('node:fs/promises'), 'readdir', async () => ['real2.jsonl']);
+  await resolver.resolveSessionId('new_t2', { tmux: 'bp_new_t2', sessionsDir: dir, existingFiles: new Set(), projectId: 1 });
+  assert.ok(db.getSession('real2'), 'Should resolve despite rename error');
+});
+
+test('RES-11: resolveStaleNewSessions resolves stale sessions at startup', async (t) => {
+  const dir = '/sessions/_workspace_proj';
+  const env = makeResolver({ filesByDir: new Map([[dir, ['real_abc.jsonl']]]), configValues: { 'resolver.maxAttempts': 1, 'resolver.sleepMs': 1 } });
+  env.db.sessions.set('new_stale1', { id: 'new_stale1', project_id: 1, name: 'Stale', notes: 'preserved', state: 'archived', user_renamed: 1 });
+  t.mock.method(require('node:fs/promises'), 'readdir', env.readdirMock);
+  await env.resolver.resolveStaleNewSessions();
+  assert.ok(env.db.getSession('real_abc'), 'Should resolve to real session');
+  assert.equal(env.db.getSession('real_abc').name, 'Stale', 'Should preserve name');
+  assert.equal(env.db.getSession('real_abc').notes, 'preserved', 'Should preserve notes');
+  assert.equal(env.db.getSession('real_abc').state, 'archived', 'Should preserve state');
+  assert.equal(env.db.getSession('new_stale1'), undefined, 'Stale session should be deleted');
+});
+
+test('RES-12: resolveStaleNewSessions skips if real session already exists', async (t) => {
+  const dir = '/sessions/_workspace_proj';
+  const env = makeResolver({ filesByDir: new Map([[dir, ['existing.jsonl']]]), configValues: { 'resolver.maxAttempts': 1, 'resolver.sleepMs': 1 } });
+  // Both the stale new_ and the real session exist
+  env.db.sessions.set('new_dup', { id: 'new_dup', project_id: 1, name: 'Dup', notes: '', state: 'active', user_renamed: 0 });
+  env.db.sessions.set('existing', { id: 'existing', project_id: 1, name: 'Already Here', notes: '', state: 'active', user_renamed: 0 });
+  t.mock.method(require('node:fs/promises'), 'readdir', env.readdirMock);
+  await env.resolver.resolveStaleNewSessions();
+  // new_dup should be cleaned up, existing should remain unchanged
+  assert.equal(env.db.getSession('new_dup'), undefined, 'Stale session should be removed');
+  assert.equal(env.db.getSession('existing').name, 'Already Here', 'Existing session should be unchanged');
+});
+
+test('RES-13: resolveStaleNewSessions cleans up orphans without unmatched JSONLs', async (t) => {
+  const dir = '/sessions/_workspace_proj';
+  const env = makeResolver({ filesByDir: new Map([[dir, ['known.jsonl']]]), configValues: { 'resolver.maxAttempts': 1, 'resolver.sleepMs': 1 } });
+  // The new_ session and the known session both exist — no unmatched JSONLs
+  env.db.sessions.set('new_orphan', { id: 'new_orphan', project_id: 1, name: 'Orphan', notes: '', state: 'active', user_renamed: 0 });
+  env.db.sessions.set('known', { id: 'known', project_id: 1, name: 'Known', notes: '', state: 'active', user_renamed: 0 });
+  t.mock.method(require('node:fs/promises'), 'readdir', env.readdirMock);
+  await env.resolver.resolveStaleNewSessions();
+  // No unmatched files → orphan gets cleaned up
+  assert.equal(env.db.getSession('new_orphan'), undefined, 'Orphan should be cleaned up');
+  assert.ok(env.db.getSession('known'), 'Known session should remain');
+});
+
+test('RES-14: resolveStaleNewSessions handles readdir non-ENOENT error', async (t) => {
+  const dir = '/sessions/_workspace_proj';
+  const errors = [];
+  const sessions = new Map();
+  const db = {
+    sessions,
+    getProjects: () => [{ id: 1, name: 'proj', path: '/workspace/proj' }],
+    getSessionsForProject: (pid) => [...sessions.values()].filter(s => s.project_id === pid),
+    getSession: (id) => sessions.get(id),
+    upsertSession: (id, pid, name) => { sessions.set(id, { id, project_id: pid, name, notes: '', state: 'active', user_renamed: 0 }); },
+    deleteSession: (id) => sessions.delete(id),
+  };
+  const resolver = createSessionResolver({
+    db,
+    safe: { findSessionsDir: () => dir, tmuxExecAsync: async () => '' },
+    tmuxName: id => `bp_${id}`,
+    tmuxExists: async () => false,
+    sleep: async () => {},
+    logger: { info() {}, warn() {}, error: (msg, meta) => errors.push(msg), debug() {} },
+    config: { get: (k, fb) => ({ 'resolver.maxAttempts': 1, 'resolver.sleepMs': 1 }[k] ?? fb) },
+  });
+  sessions.set('new_err', { id: 'new_err', project_id: 1, name: 'T', notes: '', state: 'active', user_renamed: 0 });
+  t.mock.method(require('node:fs/promises'), 'readdir', async () => { throw new Error('permission denied'); });
+  await resolver.resolveStaleNewSessions();
+  assert.ok(errors.some(e => /Cannot read sessions dir/i.test(e)), 'Should log error for non-ENOENT');
+});
+
+test('RES-15: resolveSessionId handles readdir non-ENOENT error during polling', async (t) => {
+  const dir = '/sessions/_workspace_proj';
+  let callCount = 0;
+  const env = makeResolver({ configValues: { 'resolver.maxAttempts': 2, 'resolver.sleepMs': 1 } });
+  env.db.sessions.set('new_poll_err', { id: 'new_poll_err', project_id: 1, name: 'T', notes: '', state: 'active', user_renamed: 0 });
+  t.mock.method(require('node:fs/promises'), 'readdir', async () => {
+    callCount++;
+    if (callCount === 1) throw new Error('disk error');
+    return ['resolved.jsonl'];
+  });
+  await env.resolver.resolveSessionId('new_poll_err', { tmux: 'bp_new_poll_err', sessionsDir: dir, existingFiles: new Set(), projectId: 1 });
+  // Should have retried and resolved on second attempt
+  assert.ok(env.db.getSession('resolved'), 'Should resolve after transient error');
+});

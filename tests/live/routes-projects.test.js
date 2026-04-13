@@ -12,7 +12,6 @@ test('PRJ-01: add project by path with DB verification', async () => {
   const r = await post('/api/projects', { path: '/workspace/test_live_project', name: 'test_live_project' });
   assert.equal(r.status, 200);
   assert.equal(r.data.name, 'test_live_project');
-  // Gray-box: verify DB row
   const count = queryCount('projects', "name='test_live_project'");
   assert.ok(count >= 1, 'Project should exist in DB');
 });

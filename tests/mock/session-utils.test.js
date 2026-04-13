@@ -56,7 +56,6 @@ test('SU-02: cache hit avoids reparse when mtime/size unchanged', async (t) => {
   const file = path.join(dir, 'cached.jsonl');
   await fsp.writeFile(file, fixtures.sessionUtilsValidLines.join('\n') + '\n');
   const first = await su.parseSessionFile(file);
-  // Second call should hit cache (same mtime/size)
   const second = await su.parseSessionFile(file);
   assert.deepEqual(first, second);
 });
@@ -80,21 +79,20 @@ test('SU-04: malformed JSONL lines tolerated', async (t) => {
 });
 
 test('SU-09 / SU-10 / SU-11: getTokenUsage uses last real assistant, ignores synthetic, model context size', async (t) => {
-  const { db, safe, su, workspace } = await setupEnv(t);
-  const p = db.ensureProject('proj', path.join(workspace, 'proj'));
+  const { db, safe, su } = await setupEnv(t);
+  const p = db.ensureProject('proj', '/virtual/proj');
   const sd = safe.findSessionsDir(p.path);
   await fsp.mkdir(sd, { recursive: true });
   await fsp.writeFile(path.join(sd, 's1.jsonl'), fixtures.tokenUsageLines.join('\n') + '\n');
   const r = await su.getTokenUsage('s1', 'proj');
-  // input_tokens(5000) + cache_read(300) + cache_create(200) = 5500
   assert.equal(r.input_tokens, 5500);
   assert.equal(r.model, 'claude-sonnet-4-6');
   assert.equal(r.max_tokens, 200000);
 });
 
 test('SU-11: opus model returns 1M max_tokens', async (t) => {
-  const { db, safe, su, workspace } = await setupEnv(t);
-  const p = db.ensureProject('projop', path.join(workspace, 'projop'));
+  const { db, safe, su } = await setupEnv(t);
+  const p = db.ensureProject('projop', '/virtual/projop');
   const sd = safe.findSessionsDir(p.path);
   await fsp.mkdir(sd, { recursive: true });
   const line = fixtures.makeJsonlLine(fixtures.makeAssistantEntry({ model: 'claude-opus-4-6', inputTokens: 1000 }));
@@ -104,8 +102,8 @@ test('SU-11: opus model returns 1M max_tokens', async (t) => {
 });
 
 test('SU-08: summarizeSession falls back on Claude failure', async (t) => {
-  const { db, safe, su, workspace } = await setupEnv(t);
-  const p = db.ensureProject('proj', path.join(workspace, 'proj'));
+  const { db, safe, su } = await setupEnv(t);
+  const p = db.ensureProject('proj', '/virtual/proj');
   const sd = safe.findSessionsDir(p.path);
   await fsp.mkdir(sd, { recursive: true });
   await fsp.writeFile(path.join(sd, 's1.jsonl'), fixtures.sessionUtilsValidLines.join('\n') + '\n');
@@ -125,21 +123,19 @@ test('SES-20 / SU missing JSONL: parseSessionFile returns null, getTokenUsage re
 });
 
 test('SU-12 / SES-19: getSessionSlug extracts slug from JSONL', async (t) => {
-  const { db, safe, su, workspace } = await setupEnv(t);
-  const p = db.ensureProject('slugproj', path.join(workspace, 'slugproj'));
+  const { db, safe, su } = await setupEnv(t);
+  const p = db.ensureProject('slugproj', '/virtual/slugproj');
   const sd = safe.findSessionsDir(p.path);
   await fsp.mkdir(sd, { recursive: true });
-  const lines = [
-    JSON.stringify({ type: 'user', message: { content: 'hi' }, slug: 'my-session-slug' }),
-  ];
+  const lines = [JSON.stringify({ type: 'user', message: { content: 'hi' }, slug: 'my-session-slug' })];
   await fsp.writeFile(path.join(sd, 'slug1.jsonl'), lines.join('\n') + '\n');
   const slug = await su.getSessionSlug('slug1', p.path);
   assert.equal(slug, 'my-session-slug');
 });
 
 test('SU-12: getSessionSlug returns null when no slug entry', async (t) => {
-  const { db, safe, su, workspace } = await setupEnv(t);
-  const p = db.ensureProject('noslug', path.join(workspace, 'noslug'));
+  const { db, safe, su } = await setupEnv(t);
+  const p = db.ensureProject('noslug', '/virtual/noslug');
   const sd = safe.findSessionsDir(p.path);
   await fsp.mkdir(sd, { recursive: true });
   await fsp.writeFile(path.join(sd, 'ns1.jsonl'), fixtures.sessionUtilsValidLines.join('\n') + '\n');
@@ -150,4 +146,105 @@ test('new_ session returns zero tokens', async (t) => {
   const { su } = await setupEnv(t);
   const r = await su.getTokenUsage('new_123', 'proj');
   assert.equal(r.input_tokens, 0);
+});
+
+// -- searchSessions tests --
+
+test('SU-13: searchSessions finds matching messages in session files', async (t) => {
+  const { db, safe, su } = await setupEnv(t);
+  const p = db.ensureProject('searchproj', '/virtual/searchproj');
+  const sd = safe.findSessionsDir(p.path);
+  await fsp.mkdir(sd, { recursive: true });
+  const lines = [
+    JSON.stringify({ type: 'user', message: { content: 'How do I deploy to production?' }, timestamp: '2026-04-10T10:00:00Z' }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Run docker compose up' }] }, timestamp: '2026-04-10T10:01:00Z' }),
+  ];
+  await fsp.writeFile(path.join(sd, 'search1.jsonl'), lines.join('\n') + '\n');
+  const results = await su.searchSessions('deploy', null, 10);
+  assert.ok(results.length > 0, 'Should find sessions matching "deploy"');
+  assert.equal(results[0].session_id, 'search1');
+  assert.equal(results[0].project, 'searchproj');
+  assert.ok(results[0].match_count >= 1);
+  assert.ok(results[0].snippets.length >= 1);
+  assert.ok(results[0].snippets[0].toLowerCase().includes('deploy'));
+});
+
+test('SU-13: searchSessions returns empty for non-matching query', async (t) => {
+  const { db, safe, su } = await setupEnv(t);
+  const p = db.ensureProject('searchproj2', '/virtual/searchproj2');
+  const sd = safe.findSessionsDir(p.path);
+  await fsp.mkdir(sd, { recursive: true });
+  await fsp.writeFile(path.join(sd, 'nomatch.jsonl'),
+    JSON.stringify({ type: 'user', message: { content: 'hello world' } }) + '\n');
+  const results = await su.searchSessions('xyznonexistent', null, 10);
+  assert.equal(results.length, 0);
+});
+
+test('SU-13: searchSessions filters by project when projectFilter given', async (t) => {
+  const { db, safe, su } = await setupEnv(t);
+  const p1 = db.ensureProject('alpha', '/virtual/alpha');
+  const p2 = db.ensureProject('beta', '/virtual/beta');
+  const sd1 = safe.findSessionsDir(p1.path);
+  const sd2 = safe.findSessionsDir(p2.path);
+  await fsp.mkdir(sd1, { recursive: true });
+  await fsp.mkdir(sd2, { recursive: true });
+  await fsp.writeFile(path.join(sd1, 'a1.jsonl'),
+    JSON.stringify({ type: 'user', message: { content: 'deploy alpha' } }) + '\n');
+  await fsp.writeFile(path.join(sd2, 'b1.jsonl'),
+    JSON.stringify({ type: 'user', message: { content: 'deploy beta' } }) + '\n');
+  const results = await su.searchSessions('deploy', 'alpha', 10);
+  assert.equal(results.length, 1);
+  assert.equal(results[0].project, 'alpha');
+});
+
+test('SU-13: searchSessions tolerates malformed JSONL lines', async (t) => {
+  const { db, safe, su } = await setupEnv(t);
+  const p = db.ensureProject('malproj', '/virtual/malproj');
+  const sd = safe.findSessionsDir(p.path);
+  await fsp.mkdir(sd, { recursive: true });
+  const lines = [
+    'not valid json',
+    JSON.stringify({ type: 'user', message: { content: 'searchable text' } }),
+  ];
+  await fsp.writeFile(path.join(sd, 'mal1.jsonl'), lines.join('\n') + '\n');
+  const results = await su.searchSessions('searchable', null, 10);
+  assert.equal(results.length, 1, 'Should still find match despite malformed lines');
+});
+
+test('SU-13: searchSessions handles missing sessions directory gracefully', async (t) => {
+  const { db, su } = await setupEnv(t);
+  db.ensureProject('nodir', '/virtual/nodir');
+  // No sessions directory created
+  const results = await su.searchSessions('test', null, 10);
+  assert.ok(Array.isArray(results));
+});
+
+// -- getTokenUsage edge cases --
+
+test('SU: getTokenUsage handles non-ENOENT file error gracefully', async (t) => {
+  const { db, safe, su } = await setupEnv(t);
+  const p = db.ensureProject('errproj', '/virtual/errproj');
+  const sd = safe.findSessionsDir(p.path);
+  await fsp.mkdir(sd, { recursive: true });
+  // Create a directory where a file is expected — causes EISDIR
+  await fsp.mkdir(path.join(sd, 'broken.jsonl'), { recursive: true });
+  const r = await su.getTokenUsage('broken', 'errproj');
+  assert.equal(r.input_tokens, 0, 'Should return zero tokens on non-ENOENT error');
+});
+
+// -- getSessionSlug edge cases --
+
+test('SU: getSessionSlug returns null for missing file', async (t) => {
+  const { su } = await setupEnv(t);
+  const slug = await su.getSessionSlug('nonexistent', '/virtual/nowhere');
+  assert.equal(slug, null);
+});
+
+// -- extractMessageText --
+
+test('SU: extractMessageText handles non-user/assistant types', async (t) => {
+  const { su } = await setupEnv(t);
+  assert.equal(su.extractMessageText({ type: 'system', message: { content: 'sys' } }), '');
+  assert.equal(su.extractMessageText({ type: 'user', message: { content: 'hello' } }), 'hello');
+  assert.equal(su.extractMessageText({ type: 'assistant', message: { content: [{ type: 'text', text: 'reply' }] } }), 'reply');
 });

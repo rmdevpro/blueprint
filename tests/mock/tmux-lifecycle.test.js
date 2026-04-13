@@ -96,5 +96,5 @@ test('sleep resolves after delay', async () => {
   const { lifecycle } = makeLifecycle();
   const start = Date.now();
   await lifecycle.sleep(10);
-  assert.ok(Date.now() - start >= 8); // allow small timing variance
+  assert.ok(Date.now() - start >= 8);
 });

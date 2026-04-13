@@ -77,8 +77,7 @@ test('WS-05: backpressure pauses PTY at high watermark', async () => {
   const env = makeEnv();
   const ws = makeWs();
   await env.terminal.handleTerminalConnection(ws, 'bp_test');
-  // Simulate high bufferedAmount
-  ws.bufferedAmount = 2000; // > 1024 highWater
+  ws.bufferedAmount = 2000;
   env.fakePty.emitData('x'.repeat(100));
   assert.equal(env.fakePty.paused, true);
 });
@@ -107,7 +106,6 @@ test('WS-08: token_update forwarded to WS client', async () => {
   const env = makeEnv();
   const ws = makeWs();
   await env.terminal.handleTerminalConnection(ws, 'bp_test');
-  // The swc map should have the ws registered
   assert.equal(env.sessionWsClients.get('bp_test'), ws);
 });
 
@@ -133,4 +131,39 @@ test('WS: ping message gets pong response', async () => {
   await env.terminal.handleTerminalConnection(ws, 'bp_test');
   ws.trigger('message', Buffer.from(JSON.stringify({ type: 'ping' })));
   assert.ok(ws.sent.some(s => { try { return JSON.parse(s).type === 'pong'; } catch { return false; } }));
+});
+
+test('WS-06: heartbeat ping sent on interval, terminates unresponsive connection', async () => {
+  // pingIntervalMs is 50ms in makeEnv config
+  const env = makeEnv();
+  const ws = makeWs();
+  await env.terminal.handleTerminalConnection(ws, 'bp_test');
+
+  // After one interval, server should ping the client
+  await new Promise(r => setTimeout(r, 70));
+  assert.equal(ws.pinged, true, 'Server should ping after interval');
+  assert.equal(ws.isAlive, false, 'isAlive should be set to false before ping');
+
+  // Simulate pong response (resets isAlive)
+  ws.trigger('pong');
+  assert.equal(ws.isAlive, true, 'Pong should set isAlive back to true');
+
+  // Now simulate no pong — next interval should terminate
+  ws.pinged = false;
+  await new Promise(r => setTimeout(r, 70));
+  // isAlive was set to false by first interval tick, pong reset it
+  // second tick: isAlive is true (we just set it), so it sets false and pings again
+  assert.equal(ws.pinged, true, 'Should ping again on next interval');
+
+  // Now DON'T respond with pong — next tick should terminate
+  await new Promise(r => setTimeout(r, 70));
+  assert.equal(ws.readyState, 3, 'Unresponsive connection should be terminated');
+});
+
+test('WS: error event kills PTY', async () => {
+  const env = makeEnv();
+  const ws = makeWs();
+  await env.terminal.handleTerminalConnection(ws, 'bp_test');
+  ws.trigger('error', new Error('test error'));
+  assert.equal(env.fakePty.killed, true, 'Error should kill the PTY');
 });

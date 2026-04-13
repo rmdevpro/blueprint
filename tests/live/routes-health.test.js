@@ -22,10 +22,8 @@ test('HLT-03: reports per-dependency status', async () => {
 
 test('HLT-04: auth degraded does not flip HTTP status to 503', async () => {
   const r = await get('/health');
-  // Whether auth is healthy or degraded, HTTP status should be 200 if db+workspace are ok
   if (r.data.dependencies.auth === 'degraded') {
     assert.equal(r.status, 200, 'Auth degraded should not cause 503');
   }
-  // Also verify the field exists regardless
   assert.ok(r.data.dependencies.auth === 'healthy' || r.data.dependencies.auth === 'degraded');
 });

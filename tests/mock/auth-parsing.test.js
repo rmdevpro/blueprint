@@ -1,51 +1,56 @@
 'use strict';
 
+/**
+ * AUTH-ANSI: Auth URL extraction verification.
+ *
+ * The auth URL extraction logic lives in a <script> block in public/index.html
+ * (checkForAuthIssue). It cannot be imported as a Node module.
+ *
+ * Per WPR-105 "Imports real code" criterion: we MUST NOT reimplement the algorithm
+ * locally in tests. The previous version of this file copied the regex, indexOf,
+ * and cleanup logic into a local extractAuthUrlFromBuffer() — that function would
+ * pass even if the real application code were deleted or broken.
+ *
+ * The ONLY valid mock-layer tests for this code are:
+ *   1. Verify the application source contains the expected constants and patterns
+ *      (a guard that detects if the real code is removed or restructured).
+ *   2. Verify the HTML file is parseable and contains the checkForAuthIssue function.
+ *
+ * Behavioral verification of the actual extraction algorithm is done exclusively
+ * in the browser layer (BRW-28 in auth-modal.spec.js), which executes the real
+ * checkForAuthIssue() function in its native browser context.
+ */
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fixtures = require('../fixtures/test-data');
+const fs = require('node:fs');
+const path = require('node:path');
 
-// AUTH-ANSI tests verify the auth URL extraction logic from public/index.html.
-// The extraction logic lives in the browser (checkForAuthIssue/showAuthModal functions).
-// Since we cannot import browser-side JS directly, we extract and test the same algorithm
-// that the application uses. The canonical source is public/index.html's checkForAuthIssue.
+const indexHtmlPath = path.join(__dirname, '../../public/index.html');
+const indexHtml = fs.readFileSync(indexHtmlPath, 'utf-8');
 
-// This is the exact algorithm from public/index.html checkForAuthIssue:
-const OAUTH_URL_START = 'https://claude.com/cai/oauth/authorize?';
-
-function extractAuthUrl(buffer) {
-  // Strip ANSI escapes — same regex as the application
-  const cleanBuf = buffer.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/[\x07]/g, '');
-  const urlStart = cleanBuf.indexOf(OAUTH_URL_START);
-  if (urlStart === -1) return null;
-  const pasteIdx = cleanBuf.indexOf('Paste', urlStart + 50);
-  if (pasteIdx === -1) return null;
-  const rawUrl = cleanBuf.substring(urlStart, pasteIdx);
-  return rawUrl
-    .replace(/[\x00-\x1f]/g, '')
-    .replace(/\s+/g, '')
-    .replace(/[&?]+$/, '');
-}
-
-// NOTE: This function mirrors the browser code. To verify it matches the application,
-// run the browser test BRW-28 which exercises the real in-page implementation.
-
-test('AUTH-ANSI-01: strips ANSI and extracts OAuth URL', () => {
-  const input = `${fixtures.authAnsi.ansiUrl} Paste code here`;
-  const url = extractAuthUrl(input);
-  assert.equal(url, 'https://claude.com/cai/oauth/authorize?code=abc123');
+test('AUTH-ANSI: application defines checkForAuthIssue function', () => {
+  assert.ok(indexHtml.includes('function checkForAuthIssue'),
+    'public/index.html must define checkForAuthIssue function');
 });
 
-test('AUTH-ANSI-02: accumulates fragmented frames', () => {
-  let buf = '';
-  for (const f of fixtures.authAnsi.fragmentedFrames) buf += f;
-  const url = extractAuthUrl(buf);
-  assert.equal(url, 'https://claude.com/cai/oauth/authorize?client=bp&code=xyz');
+test('AUTH-ANSI: application uses OAUTH_URL_START constant for auth detection', () => {
+  assert.ok(indexHtml.includes("const OAUTH_URL_START = 'https://claude.com/cai/oauth/authorize?'"),
+    'Application must define OAUTH_URL_START constant');
+  assert.ok(indexHtml.includes('.indexOf(OAUTH_URL_START)'),
+    'Application must use OAUTH_URL_START in its auth detection logic');
 });
 
-test('AUTH-ANSI-03: large prefix with buffer eviction still detects URL', () => {
-  // Simulate the application's 4KB buffer retention
-  const retained = fixtures.authAnsi.largePrefix.slice(-4000);
-  const url = extractAuthUrl(retained);
-  // The URL must be found in the retained buffer alone — no fallback to full string
-  assert.equal(url, 'https://claude.com/cai/oauth/authorize?state=large');
+test('AUTH-ANSI: application includes ANSI stripping regex', () => {
+  assert.ok(indexHtml.includes(String.raw`/\x1b\[[0-9;]*[a-zA-Z]/g`),
+    'Application must use ANSI stripping regex for terminal output cleaning');
+});
+
+test('AUTH-ANSI: application searches for Paste marker after URL', () => {
+  assert.ok(indexHtml.includes(".indexOf('Paste'"),
+    'Application must look for Paste marker to delimit the auth URL');
+});
+
+test('AUTH-ANSI: checkForAuthIssue calls showAuthModal on detection', () => {
+  assert.ok(indexHtml.includes('showAuthModal'),
+    'checkForAuthIssue must trigger showAuthModal when auth URL is detected');
 });
