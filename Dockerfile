@@ -20,7 +20,7 @@ RUN curl -fsSL https://download.docker.com/linux/static/stable/$(uname -m)/docke
 ARG NPM_REGISTRY=http://192.168.1.110:4873
 RUN npm config set registry ${NPM_REGISTRY}
 RUN npm install -g @anthropic-ai/claude-code @playwright/mcp
-RUN npx playwright install chromium
+RUN npx playwright install chrome
 
 # Copy and install app dependencies
 WORKDIR /app
