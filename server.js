@@ -50,14 +50,8 @@ app.use('/lib/xterm-web-links', express.static(join(__dirname, 'node_modules/@xt
 
 app.get('/api/mounts', async (req, res) => {
   try {
-    const { execSync } = require('child_process');
-    const mountOutput = execSync("mount | grep -v proc | grep -v sys | grep -v dev | grep -v tmpfs | grep -v cgroup | grep -v mqueue | grep -v overlay", { encoding: 'utf-8' });
-    const mounts = mountOutput.trim().split('\n')
-      .map(line => {
-        const match = line.match(/on\s+(\S+)\s+type\s+(\S+)/);
-        return match ? { path: match[1], type: match[2] } : null;
-      })
-      .filter(Boolean);
+    const entries = await readdir('/mnt', { withFileTypes: true });
+    const mounts = entries.filter(e => e.isDirectory()).map(e => ({ path: '/mnt/' + e.name }));
     res.json(mounts);
   } catch (err) {
     res.json([]);
