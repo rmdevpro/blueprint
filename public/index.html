@@ -483,6 +483,11 @@
         <div id="message-list" style="font-size:12px;color:var(--text-secondary)">No messages yet</div>
       </div>
       <div id="panel-files" class="panel-section">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:4px;gap:4px">
+          <button onclick="fileBrowserNewFolder()" style="background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);cursor:pointer;font-size:11px;padding:2px 8px" title="New folder">+ Folder</button>
+          <button onclick="document.getElementById('file-upload-input').click()" style="background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);cursor:pointer;font-size:11px;padding:2px 8px" title="Upload file">Upload</button>
+          <input id="file-upload-input" type="file" multiple style="display:none" onchange="fileBrowserUpload(this.files)">
+        </div>
         <div id="file-browser-tree" style="overflow-y:auto;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:4px;flex:1;min-height:0"></div>
         <div id="file-viewer" style="display:none;margin-top:8px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
@@ -664,7 +669,7 @@
     let projectState = [];
     let sessionFilter = 'active';
     let sessionSortBy = 'date';
-    const expandedProjects = new Set(); // Track which projects are expanded (default: all collapsed)
+    const expandedProjects = new Set(JSON.parse(localStorage.getItem('expandedProjects') || '[]'));
     const HEARTBEAT_MS = 30000;
     const REFRESH_MS = 30000;
     const MAX_RECONNECT_DELAY = 30000;
@@ -734,9 +739,10 @@
           }
         }
 
-        // Auto-expand all projects on first load
+        // Auto-expand all projects on first load (only if nothing persisted)
         if (expandedProjects.size === 0 && projectState.length > 0) {
           for (const p of projectState) expandedProjects.add(p.name);
+          localStorage.setItem('expandedProjects', JSON.stringify([...expandedProjects]));
         }
 
         renderSidebar();
@@ -793,6 +799,7 @@
           } else {
             expandedProjects.add(project.name);
           }
+          localStorage.setItem('expandedProjects', JSON.stringify([...expandedProjects]));
           header.classList.toggle('collapsed');
           sessionList.classList.toggle('collapsed');
         });
@@ -1570,6 +1577,58 @@
       document.getElementById('file-viewer-content').value = '';
     }
 
+    function getSelectedFileBrowserDir() {
+      // Find the last clicked/expanded directory in the file browser tree
+      const treeEl = document.getElementById('file-browser-tree');
+      const expanded = treeEl.querySelectorAll('li.directory.expanded > a');
+      if (expanded.length > 0) return expanded[expanded.length - 1].getAttribute('rel');
+      // Fallback to first mount root
+      const firstMount = treeEl.querySelector('[data-initialized] li.directory > a');
+      if (firstMount) return firstMount.getAttribute('rel');
+      return null;
+    }
+
+    async function fileBrowserNewFolder() {
+      const targetDir = getSelectedFileBrowserDir();
+      if (!targetDir) return alert('Expand a directory in the file browser first');
+      const name = prompt('Folder name:');
+      if (!name) return;
+      try {
+        const res = await fetch('/api/mkdir', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: targetDir.replace(/\/$/, '') + '/' + name }),
+        });
+        const data = await res.json();
+        if (data.error) return alert('Error: ' + data.error);
+        // Refresh by reinitializing the file browser
+        fileBrowserInitialized = false;
+        loadFiles();
+      } catch (err) { alert('Error: ' + err.message); }
+    }
+
+    async function fileBrowserUpload(files) {
+      const targetDir = getSelectedFileBrowserDir();
+      if (!targetDir) return alert('Expand a directory in the file browser first');
+      for (const file of files) {
+        try {
+          const buf = await file.arrayBuffer();
+          await fetch('/api/upload', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/octet-stream',
+              'X-Upload-Dir': targetDir,
+              'X-Upload-Filename': file.name,
+            },
+            body: buf,
+          });
+        } catch (err) { alert('Upload failed: ' + err.message); }
+      }
+      document.getElementById('file-upload-input').value = '';
+      fileBrowserInitialized = false;
+      loadFiles();
+    }
+
     // Reload panel when switching tabs
     const origSwitchTab = switchTab;
     switchTab = function(tabId) {
@@ -2043,6 +2102,7 @@
           <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
             <input id="picker-path" type="text" readonly placeholder="Click a folder above" style="flex:1;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace">
             <input id="picker-name" type="text" placeholder="Name" style="width:120px;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px">
+            <button style="padding:6px 12px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);cursor:pointer;font-size:12px" onclick="pickerNewFolder()">+ Folder</button>
             <button style="padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px" onclick="pickerSelect('${overlayId}')">Add</button>
           </div>
         </div>
@@ -2087,6 +2147,39 @@
         if (data.error) { alert('Error: ' + data.error); return; }
         document.getElementById(overlayId).remove();
         loadState();
+      } catch (err) { alert('Error: ' + err.message); }
+    }
+
+    async function pickerNewFolder() {
+      const parentPath = document.getElementById('picker-path').value.trim() || (window._workspace || '/workspace');
+      const name = prompt('New folder name:');
+      if (!name) return;
+      const newPath = parentPath.replace(/\/$/, '') + '/' + name;
+      try {
+        const res = await fetch('/api/mkdir', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: newPath }),
+        });
+        const data = await res.json();
+        if (data.error) return alert('Error: ' + data.error);
+        // Refresh the tree and select the new folder
+        $('#jqft-tree').html('');
+        $('#jqft-tree').fileTree({
+          root: (window._workspace || '/workspace/projects').replace(/\/?$/, '/'),
+          script: '/api/jqueryfiletree',
+          folderEvent: 'click',
+          expandSpeed: 200,
+          collapseSpeed: 200,
+          multiFolder: false,
+          onlyFolders: true,
+        }, function(path) {
+          document.getElementById('picker-path').value = path;
+          document.getElementById('picker-name').value = path.replace(/\/$/, '').split('/').filter(Boolean).pop();
+        });
+        // Set the new folder as selected
+        document.getElementById('picker-path').value = newPath + '/';
+        document.getElementById('picker-name').value = name;
       } catch (err) { alert('Error: ' + err.message); }
     }
 
