@@ -1,10 +1,10 @@
 {
   "compaction": {
     "thresholds": {
-      "advisory": 65,
-      "warning": 75,
-      "urgent": 85,
-      "auto": 90
+      "advisory": 999,
+      "warning": 999,
+      "urgent": 999,
+      "auto": 999
     },
     "prepTimeoutMs": 180000,
     "compactTimeoutMs": 300000,
