@@ -73,14 +73,27 @@ function registerMcpRoutes(app) {
           },
         },
         {
+          name: 'blueprint_ask_cli',
+          description: 'Ask any installed CLI a question. Use for second opinions from different models.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              cli: { type: 'string', enum: ['claude', 'gemini', 'codex'], description: 'Which CLI to ask' },
+              prompt: { type: 'string', description: 'The question or instruction' },
+              model: { type: 'string', description: 'Optional model override — uses CLI default if omitted' },
+              cwd: { type: 'string', description: 'Optional working directory' },
+            },
+            required: ['cli', 'prompt'],
+          },
+        },
+        {
           name: 'blueprint_ask_quorum',
-          description: 'Ask a question to the quorum (multi-model consensus). Returns aggregated response.',
+          description: 'Ask a question to the quorum (multi-model consensus). Participants = all CLIs with configured API keys.',
           inputSchema: {
             type: 'object',
             properties: {
               question: { type: 'string', description: 'The question to ask' },
               project: { type: 'string', description: 'Project context' },
-              mode: { type: 'string', description: 'Mode: "new" or "followup"', default: 'new' },
             },
             required: ['question', 'project'],
           },
@@ -372,6 +385,16 @@ function registerMcpRoutes(app) {
           }
           break;
         }
+        case 'blueprint_ask_cli': {
+          const r = await fetch(`http://localhost:${process.env.BLUEPRINT_PORT || 3000}/api/cli/ask`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cli: args.cli, prompt: args.prompt, model: args.model, cwd: args.cwd }),
+          });
+          const data = await r.json();
+          result = data.result || data.error || 'No response';
+          break;
+        }
         case 'blueprint_ask_quorum': {
           const r = await fetch(`http://localhost:${process.env.BLUEPRINT_PORT || 3000}/api/quorum/ask`, {
             method: 'POST',
@@ -379,7 +402,6 @@ function registerMcpRoutes(app) {
             body: JSON.stringify({
               question: args.question,
               project: args.project,
-              mode: args.mode || 'new',
             }),
           });
           result = await r.json();

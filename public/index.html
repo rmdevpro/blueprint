@@ -578,28 +578,17 @@
       </div>
 
       <div class="settings-group">
-        <h3>Quorum</h3>
+        <h3>Additional CLIs</h3>
+        <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px">API keys for Gemini and Codex CLIs. Configured CLIs automatically join the quorum.</p>
         <div class="setting-row">
-          <label>Lead Model (CLI)</label>
-          <select id="setting-quorum-lead" onchange="saveSetting('quorum_lead_model', this.value)">
-            <option value="opus">Opus</option>
-            <option value="sonnet">Sonnet</option>
-            <option value="haiku">Haiku</option>
-          </select>
+          <label>Gemini API Key</label>
+          <input id="setting-gemini-key" type="password" placeholder="Enter key..." style="flex:1;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace"
+            onchange="saveSetting('gemini_api_key', this.value)">
         </div>
         <div class="setting-row">
-          <label>Fixed Junior</label>
-          <select id="setting-quorum-fixed" onchange="saveSetting('quorum_fixed_junior', this.value)">
-            <option value="sonnet">Sonnet</option>
-            <option value="opus">Opus</option>
-            <option value="haiku">Haiku</option>
-          </select>
-        </div>
-        <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-          <label>Additional Juniors <span style="font-size:10px;color:var(--text-muted)">(JSON array)</span></label>
-          <textarea id="setting-quorum-additional" style="width:100%;min-height:60px;padding:6px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:11px;font-family:monospace;outline:none"
-            onchange="saveSetting('quorum_additional_juniors', JSON.parse(this.value))"
-            placeholder='[{"model":"gpt-5","provider":"openai","base_url":"https://api.openai.com","api_key":"sk-..."}]'></textarea>
+          <label>OpenAI / Codex API Key</label>
+          <input id="setting-codex-key" type="password" placeholder="Enter key..." style="flex:1;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace"
+            onchange="saveSetting('codex_api_key', this.value)">
         </div>
       </div>
 
@@ -2204,9 +2193,8 @@
         if (s.theme) document.getElementById('setting-theme').value = s.theme;
         if (s.font_size) document.getElementById('setting-font-size').value = s.font_size;
         if (s.font_family) document.getElementById('setting-font-family').value = s.font_family;
-        if (s.quorum_lead_model) document.getElementById('setting-quorum-lead').value = s.quorum_lead_model;
-        if (s.quorum_fixed_junior) document.getElementById('setting-quorum-fixed').value = s.quorum_fixed_junior;
-        if (s.quorum_additional_juniors) document.getElementById('setting-quorum-additional').value = JSON.stringify(s.quorum_additional_juniors, null, 2);
+        if (s.gemini_api_key) document.getElementById('setting-gemini-key').value = s.gemini_api_key;
+        if (s.codex_api_key) document.getElementById('setting-codex-key').value = s.codex_api_key;
       } catch {}
       // Load global CLAUDE.md
       try {
