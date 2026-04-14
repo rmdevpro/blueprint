@@ -60,6 +60,19 @@ function registerMcpRoutes(app) {
           },
         },
         {
+          name: 'blueprint_session',
+          description: 'Session management. Mode "info" returns session ID and file path. Mode "resume" returns a prompt with recent conversation tail. Mode "transition" returns the end-of-session checklist prompt.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              session_id: { type: 'string', description: 'The current session ID' },
+              mode: { type: 'string', enum: ['info', 'transition', 'resume'], description: 'What to do' },
+              tail_lines: { type: 'number', description: 'Number of JSONL lines to include in resume tail (default 60)' },
+            },
+            required: ['session_id', 'mode'],
+          },
+        },
+        {
           name: 'blueprint_ask_quorum',
           description: 'Ask a question to the quorum (multi-model consensus). Returns aggregated response.',
           inputSchema: {
@@ -70,18 +83,6 @@ function registerMcpRoutes(app) {
               mode: { type: 'string', description: 'Mode: "new" or "followup"', default: 'new' },
             },
             required: ['question', 'project'],
-          },
-        },
-        {
-          name: 'blueprint_smart_compaction',
-          description: 'Trigger smart compaction on a session. Runs the full prep/compact/recovery flow.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              session_id: { type: 'string', description: 'Session UUID to compact' },
-              project: { type: 'string', description: 'Project name' },
-            },
-            required: ['session_id', 'project'],
           },
         },
         {
@@ -357,14 +358,18 @@ function registerMcpRoutes(app) {
           db.setSessionNotes(args.session_id, args.notes);
           result = { saved: true };
           break;
-        case 'blueprint_smart_compaction': {
-          // Forward to the server's smart compaction endpoint
-          const r = await fetch(`http://localhost:${process.env.BLUEPRINT_PORT || 3000}/api/sessions/${args.session_id || 'current'}/smart-compact`, {
+        case 'blueprint_session': {
+          const r = await fetch(`http://localhost:${process.env.BLUEPRINT_PORT || 3000}/api/sessions/${args.session_id}/session`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project: args.project }),
+            body: JSON.stringify({ mode: args.mode, tailLines: args.tail_lines }),
           });
-          result = await r.json();
+          const data = await r.json();
+          if (args.mode === 'info') {
+            result = `Session ID: ${data.sessionId}\nSession file: ${data.sessionFile}\nExists: ${data.exists}`;
+          } else {
+            result = data.prompt || data.error || 'No response';
+          }
           break;
         }
         case 'blueprint_ask_quorum': {

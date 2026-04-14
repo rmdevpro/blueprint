@@ -1,29 +1,13 @@
 {
-  "compaction": {
-    "thresholds": {
-      "advisory": 999,
-      "warning": 999,
-      "urgent": 999,
-      "auto": 999
-    },
-    "prepTimeoutMs": 180000,
-    "compactTimeoutMs": 300000,
-    "pollIntervalMs": 3000,
-    "contextCleanupDelayMs": 60000,
-    "tmuxCaptureLines": 50,
-    "conversationTailPercent": 20,
-    "maxPrepTurns": 10,
-    "maxRecoveryTurns": 6,
-    "checkerModel": "claude-haiku-4-5-20251001"
-  },
   "session": {
+    "nudgeThresholdPercent": 75,
+    "resumeTailLines": 60,
     "nameMaxLength": 60,
     "promptInjectionDelayMs": 2000,
     "promptMaxLength": 4096
   },
   "polling": {
-    "tokenUsageIntervalMs": 15000,
-    "compactionMonitorIntervalMs": 30000
+    "tokenUsageIntervalMs": 15000
   },
   "keepalive": {
     "refreshPercentLow": 65,

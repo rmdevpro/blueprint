@@ -887,523 +887,90 @@ app.get('/api/sessions/:sessionId/tokens', async (req, res) => {
   }
 });
 
-// ── API: Smart Compaction ──────────────────────────────────────────────────
+// ── Context usage nudge ──────────────────────────────────────────────────
 
-const compactionState = new Map(); // sessionId → { nudged65, nudged75, nudged85, autoTriggered }
-const MAX_COMPACTION_ENTRIES = 100;
+const nudgeSent = new Set(); // sessionIds that have been nudged
 
 // JSONL file watchers (replace polling)
 const sessionWsClients = new Map();   // tmuxSession → ws
 const jsonlWatchPaths = new Map();    // tmuxSession → { jsonlPath, sessionId, project }
 const jsonlDebounceTimers = new Map(); // tmuxSession → timer
 
-app.post('/api/sessions/:sessionId/smart-compact', async (req, res) => {
+
+// Simple context usage nudge — fires once at 75%
+function checkContextUsage(sessionId, pct) {
+  if (nudgeSent.has(sessionId)) return;
+  const threshold = config.get('session.nudgeThresholdPercent', 75);
+  if (pct >= threshold) {
+    nudgeSent.add(sessionId);
+    const tmux = tmuxName(sessionId);
+    if (tmuxExists(tmux)) {
+      safe.tmuxSendKeys(tmux, config.getPrompt('session-nudge', { PERCENT: pct.toFixed(0) }));
+    }
+  }
+}
+
+// ── Session management endpoint ────────────────────────────────────────────
+
+app.post('/api/sessions/:sessionId/session', async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const { project } = req.body;
-    if (!project) return res.status(400).json({ error: 'project required' });
+    const { mode = 'info', tailLines = 60 } = req.body;
 
-    const result = await runSmartCompaction(sessionId, project);
-    res.json(result);
+    const entry = db.getSession(sessionId);
+    const project = entry ? entry.project_name : (req.body.project || '');
+    const projectHash = (project ? safe.resolveProjectPath(project) : '').replace(/[^a-zA-Z0-9]/g, '-');
+    const sessionFile = join(CLAUDE_HOME, 'projects', projectHash, `${sessionId}.jsonl`);
+
+    if (mode === 'info') {
+      const { existsSync } = require('fs');
+      return res.json({ sessionId, sessionFile, exists: existsSync(sessionFile) });
+    }
+
+    if (mode === 'resume') {
+      let tail = '';
+      try {
+        const { readFileSync } = require('fs');
+        const lines = readFileSync(sessionFile, 'utf-8').trim().split('\n').filter(Boolean);
+        const recent = lines.slice(-tailLines);
+        tail = formatSessionTail(recent);
+      } catch (err) {
+        tail = '(could not read session file: ' + err.message + ')';
+      }
+      const prompt = config.getPrompt('session-resume', { SESSION_TAIL: tail });
+      return res.json({ prompt });
+    }
+
+    if (mode === 'transition') {
+      const prompt = config.getPrompt('session-transition', {});
+      return res.json({ prompt });
+    }
+
+    return res.status(400).json({ error: 'Unknown mode. Use info, transition, or resume.' });
   } catch (err) {
-    console.error('Smart compaction error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Guard against concurrent compaction on the same session
-const compactionLocks = new Set();
-
-async function runSmartCompaction(sessionId, project) {
-  if (compactionLocks.has(sessionId)) {
-    console.log(`[compact] Session ${sessionId.substring(0, 8)} already compacting — skipping`);
-    return { compacted: false, reason: 'compaction already in progress' };
-  }
-  compactionLocks.add(sessionId);
-
-  try {
-    return await _runSmartCompaction(sessionId, project);
-  } finally {
-    compactionLocks.delete(sessionId);
-  }
-}
-
-async function _runSmartCompaction(sessionId, project) {
-  const dbProj = db.getProject(project);
-  const projectPath = dbProj ? dbProj.path : safe.resolveProjectPath(project);
-  if (!/^[a-zA-Z0-9_-]+$/.test(sessionId)) throw new Error('Invalid session ID');
-
-  // If sessionId is a new_* temp ID, resolve it to the real UUID for JSONL access.
-  // JSONL files are always UUID-named; new_* only exists in the DB during the resolution window.
-  // Keep the original ID for tmux — the session is still named after the new_* ID until resolved.
-  const tmuxSessionId = sessionId;
-  if (sessionId.startsWith('new_')) {
-    if (!dbProj) {
-      return { compacted: false, reason: 'temp session: project not found in DB' };
-    }
-    const sDir = safe.findSessionsDir(projectPath);
+function formatSessionTail(lines) {
+  const turns = [];
+  for (const line of lines) {
     try {
-      const files = await readdir(sDir);
-      const knownIds = new Set(db.getSessionsForProject(dbProj.id).map(s => s.id));
-      const unmatched = files.filter(f => f.endsWith('.jsonl') && !knownIds.has(basename(f, '.jsonl')));
-      if (unmatched.length === 1) {
-        sessionId = basename(unmatched[0], '.jsonl');
-        if (compactionLocks.has(sessionId)) {
-          return { compacted: false, reason: 'compaction already in progress' };
-        }
-      } else {
-        return { compacted: false, reason: 'temp session not yet resolved -- retry later' };
+      const entry = JSON.parse(line);
+      if (entry.type === 'user' && entry.message?.content) {
+        const text = Array.isArray(entry.message.content)
+          ? entry.message.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
+          : String(entry.message.content);
+        if (text.trim()) turns.push(`**User:** ${text.trim()}`);
+      } else if (entry.type === 'assistant' && entry.message?.content) {
+        const text = Array.isArray(entry.message.content)
+          ? entry.message.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
+          : String(entry.message.content);
+        if (text.trim()) turns.push(`**Assistant:** ${text.trim()}`);
       }
-    } catch {
-      return { compacted: false, reason: 'cannot resolve temp session ID' };
-    }
+    } catch { /* skip malformed lines */ }
   }
-
-  const tmux = tmuxName(tmuxSessionId);
-  if (!safe.tmuxExists(tmux)) {
-    return { compacted: false, reason: 'session not running' };
-  }
-
-  console.log(`[compact] Starting smart compaction for session ${sessionId.substring(0, 8)} in ${project}`);
-
-  const { execFile: execFileAsync } = require('child_process');
-  const pollInterval = config.get('compaction.pollIntervalMs', 3000);
-  const captureLines = config.get('compaction.tmuxCaptureLines', 50);
-  const safeTmux = safe.sanitizeTmuxName(tmux);
-  const maxPrepTurns = config.get('compaction.maxPrepTurns', 10);
-  const maxRecoveryTurns = config.get('compaction.maxRecoveryTurns', 6);
-  const checkerModel = config.get('compaction.checkerModel', 'claude-haiku-4-5-20251001');
-
-  const capturePaneAsync = () => new Promise((resolve, reject) => {
-    execFileAsync('tmux', ['capture-pane', '-t', safeTmux, '-p', '-S', `-${captureLines}`], { encoding: 'utf-8', timeout: 5000 }, (err, stdout) => {
-      if (err) reject(err); else resolve(stdout);
-    });
-  });
-
-  // Strip ANSI escape codes from tmux output
-  const stripAnsi = (str) => str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '');
-
-  // Wait for Session A to finish responding (prompt character appears)
-  const waitForPrompt = async (timeoutMs = 60000) => {
-    const deadline = Date.now() + timeoutMs;
-    let lastOutput = '';
-    while (Date.now() < deadline) {
-      await sleep(pollInterval);
-      try {
-        const output = stripAnsi(await capturePaneAsync());
-        const lines = output.split('\n').filter(l => l.trim());
-        // Check last 4 non-empty lines — status bar occupies the final line(s),
-        // pushing the actual ❯ prompt to second-to-last or earlier.
-        if (lines.slice(-4).some(l => /^\s*❯\s*$/.test(l)) && output !== lastOutput) {
-          return output;
-        }
-        lastOutput = output;
-      } catch (err) {
-        if (!safe.tmuxExists(tmux)) return null;
-      }
-    }
-    // Timeout — return whatever we have
-    try { return stripAnsi(await capturePaneAsync()); } catch { return ''; }
-  };
-
-  // Send a message to Session B (the checker) and get its response
-  let checkerSessionId = null;
-  const sendToChecker = async (message) => {
-    const args = ['--print', '--dangerously-skip-permissions', '--model', checkerModel];
-    if (checkerSessionId) {
-      args.push('--resume', checkerSessionId);
-    }
-    args.push(message);
-    try {
-      const response = (await safe.claudeExecAsync(args, { cwd: projectPath, timeout: 120000 })).trim();
-      // Capture session ID from first call for resume
-      if (!checkerSessionId) {
-        // Find the most recently modified JSONL (the one the checker just created)
-        const sessionsDir = safe.findSessionsDir(projectPath);
-        try {
-          const files = await readdir(sessionsDir);
-          const jsonls = files.filter(f => f.endsWith('.jsonl'));
-          let newest = null;
-          let newestMtime = 0;
-          for (const f of jsonls) {
-            const s = await stat(join(sessionsDir, f));
-            if (s.mtimeMs > newestMtime) {
-              newestMtime = s.mtimeMs;
-              newest = f;
-            }
-          }
-          if (newest) checkerSessionId = newest.replace('.jsonl', '');
-          console.log(`[compact] Checker session ID: ${checkerSessionId?.substring(0, 12)}`);
-        } catch {}
-      }
-      return response;
-    } catch (err) {
-      console.error(`[compact] Checker error: ${err.message}`);
-      if (err.stderr) console.error(`[compact] Checker stderr: ${err.stderr?.substring(0, 500)}`);
-      return null;
-    }
-  };
-
-  // Parse JSON blueprint commands from checker response
-  const parseBlueprint = (response) => {
-    if (!response) return null;
-    const lines = response.split('\n');
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('{"blueprint"')) {
-        try {
-          const parsed = JSON.parse(trimmed);
-          if (parsed.blueprint) return parsed.blueprint;
-        } catch {}
-      }
-    }
-    return null;
-  };
-
-  // Extract the message to send to Session A (everything except blueprint JSON)
-  const extractAgentMessage = (response) => {
-    if (!response) return '';
-    return response.split('\n')
-      .filter(line => !line.trim().startsWith('{"blueprint"'))
-      .join('\n')
-      .trim();
-  };
-
-  // ── PRE-PHASE ─────────────────────────────────────────────────────────
-  // Per guide Phase 1 Step 1: Blueprint creates recent_turns.md and enters plan mode
-  // BEFORE opening Session B.
-
-  // Compaction context dir
-  const contextDir = join(db.DATA_DIR, 'compaction');
-  await mkdir(contextDir, { recursive: true });
-  const planCopyPath = join(contextDir, `plan_${sessionId.substring(0, 8)}.md`);
-  const recentTurnsFile = join(contextDir, 'recent_turns.md');
-
-  // Step 1a: Extract recent_turns.md from JSONL BEFORE compaction while history is full
-  const sessionsDir = safe.findSessionsDir(projectPath);
-  const jsonlFile = join(sessionsDir, `${sessionId}.jsonl`);
-  const tailPercent = config.get('compaction.conversationTailPercent', 20);
-  try {
-    const jsonlContent = await readFile(jsonlFile, 'utf-8');
-    const jsonlLines = jsonlContent.trim().split('\n');
-    const exchanges = [];
-    for (const line of jsonlLines) {
-      try {
-        const entry = JSON.parse(line);
-        if (entry.type === 'user' && entry.message?.content) {
-          const text = typeof entry.message.content === 'string'
-            ? entry.message.content : JSON.stringify(entry.message.content);
-          exchanges.push(`Human: ${text}`);
-        } else if (entry.type === 'assistant' && entry.message?.content) {
-          const blocks = Array.isArray(entry.message.content) ? entry.message.content : [entry.message.content];
-          const text = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n');
-          if (text) exchanges.push(`Assistant: ${text}`);
-        }
-      } catch {}
-    }
-    const tailCount = Math.max(1, Math.floor(exchanges.length * tailPercent / 100));
-    const tail = exchanges.slice(-tailCount);
-    await writeFile(recentTurnsFile, tail.join('\n\n---\n\n') + '\n');
-    console.log(`[compact] Wrote recent_turns.md: ${tail.length}/${exchanges.length} exchanges`);
-  } catch (err) {
-    console.error('[compact] Failed to write recent_turns.md:', err.message?.substring(0, 100));
-    await writeFile(recentTurnsFile, '(No conversation history available)\n');
-  }
-
-  // Step 1b: Enter plan mode
-  let baselineOutput = '';
-  try { baselineOutput = stripAnsi(await capturePaneAsync()); } catch {}
-
-  safe.tmuxSendKeys(tmux, '/plan');
-  console.log('[compact] Sent /plan to agent — waiting for plan mode to activate...');
-
-  const planModeDeadline = Date.now() + 30000;
-  let planModeActive = false;
-  while (Date.now() < planModeDeadline) {
-    await sleep(pollInterval);
-    try {
-      const output = stripAnsi(await capturePaneAsync());
-      if (output !== baselineOutput) { planModeActive = true; break; }
-    } catch {}
-  }
-  if (!planModeActive) {
-    console.error('[compact] Timed out waiting for plan mode to activate');
-    return { compacted: false, reason: 'failed to enter plan mode' };
-  }
-  console.log('[compact] Plan mode active');
-
-  // Helper: look up plan file path via session slug
-  const getPlanFilePath = async () => {
-    const slug = await sessionUtils.getSessionSlug(sessionId, projectPath);
-    if (!slug) return null;
-    return join(sessionUtils.CLAUDE_HOME, 'plans', `${slug}.md`);
-  };
-
-  // Helper: copy plan file to compaction dir — B reads via its Read tool
-  const copyPlanFile = async () => {
-    const planPath = await getPlanFilePath();
-    if (!planPath) return null;
-    try {
-      await copyFile(planPath, planCopyPath);
-      return planCopyPath;
-    } catch { return null; }
-  };
-
-  // Helper: read A's latest assistant text from JSONL (not tmux capture)
-  const agentJsonlFile = join(safe.findSessionsDir(projectPath), `${sessionId}.jsonl`);
-  const readLatestAssistantText = async () => {
-    try {
-      const raw = await readFile(agentJsonlFile, 'utf-8');
-      const lines = raw.trim().split('\n');
-      for (let i = lines.length - 1; i >= 0; i--) {
-        try {
-          const entry = JSON.parse(lines[i]);
-          if (entry.type === 'assistant' && entry.message?.content) {
-            const blocks = Array.isArray(entry.message.content)
-              ? entry.message.content : [entry.message.content];
-            const text = blocks
-              .filter(b => b && (b.type === 'text' || typeof b === 'string'))
-              .map(b => (typeof b === 'string' ? b : b.text))
-              .join('\n').trim();
-            if (text) return text;
-          }
-        } catch {}
-      }
-    } catch {}
-    return null;
-  };
-
-  // ── PHASE 1: PREP ──────────────────────────────────────────────────────
-
-  // Step 2: Initialize Session B with compaction-prep.md
-  console.log('[compact] Initializing process checker (Session B)...');
-  const checkerPrompt = config.getPrompt('compaction-prep', {});
-  let checkerResponse = await sendToChecker(checkerPrompt);
-  let command = parseBlueprint(checkerResponse);
-
-  if (command !== 'ready_to_connect') {
-    console.error('[compact] Checker did not signal ready_to_connect — aborting');
-    return { compacted: false, reason: 'checker failed to initialize' };
-  }
-  console.log('[compact] Checker ready.');
-
-  // Step 3: Send exact prep prompt to A (Blueprint always sends this — never B)
-  const prepPrompt = config.getPrompt('compaction-prep-to-agent', {}).trim();
-  safe.tmuxSendKeys(tmux, prepPrompt);
-  console.log('[compact] Sent prep prompt to agent');
-
-  // Step 4: Notify B it is connected — nothing else
-  await sendToChecker('This is Blueprint. You are now connected to the agent.');
-  console.log('[compact] Notified B: connected');
-
-  // Step 5: Mediation loop — A responds, Blueprint reads JSONL, sends to B, B coaches
-  let prepDone = false;
-  let agentMessage = '';
-  for (let turn = 1; turn <= maxPrepTurns; turn++) {
-    const agentOutput = await waitForPrompt(120000);
-    if (agentOutput === null) {
-      console.error('[compact] tmux session died during prep — aborting');
-      return { compacted: false, reason: 'tmux session died during prep' };
-    }
-
-    const assistantText = await readLatestAssistantText();
-    checkerResponse = await sendToChecker(assistantText ?? agentOutput);
-    command = parseBlueprint(checkerResponse);
-
-    if (command === 'error') {
-      console.error('[compact] Checker signaled error — aborting prep');
-      return { compacted: false, reason: 'checker signaled error during prep' };
-    }
-
-    if (command === 'read_plan_file') {
-      console.log('[compact] Checker requested plan file — copying...');
-      const copiedPath = await copyPlanFile();
-      if (copiedPath) {
-        checkerResponse = await sendToChecker(`Blueprint: The plan file has been copied to ${copiedPath}. Please Read that file to review its contents.`);
-      } else {
-        checkerResponse = await sendToChecker('Blueprint: The plan file does not exist yet — the agent is still editing in plan mode. Continue guiding until all sections are complete, then send {"blueprint": "exit_plan_mode"}.');
-      }
-      command = parseBlueprint(checkerResponse);
-    }
-
-    if (command === 'exit_plan_mode') {
-      // Step 6: Exit plan mode programmatically via BTab
-      console.log('[compact] exit_plan_mode received — exiting plan mode');
-      safe.tmuxSendKey(tmux, 'BTab');
-      await sleep(2000);
-      await waitForPrompt(30000);
-
-      // Copy plan file (for verification only — no message to B)
-      const copiedPath = await copyPlanFile();
-      if (copiedPath) {
-        console.log(`[compact] Plan file copied: ${planCopyPath}`);
-      } else {
-        console.log('[compact] Warning: plan file not found after exit_plan_mode');
-      }
-
-      // Step 7: Immediately send Git prompt to A (Blueprint sends directly — not B)
-      console.log('[compact] Sending Git prompt to agent');
-      safe.tmuxSendKeys(tmux, 'If Git has been used during the session, update all Git issues and Commit all uncommitted work. If Git was not used during this session simply reply as such.');
-
-      // Wait for A to finish Git work, send A's response to B
-      const gitOutput = await waitForPrompt(120000);
-      if (gitOutput) {
-        const gitAssistantText = await readLatestAssistantText();
-        checkerResponse = await sendToChecker(gitAssistantText ?? gitOutput);
-        command = parseBlueprint(checkerResponse);
-      }
-      // B should now send ready_to_compact after seeing A's Git response
-    }
-
-    if (command === 'ready_to_compact') {
-      prepDone = true;
-      console.log(`[compact] Prep complete after ${turn} turns`);
-      break;
-    }
-
-    // Relay B's coaching message to A
-    agentMessage = extractAgentMessage(checkerResponse);
-    if (agentMessage) {
-      safe.tmuxSendKeys(tmux, agentMessage);
-      console.log(`[compact] Prep turn ${turn}: relayed checker message to agent`);
-    }
-  }
-
-  if (!prepDone) {
-    console.log('[compact] Prep turn limit reached — proceeding with compaction anyway');
-  }
-
-  // Verify plan file
-  try {
-    const planStat = await stat(planCopyPath);
-    console.log(`[compact] Plan file verified: ${planStat.size} bytes`);
-  } catch {
-    console.log('[compact] Warning: plan file not found after prep');
-  }
-
-  // ── PHASE 2: COMPACT ───────────────────────────────────────────────────
-
-  try {
-    safe.tmuxSendKeys(tmux, '/compact');
-    console.log('[compact] Sent /compact to session');
-  } catch (err) {
-    console.error('[compact] Failed to send /compact:', err.message?.substring(0, 100));
-    return { compacted: false, reason: 'failed to send /compact' };
-  }
-
-  const compactTimeout = config.get('compaction.compactTimeoutMs', 300000);
-  const compactDeadline = Date.now() + compactTimeout;
-  let compactionDone = false;
-  let lastCompactionOutput = '';
-
-  while (Date.now() < compactDeadline) {
-    await sleep(pollInterval);
-    try {
-      const output = stripAnsi(await capturePaneAsync());
-      const lines = output.split('\n').filter(l => l.trim());
-      if (lines.slice(-4).some(l => /^\s*❯\s*$/.test(l)) && output !== lastCompactionOutput) {
-        compactionDone = true;
-        console.log('[compact] Compaction completed (prompt detected)');
-        break;
-      }
-      lastCompactionOutput = output;
-    } catch (err) {
-      if (!safe.tmuxExists(tmux)) {
-        console.error('[compact] tmux session disappeared during compaction');
-        break;
-      }
-    }
-  }
-  if (!compactionDone) {
-    console.log('[compact] Compaction poll timed out — proceeding with recovery');
-  }
-
-  // ── PHASE 3: RECOVERY ──────────────────────────────────────────────────
-
-  // Step 8: Notify B compaction is complete — nothing else
-  await sendToChecker(`This is Blueprint. Compaction is complete. The conversation tail file is at ${recentTurnsFile}. You are now reconnected to the agent.`);
-  console.log('[compact] Notified B: compaction complete');
-
-  // Step 9: Blueprint sends exact recovery prompt to A (never B's composition)
-  const recoveryPrompt = config.getPrompt('compaction-resume', { CONVERSATION_TAIL_FILE: recentTurnsFile }).trim();
-  safe.tmuxSendKeys(tmux, recoveryPrompt);
-  console.log('[compact] Sent recovery prompt to agent');
-
-  // Step 10: Recovery mediation loop — A responds, B coaches until resume_complete
-  for (let turn = 1; turn <= maxRecoveryTurns; turn++) {
-    const agentOutput = await waitForPrompt(120000);
-    if (agentOutput === null) break;
-
-    const recoveryAssistantText = await readLatestAssistantText();
-    checkerResponse = await sendToChecker(recoveryAssistantText ?? agentOutput);
-    command = parseBlueprint(checkerResponse);
-
-    if (command === 'resume_complete') {
-      console.log(`[compact] Recovery complete after ${turn} turns`);
-      break;
-    }
-
-    agentMessage = extractAgentMessage(checkerResponse);
-    if (agentMessage) {
-      safe.tmuxSendKeys(tmux, agentMessage);
-      console.log(`[compact] Recovery turn ${turn}: relayed checker message to agent`);
-    }
-  }
-
-  // Clean up recent_turns.md after a delay
-  const cleanupDelay = config.get('compaction.contextCleanupDelayMs', 60000);
-  setTimeout(async () => {
-    try { await unlink(recentTurnsFile); } catch {}
-  }, cleanupDelay);
-
-  console.log(`[compact] Smart compaction complete for session ${sessionId.substring(0, 8)}`);
-  return { compacted: true, prep_completed: prepDone, compaction_completed: compactionDone, tail_file: recentTurnsFile };
-}
-
-// Check token usage and nudge/auto-compact
-async function checkCompactionNeeds(sessionId, project) {
-  // Skip unresolved temp sessions — JSONL is UUID-named, not new_*
-  if (sessionId.startsWith('new_')) return;
-  try {
-    const usage = await sessionUtils.getTokenUsage(sessionId, project);
-    const inputTokens = usage.input_tokens;
-    const model = usage.model;
-    const maxTokens = usage.max_tokens;
-    const pct = maxTokens > 0 ? (inputTokens / maxTokens) * 100 : 0;
-
-    if (!compactionState.has(sessionId)) {
-      // Evict oldest entries if map is too large
-      if (compactionState.size >= MAX_COMPACTION_ENTRIES) {
-        const oldest = compactionState.keys().next().value;
-        compactionState.delete(oldest);
-      }
-      compactionState.set(sessionId, { nudged65: false, nudged75: false, nudged85: false, autoTriggered: false });
-    }
-    const state = compactionState.get(sessionId);
-
-    const tmux = tmuxName(sessionId);
-    if (!tmuxExists(tmux)) return;
-
-    const thresholds = config.get('compaction.thresholds', { advisory: 65, warning: 75, urgent: 85, auto: 90 });
-
-    if (pct >= thresholds.auto && !state.autoTriggered) {
-      state.autoTriggered = true;
-      console.log(`[compact] Session ${sessionId.substring(0, 8)} at ${pct.toFixed(0)}% — AUTO COMPACTING`);
-      safe.tmuxSendKeys(tmux, config.getPrompt('compaction-auto', { PERCENT: pct.toFixed(0) }));
-      setTimeout(() => runSmartCompaction(sessionId, project), config.get('compaction.pollIntervalMs', 3000));
-    } else if (pct >= thresholds.urgent && !state.nudged85) {
-      state.nudged85 = true;
-      safe.tmuxSendKeys(tmux, config.getPrompt('compaction-nudge-urgent', { PERCENT: pct.toFixed(0), AUTO_THRESHOLD: thresholds.auto }));
-    } else if (pct >= thresholds.warning && !state.nudged75) {
-      state.nudged75 = true;
-      safe.tmuxSendKeys(tmux, config.getPrompt('compaction-nudge-warning', { PERCENT: pct.toFixed(0) }));
-    } else if (pct >= thresholds.advisory && !state.nudged65) {
-      state.nudged65 = true;
-      safe.tmuxSendKeys(tmux, config.getPrompt('compaction-nudge-advisory', { PERCENT: pct.toFixed(0) }));
-    }
-  } catch (err) {
-    console.error(`[compact] checkCompactionNeeds failed for ${sessionId.substring(0, 8)}:`, err.message?.substring(0, 100));
-  }
+  return turns.join('\n\n');
 }
 
 // ── MCP Tools ──────────────────────────────────────────────────────────────
@@ -1612,9 +1179,6 @@ function scheduleTmuxCleanup(tmuxSession) {
     // Only kill if no WebSocket is currently attached
     if (safe.tmuxExists(tmuxSession)) {
       safe.tmuxKill(tmuxSession);
-      // Clean up compaction state for this session
-      const sessionId = tmuxSession.replace('bp_', '');
-      compactionState.delete(sessionId);
       console.log(`[cleanup] Killed idle tmux session: ${tmuxSession}`);
     }
   }, TMUX_CLEANUP_DELAY);
@@ -1806,7 +1370,8 @@ function startJsonlWatcher(tmuxSession) {
         if (ws && ws.readyState === 1 /* OPEN */) {
           ws.send(JSON.stringify({ type: 'token_update', data: usage }));
         }
-        await checkCompactionNeeds(entry.sessionId, entry.project);
+        const pct = usage.max_tokens > 0 ? (usage.input_tokens / usage.max_tokens) * 100 : 0;
+        checkContextUsage(entry.sessionId, pct);
       } catch {}
     }, 500));
   });
@@ -1837,33 +1402,6 @@ function startSettingsWatcher() {
   });
 }
 
-// Fallback compaction monitor for headless sessions (no browser WS) — slow interval
-function startCompactionMonitor() {
-  setInterval(async () => {
-    try {
-      const dbProjects = db.getProjects();
-      for (const dbProj of dbProjects) {
-        const sessionsDir = safe.findSessionsDir(dbProj.path);
-        try {
-          const files = await readdir(sessionsDir);
-          for (const file of files) {
-            if (!file.endsWith('.jsonl')) continue;
-            const sessionId = basename(file, '.jsonl');
-            const tmux = tmuxName(sessionId);
-            // Skip sessions already covered by a JSONL watcher
-            if (tmuxExists(tmux) && !jsonlWatchPaths.has(tmux)) {
-              await checkCompactionNeeds(sessionId, dbProj.name);
-            }
-          }
-        } catch {
-          // No sessions dir for this project — skip
-        }
-      }
-    } catch (err) {
-      console.error('[compact-monitor] Error scanning sessions:', err.message?.substring(0, 100));
-    }
-  }, config.get('polling.compactionMonitorIntervalMs', 300000)); // 5 min fallback for headless
-}
 
 // Export testable functions for unit tests
 module.exports = { parseSessionFile: sessionUtils.parseSessionFile, checkAuthStatus, tmuxName, tmuxExists, sleep };
@@ -1880,7 +1418,6 @@ ensureSettings()
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`Blueprint running on http://0.0.0.0:${PORT}`);
       keepalive.start();
-      startCompactionMonitor();
       startSettingsWatcher();
     });
   });
