@@ -106,6 +106,32 @@ app.get('/api/file', async (req, res) => {
   }
 });
 
+// ── File operations: mkdir, upload ─────────────────────────────────────────
+
+app.post('/api/mkdir', async (req, res) => {
+  try {
+    const dirPath = req.body.path;
+    if (!dirPath || dirPath === '/') return res.status(400).json({ error: 'path required' });
+    await mkdir(dirPath, { recursive: true });
+    res.json({ ok: true, path: dirPath });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/upload', express.raw({ type: 'application/octet-stream', limit: '50mb' }), async (req, res) => {
+  try {
+    const targetDir = req.headers['x-upload-dir'];
+    const fileName = req.headers['x-upload-filename'];
+    if (!targetDir || !fileName) return res.status(400).json({ error: 'x-upload-dir and x-upload-filename headers required' });
+    const filePath = join(targetDir, basename(fileName));
+    await writeFile(filePath, req.body);
+    res.json({ ok: true, path: filePath });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // ── jQuery File Tree connector ────────────────────────────────────────────
 const jqftConnector = require('jqueryfiletree/dist/connectors/jqueryFileTree');
 app.post('/api/jqueryfiletree', jqftConnector.getDirList);
