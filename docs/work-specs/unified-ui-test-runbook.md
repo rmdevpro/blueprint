@@ -19,10 +19,52 @@ Checking `!!document.querySelector('.button')` is NOT a test. Clicking the butto
 
 ---
 
+## Deployment Prerequisite: OAuth Authentication (Hymie)
+
+This MUST run before any test phase. On a clean container, there are no Claude credentials — the CLI cannot function and all CLI/terminal tests will fail.
+
+**Tool:** Hymie desktop automation (192.168.1.130) — `mcp__hymie__desktop_*` tools. Playwright cannot handle this because the OAuth flow involves cross-origin navigation to Claude's login page with popups.
+
+**Alternative:** Inject credentials via `docker cp` from a container that already has them. This bypasses the OAuth flow for speed but does not test the real auth path.
+
+### OAUTH-01: Initial Authentication on Clean Container
+**Precondition:** Fresh container with no `.credentials.json`.
+1. Hymie opens `http://192.168.1.120:7869` in a desktop browser
+2. Create a project and session via the UI
+3. Open the session — Claude CLI starts in tmux
+4. CLI prints an OAuth URL to the terminal
+5. Blueprint's `checkForAuthIssue()` detects the URL → auth modal appears
+6. Click the OAuth link — Claude's login page opens
+7. Complete login on Claude's domain
+8. Copy the auth code
+9. Paste into Blueprint's `#auth-code-input`, click submit
+10. Verify: auth modal closes, CLI session becomes functional
+11. Verify: `/api/auth/status` returns `{valid: true}`
+12. Verify: `.credentials.json` exists with `claudeAiOauth` key
+
+### OAUTH-02: Token Refresh After Expiry
+**Precondition:** Container with expired token.
+1. Open a session — CLI should fail, auth modal should reappear
+2. Complete the flow again
+3. Verify: new token works, sessions resume
+
+### OAUTH-03: Credential Injection (Shortcut for Test Speed)
+**When:** You don't need to test the OAuth UI and just want tests to run.
+```bash
+cat /path/to/.credentials.json | ssh aristotle9@192.168.1.120 \
+  "docker exec -i CONTAINER sh -c 'mkdir -p /mnt/workspace/blueprint/.claude && cat > /mnt/workspace/blueprint/.claude/.credentials.json'"
+```
+Verify: `/api/auth/status` returns `{valid: true}`.
+
+**After OAuth is complete (or credentials injected), proceed to Phase 1.**
+
+---
+
 ## Progress Tracker
 
 | Phase | Total | Pass | Fail | Skip |
 |-------|-------|------|------|------|
+| 0. OAuth (Hymie) | 3 | | | |
 | 1. Smoke | 3 | | | |
 | 2. Core Workflows | 11 | | | |
 | 3. Features | 21 | | | |
@@ -32,7 +74,7 @@ Checking `!!document.querySelector('.button')` is NOT a test. Clicking the butto
 | 7. User Stories | 7 | | | |
 | 8. New Features | 38 | | | |
 | 9. Deferred | -- | -- | -- | skip |
-| **Totals** | **117** | | | |
+| **Totals** | **120** | | | |
 
 ---
 
@@ -230,37 +272,6 @@ gh issue create \
 ```
 
 ---
-
----
-
-## Phase 10: Hymie-Based Tests (OAuth Flow)
-
-These tests require Hymie (192.168.1.130) — the desktop automation workstation with `mcp__hymie__desktop_*` tools. Playwright cannot handle the OAuth flow because it involves cross-origin popups on Claude's domain.
-
-### HYMIE-01: Full OAuth Flow — Fresh Container
-**Precondition:** Container with no credentials (wipe `.credentials.json`).
-**Action:**
-1. Hymie opens `http://192.168.1.120:7869` in a real browser
-2. Create a session — auth modal should appear automatically
-3. Click the OAuth link in the auth modal
-4. Claude's login page opens (popup or redirect)
-5. Complete login (enter credentials on Claude's domain)
-6. Copy the auth code
-7. Paste auth code into Blueprint's `#auth-code-input`
-8. Click submit
-**Verify:** Auth modal closes. Session becomes functional. `/api/auth/status` returns `{valid: true}`. Claude CLI responds to prompts.
-
-### HYMIE-02: OAuth Token Refresh
-**Precondition:** Container with expired credentials.
-**Action:** Open Blueprint. Auth modal should appear. Complete the flow.
-**Verify:** New token saved. Sessions work.
-
-### HYMIE-03: Auth Recovery After Token Expiry
-**Precondition:** Container with valid auth. Manually expire the token.
-**Action:** Try to use a session. Auth failure banner should appear. Complete reauth.
-**Verify:** Sessions resume working.
-
-**Note:** These tests cannot be automated via Playwright — they require Hymie's desktop_click, desktop_type, and desktop_screenshot tools to interact with Claude's OAuth pages. The rest of the runbook injects credentials via `docker cp` to bypass OAuth for testing speed.
 
 ---
 
