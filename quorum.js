@@ -43,7 +43,7 @@ function buildCliArgs(cli, prompt, model) {
         '--print',
         '--permission-mode', 'dontAsk',
         '--tools', 'Read,Grep,Glob,WebSearch,WebFetch',
-        '--allowedTools', 'Read', 'Grep', 'Glob', 'WebSearch', 'WebFetch',
+        '--allowedTools', 'Read,Grep,Glob,WebSearch,WebFetch',
         ...(model ? ['--model', model] : []),
         '--no-session-persistence',
         prompt,
