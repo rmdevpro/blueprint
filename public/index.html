@@ -748,7 +748,7 @@
     function renderSidebar() {
       // Skip re-render if state hasn't changed (prevents DOM detach during clicks)
       const stateHash = JSON.stringify(projectState.map(p => ({
-        n: p.name, m: p.missing,
+        n: p.name, m: p.missing, st: p.state,
         s: p.sessions.map(s => ({ id: s.id, name: s.name, active: s.active, state: s.state, mc: s.messageCount, ts: s.timestamp }))
       }))) + sessionFilter + sessionSortBy + activeTabId + [...tabs.keys()].join(',');
       if (stateHash === renderSidebar._lastHash) return;
