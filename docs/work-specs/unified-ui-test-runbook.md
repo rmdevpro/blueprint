@@ -17,7 +17,39 @@ Every test MUST involve actual browser interaction via Playwright:
 
 Checking `!!document.querySelector('.button')` is NOT a test. Clicking the button, verifying the modal opens, filling the form, clicking save, and verifying the data persisted — THAT is a test.
 
-**Every test MUST take a screenshot** at the end as proof of the final state. Screenshots are saved to `/storage/blueprint-merged-tests/` with the test ID as filename (e.g., `SMOKE-01.png`, `NF-04.png`). On failure, take the screenshot immediately when the failure is observed.
+**Every test MUST take screenshots** throughout execution — before actions, after clicks, when modals open, after state changes. All screenshots are kept as a record of the test progression.
+
+## Test Results Directory
+
+All test results — server-side, UI, coverage — go to `/storage/test-results/blueprint/`. Each run gets a timestamped directory:
+
+```
+/storage/test-results/blueprint/
+  YYYY-MM-DDTHH-MM-SS/                ← run folder
+    server/
+      results.txt                     ← npm test output
+      coverage.txt                    ← c8 coverage report
+    ui/
+      SMOKE-01/                       ← one folder per UI test
+        01-page-load.png
+        02-sidebar-check.png
+      CORE-01/
+        01-before-create.png
+        02-session-created.png
+      NF-04/
+        01-click-pencil.png
+        02-modal-open.png
+        03-fill-notes.png
+        04-after-save.png
+      ...
+    summary.md                        ← overall pass/fail/skip counts
+```
+
+- Each UI test gets its own subfolder named by test ID
+- All screenshots from that test live in its folder, numbered sequentially
+- No single "final" screenshot — keep every screenshot taken during the test
+- Server test output and coverage reports go in `server/`
+- `summary.md` at the run root records pass/fail/skip per phase
 
 ---
 

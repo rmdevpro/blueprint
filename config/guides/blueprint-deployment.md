@@ -100,16 +100,45 @@ ssh aristotle9@192.168.1.120 "cd /home/aristotle9/blueprint-YOUR-NAME && docker 
 
 The `-v` flag deletes the named volumes. You'll need to re-inject credentials after.
 
-## Testing with Malory
+## Testing
 
-Malory (headless Playwright MCP) can test the UI but has a known issue: if multiple Blueprint instances are running on the same host, Malory's browser context may redirect between ports. Workaround: stop other instances during UI testing, or use curl for API tests.
+### Test results directory
 
-API testing pattern:
-```bash
-BASE=http://192.168.1.120:PORT
-curl -s $BASE/api/state
-curl -s -X POST $BASE/api/mkdir -H 'Content-Type: application/json' -d '{"path":"/mnt/workspace/test"}'
+All test results go to `/storage/test-results/blueprint/<timestamp>/`:
 ```
+/storage/test-results/blueprint/
+  2026-04-15T17-30/
+    server/
+      results.txt          ← npm test output
+      coverage.txt         ← c8 coverage report
+    ui/
+      SMOKE-01/            ← one folder per UI test
+        01-page-load.png
+        02-sidebar.png
+      NF-04/
+        01-click-pencil.png
+        02-modal-open.png
+      ...
+    summary.md             ← pass/fail/skip counts
+```
+
+### Running server-side tests
+
+Run on M5 from the cloned source (NOT inside the container — tests are in `.dockerignore`):
+```bash
+ssh aristotle9@192.168.1.120 "cd /home/aristotle9/blueprint-YOUR-NAME && npm install && npm test"
+ssh aristotle9@192.168.1.120 "cd /home/aristotle9/blueprint-YOUR-NAME && npx c8 --reporter=text npm test"
+```
+
+### Running UI tests
+
+Use **local Playwright MCP** (NOT Malory — Malory is shared and causes port conflicts). Execute the unified runbook at `docs/work-specs/unified-ui-test-runbook.md`. Every test takes screenshots throughout, saved to the run's `ui/TEST-ID/` folder.
+
+### OAuth prerequisite
+
+On a clean container, Claude CLI has no credentials. The OAuth flow must complete before CLI tests can run. Either:
+- Use Hymie (desktop automation) for the full OAuth popup flow
+- Or inject credentials via `docker cp` (see OAUTH-03 in the runbook)
 
 ## Cleanup
 
