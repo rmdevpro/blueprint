@@ -7,10 +7,9 @@ set -e
 CLAUDE="${CLAUDE_HOME:-$HOME/.claude}"
 BP_DATA="${BLUEPRINT_DATA:-/data/blueprint}"
 
-mkdir -p "$BP_DATA"
-mkdir -p "$CLAUDE/projects"
+WORK="${WORKSPACE:-$HOME/workspace}"
+mkdir -p "$WORK" "$BP_DATA" "$CLAUDE/projects" 2>/dev/null || true
 mkdir -p "$BP_DATA/quorum" 2>/dev/null || true
-mkdir -p /data/workspace /data/storage 2>/dev/null || true
 
 # Ensure .claude.json exists for workspace trust
 test -f "$HOME/.claude.json" || echo '{}' > "$HOME/.claude.json"
@@ -42,9 +41,6 @@ fi
 # Register Blueprint MCP server globally
 claude mcp add-json --scope user blueprint '{"command":"node","args":["/app/mcp-server.js"],"env":{"BLUEPRINT_PORT":"'"${PORT:-7860}"'"}}' 2>/dev/null || true
 
-# Register Playwright MCP server
-claude mcp add-json --scope user playwright '{"command":"npx","args":["@playwright/mcp@latest","--headless"]}' 2>/dev/null || true
-
 # Install Blueprint slash commands as global skills
 if [ -d /app/config/skills ]; then
   mkdir -p "$CLAUDE/skills"
@@ -65,6 +61,7 @@ node -e "
   if (!d.hasCompletedOnboarding) { d.hasCompletedOnboarding = true; changed = true; }
   if (!d.theme) { d.theme = 'dark'; changed = true; }
   if (!d.bypassPermissionsModeAccepted) { d.bypassPermissionsModeAccepted = true; changed = true; }
+  if (d.autoUpdates !== false) { d.autoUpdates = false; changed = true; }
   if (d.lastOnboardingVersion !== ver) { d.lastOnboardingVersion = ver; changed = true; }
   if (changed) {
     fs.writeFileSync(f, JSON.stringify(d, null, 2));

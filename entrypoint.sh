@@ -90,6 +90,7 @@ run_as_hopper() {
     if (!d.hasCompletedOnboarding) { d.hasCompletedOnboarding = true; changed = true; }
     if (!d.theme) { d.theme = 'dark'; changed = true; }
     if (!d.bypassPermissionsModeAccepted) { d.bypassPermissionsModeAccepted = true; changed = true; }
+    if (d.autoUpdates !== false) { d.autoUpdates = false; changed = true; }
     if (d.lastOnboardingVersion !== ver) { d.lastOnboardingVersion = ver; changed = true; }
     if (changed) {
       fs.writeFileSync(f, JSON.stringify(d, null, 2));
