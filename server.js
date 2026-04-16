@@ -102,6 +102,16 @@ const voiceWss = new WebSocketServer({ noServer: true });
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// ── Auth gate — blocks all access unless BYPASS_AUTH is set ────────────────
+const BYPASS_AUTH = process.env.BYPASS_AUTH === 'true';
+if (!BYPASS_AUTH) {
+  app.use((req, res, next) => {
+    if (req.path === '/gate.html') return next();
+    if (req.path === '/api/health' || req.path === '/health') return next();
+    res.sendFile(join(__dirname, 'public', 'gate.html'));
+  });
+}
+
 app.use(express.static(join(__dirname, 'public')));
 app.use('/lib/xterm', express.static(join(__dirname, 'node_modules/@xterm/xterm')));
 app.use('/lib/xterm-fit', express.static(join(__dirname, 'node_modules/@xterm/addon-fit')));
@@ -136,6 +146,7 @@ const { checkAuthStatus } = registerCoreRoutes(app, {
 // ── WebSocket upgrade handler ───────────────────────────────────────────────
 
 function handleUpgrade(req, socket, head) {
+  if (!BYPASS_AUTH) { socket.destroy(); return; }
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (url.pathname === '/ws/voice') {
