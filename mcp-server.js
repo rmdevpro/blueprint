@@ -72,24 +72,6 @@ const TOOLS = [
     },
   },
   {
-    name: 'blueprint_get_project_notes',
-    description: 'Read project notes.',
-    inputSchema: {
-      type: 'object',
-      properties: { project: { type: 'string' } },
-      required: ['project'],
-    },
-  },
-  {
-    name: 'blueprint_get_session_notes',
-    description: 'Read session notes.',
-    inputSchema: {
-      type: 'object',
-      properties: { session_id: { type: 'string' } },
-      required: ['session_id'],
-    },
-  },
-  {
     name: 'blueprint_get_tasks',
     description: 'List tasks, optionally filtered by folder path and status.',
     inputSchema: {

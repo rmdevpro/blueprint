@@ -43,8 +43,6 @@ function registerMcpRoutes(app) {
           description:
             'List all sessions for a project with names, timestamps, and message counts.',
         },
-        { name: 'blueprint_get_project_notes', description: 'Read the shared project notes.' },
-        { name: 'blueprint_get_session_notes', description: "Read a session's private notes." },
         { name: 'blueprint_get_tasks', description: 'List tasks by folder path or status filter.' },
         { name: 'blueprint_add_task', description: 'Add a task to a workspace folder.' },
         { name: 'blueprint_complete_task', description: 'Mark a task as done.' },
@@ -62,8 +60,6 @@ function registerMcpRoutes(app) {
         { name: 'blueprint_ask_cli', description: 'Ask any installed CLI (claude, gemini, codex) a question.' },
         { name: 'blueprint_ask_quorum', description: 'Ask a question to a multi-model quorum.' },
         { name: 'blueprint_set_session_config', description: 'Set session configuration.' },
-        { name: 'blueprint_set_project_notes', description: 'Set notes for a project.' },
-        { name: 'blueprint_set_session_notes', description: 'Set notes for a session.' },
         { name: 'blueprint_get_token_usage', description: 'Get token usage for a session.' },
       ],
     });
@@ -108,17 +104,6 @@ function registerMcpRoutes(app) {
         case 'blueprint_list_sessions':
           result = await listSessions(args.project);
           break;
-        case 'blueprint_get_project_notes': {
-          const project = db.getProject(args.project);
-          result = project ? { notes: db.getProjectNotes(project.id) } : { notes: '' };
-          break;
-        }
-        case 'blueprint_get_session_notes': {
-          if (!validateMcpSessionId(args.session_id))
-            return res.status(400).json({ error: 'invalid session_id format' });
-          result = { notes: db.getSessionNotes(args.session_id) };
-          break;
-        }
         case 'blueprint_get_tasks': {
           if (args.folder_path) {
             result = { tasks: db.getTasksByFolder(args.folder_path) };
@@ -227,20 +212,6 @@ function registerMcpRoutes(app) {
           if (args.name !== undefined) db.renameSession(args.session_id, args.name);
           if (args.state !== undefined) db.setSessionState(args.session_id, args.state);
           if (args.notes !== undefined) db.setSessionNotes(args.session_id, args.notes);
-          result = { saved: true };
-          break;
-        }
-        case 'blueprint_set_project_notes': {
-          const project = db.getProject(args.project);
-          if (!project) throw new Error('Project not found');
-          db.setProjectNotes(project.id, args.notes);
-          result = { saved: true };
-          break;
-        }
-        case 'blueprint_set_session_notes': {
-          if (!validateMcpSessionId(args.session_id))
-            return res.status(400).json({ error: 'invalid session_id format' });
-          db.setSessionNotes(args.session_id, args.notes);
           result = { saved: true };
           break;
         }

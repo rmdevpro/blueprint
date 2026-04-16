@@ -494,14 +494,9 @@
   <div id="right-panel">
     <div id="panel-header">
       <button class="panel-tab active" data-panel="files" onclick="switchPanel('files')">Files</button>
-      <button class="panel-tab" data-panel="notes" onclick="switchPanel('notes')">Notes</button>
       <button class="panel-tab" data-panel="tasks" onclick="switchPanel('tasks')">Tasks</button>
     </div>
     <div id="panel-content">
-      <div id="panel-notes" class="panel-section" style="display:none">
-        <h3>Project Notes</h3>
-        <textarea id="notes-editor" placeholder="Shared notes for this project..."></textarea>
-      </div>
       <div id="panel-tasks" class="panel-section" style="display:none">
         <div id="task-filter-bar">
           <button class="filter-btn task-filter active" data-task-filter="todo" onclick="setTaskFilter('todo')">Active</button>
@@ -1415,7 +1410,10 @@
             <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Project Notes</label>
             <textarea id="proj-cfg-notes" style="width:100%;min-height:80px;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:inherit;resize:vertical;outline:none;box-sizing:border-box" placeholder="Notes about this project...">${escHtml(config.notes || '')}</textarea>
           </div>
-          <button onclick="saveProjectConfig('${escHtml(projectName)}', '${overlayId}')" style="padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px">Save</button>
+          <div style="display:flex;gap:8px">
+            <button onclick="saveProjectConfig('${escHtml(projectName)}', '${overlayId}')" style="padding:6px 16px;background:var(--accent);color:#0d1117;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600">Save</button>
+            <button onclick="document.getElementById('${overlayId}').remove();openFileTab('${escHtml(config.path || '')}/CLAUDE.md')" style="padding:6px 16px;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:13px">Edit CLAUDE.md</button>
+          </div>
         </div>
       `;
       document.body.appendChild(overlay);
@@ -1472,7 +1470,6 @@
 
     let panelOpen = false;
     let activePanel = 'files';
-    let notesSaveTimer = null;
     let currentPanelProject = null;
 
     function togglePanel() {
@@ -1488,7 +1485,6 @@
     function switchPanel(panel) {
       activePanel = panel;
       document.querySelectorAll('.panel-tab').forEach(b => b.classList.toggle('active', b.dataset.panel === panel));
-      document.getElementById('panel-notes').style.display = panel === 'notes' ? '' : 'none';
       document.getElementById('panel-tasks').style.display = panel === 'tasks' ? '' : 'none';
       document.getElementById('panel-files').style.display = panel === 'files' ? '' : 'none';
       loadPanelData();
@@ -1508,32 +1504,11 @@
       if (!project) return;
       currentPanelProject = project;
 
-      if (activePanel === 'notes') {
-        try {
-          const res = await fetch(`/api/projects/${project}/notes`);
-          const data = await res.json();
-          document.getElementById('notes-editor').value = data.notes || '';
-        } catch {}
-      } else if (activePanel === 'tasks') {
+      if (activePanel === 'tasks') {
         loadTaskTree();
-      } else if (activePanel === 'messages') {
       }
     }
 
-    // Auto-save notes on typing
-    document.getElementById('notes-editor').addEventListener('input', () => {
-      if (notesSaveTimer) clearTimeout(notesSaveTimer);
-      notesSaveTimer = setTimeout(async () => {
-        const project = getCurrentProject();
-        if (!project) return;
-        const notes = document.getElementById('notes-editor').value;
-        await fetch(`/api/projects/${project}/notes`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ notes }),
-        });
-      }, 1000);
-    });
 
     // ── Task Tree ────────────────────────────────────────
     let taskFilter = 'todo';

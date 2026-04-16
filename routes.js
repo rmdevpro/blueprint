@@ -762,21 +762,6 @@ function registerCoreRoutes(
 
   // ── Session notes ─────────────────────────────────────────────────────────
 
-  app.get('/api/sessions/:id/notes', (req, res) => {
-    if (!validateSessionId(req.params.id))
-      return res.status(400).json({ error: 'invalid session ID format' });
-    res.json({ notes: db.getSessionNotes(req.params.id) });
-  });
-
-  app.put('/api/sessions/:id/notes', (req, res) => {
-    if (!validateSessionId(req.params.id))
-      return res.status(400).json({ error: 'invalid session ID format' });
-    const notes = req.body.notes || '';
-    if (notes.length > NOTES_MAX_LEN)
-      return res.status(400).json({ error: `notes too long (max ${NOTES_MAX_LEN})` });
-    db.setSessionNotes(req.params.id, notes);
-    res.json({ saved: true });
-  });
 
   // ── Tasks ─────────────────────────────────────────────────────────────────
 
