@@ -1,0 +1,11 @@
+export { EditorView, basicSetup } from "codemirror";
+export { EditorState } from "@codemirror/state";
+export { javascript } from "@codemirror/lang-javascript";
+export { python } from "@codemirror/lang-python";
+export { json } from "@codemirror/lang-json";
+export { css } from "@codemirror/lang-css";
+export { html } from "@codemirror/lang-html";
+export { markdown } from "@codemirror/lang-markdown";
+export { yaml } from "@codemirror/lang-yaml";
+export { oneDark } from "@codemirror/theme-one-dark";
+export { keymap } from "@codemirror/view";

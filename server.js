@@ -112,9 +112,11 @@ async function detectAuthMode() {
   const spaceId = process.env.SPACE_ID;
   if (spaceId) {
     try {
-      const res = await fetch(`https://huggingface.co/api/spaces/${spaceId}`);
+      const headers = {};
+      if (process.env.HF_TOKEN) headers.Authorization = `Bearer ${process.env.HF_TOKEN}`;
+      const res = await fetch(`https://huggingface.co/api/spaces/${spaceId}`, { headers });
       const data = await res.json();
-      if (!data.private) { authMode = 'template'; return; }
+      if (data.error || !data.private) { authMode = 'template'; return; }
     } catch {
       authMode = 'template'; return; // fail safe: assume public
     }
@@ -181,6 +183,8 @@ app.use(
 );
 app.use('/lib/jqueryfiletree', express.static(join(__dirname, 'node_modules/jqueryfiletree/dist')));
 app.use('/lib/jquery', express.static(join(__dirname, 'node_modules/jquery/dist')));
+app.use('/lib/codemirror', express.static(join(__dirname, 'public/lib/codemirror')));
+app.use('/lib/toastui-editor', express.static(join(__dirname, 'node_modules/@toast-ui/editor/dist')));
 
 // ── Route registration ──────────────────────────────────────────────────────
 

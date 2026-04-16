@@ -7,6 +7,7 @@
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
   <link rel="stylesheet" href="/lib/xterm/css/xterm.css">
   <link rel="stylesheet" href="/lib/jqueryfiletree/jQueryFileTree.min.css">
+  <link rel="stylesheet" href="/lib/toastui-editor/toastui-editor.css">
   <style>
     /* Override jQueryFileTree hardcoded colors to use theme variables */
     UL.jqueryFileTree A { color: var(--text-primary); }
@@ -235,6 +236,18 @@
       border-radius:6px; color:var(--text-primary); font-size:13px; margin-top:8px; outline:none;
     }
     #add-task-input:focus { border-color:var(--accent); }
+
+    /* ── File editor panes ── */
+    .file-editor-pane { width:100%; height:100%; display:flex; flex-direction:column; }
+    .file-editor-pane .cm-editor { flex:1; height:100%; }
+    .file-editor-pane .cm-scroller { overflow:auto; }
+    .image-viewer { display:flex; align-items:center; justify-content:center; height:100%; background:var(--bg-primary); overflow:auto; }
+    .image-viewer img { max-width:100%; max-height:100%; object-fit:contain; }
+    .pdf-viewer { width:100%; height:100%; border:none; }
+    .file-tab-icon { font-size:11px; margin-right:2px; }
+    .tab-dirty .tab-name::after { content:' ●'; color:var(--warning); }
+    .toastui-editor-defaultUI { height:100% !important; }
+    .toastui-editor-defaultUI .toastui-editor-main { background:var(--bg-primary); }
 
     #task-detail-modal { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.7); z-index:999; align-items:center; justify-content:center; }
     #task-detail-modal.visible { display:flex; }
@@ -696,6 +709,8 @@
 
   <script src="/lib/xterm-fit/lib/addon-fit.js"></script>
   <script src="/lib/xterm-web-links/lib/addon-web-links.js"></script>
+  <script src="/lib/codemirror/codemirror-bundle.js"></script>
+  <script src="/lib/toastui-editor/toastui-editor.js"></script>
   <script>
     // ── State ────────────────────────────────────────
     const tabs = new Map();
@@ -1111,7 +1126,9 @@
 
       // Fit the active terminal
       const tab = tabs.get(tabId);
-      if (tab && tab.fitAddon) {
+      if (tab && tab.type === 'file') {
+        if (tab.editor && tab.editor.focus) tab.editor.focus();
+      } else if (tab && tab.fitAddon) {
         setTimeout(() => { const t = tabs.get(tabId); if (t?.fitAddon) t.fitAddon.fit(); }, 10);
         tab.term.focus();
       }
@@ -1125,13 +1142,18 @@
       const tab = tabs.get(tabId);
       if (!tab) return;
 
-      // Disconnect WebSocket
-      if (tab.reconnectTimer) clearTimeout(tab.reconnectTimer);
-      if (tab.heartbeat) clearInterval(tab.heartbeat);
-      if (tab.dataDisposable) tab.dataDisposable.dispose();
-      if (tab.resizeDisposable) tab.resizeDisposable.dispose();
-      if (tab.ws) { tab.ws.onclose = null; tab.ws.close(); }
-      tab.term.dispose();
+      if (tab.type === 'file') {
+        if (tab.dirty && !confirm(`${tab.name} has unsaved changes. Close anyway?`)) return;
+        if (tab.editor && tab.editor.destroy) tab.editor.destroy();
+      } else {
+        // Disconnect WebSocket
+        if (tab.reconnectTimer) clearTimeout(tab.reconnectTimer);
+        if (tab.heartbeat) clearInterval(tab.heartbeat);
+        if (tab.dataDisposable) tab.dataDisposable.dispose();
+        if (tab.resizeDisposable) tab.resizeDisposable.dispose();
+        if (tab.ws) { tab.ws.onclose = null; tab.ws.close(); }
+        tab.term.dispose();
+      }
       tab.paneEl.remove();
       tabs.delete(tabId);
 
@@ -1169,10 +1191,13 @@
 
       for (const [id, tab] of tabs) {
         const el = document.createElement('div');
-        el.className = 'tab' + (id === activeTabId ? ' active' : '');
+        el.className = 'tab' + (id === activeTabId ? ' active' : '') + (tab.dirty ? ' tab-dirty' : '');
         el.dataset.tabId = id;
+        const icon = tab.type === 'file'
+          ? '<span class="file-tab-icon">&#128196;</span>'
+          : `<span class="tab-status ${tab.status}"></span>`;
         el.innerHTML = `
-          <span class="tab-status ${tab.status}"></span>
+          ${icon}
           <span class="tab-name">${escHtml(tab.name)}</span>
           <button class="tab-close" title="Close tab">&#10005;</button>
         `;
@@ -1752,7 +1777,147 @@
       loadTaskTree();
     });
 
-    // Messages
+    // ── File Editor Tabs ────────────────────────────────
+    function getEditorType(path) {
+      const ext = path.split('.').pop().toLowerCase();
+      const codeExts = ['js','ts','jsx','tsx','py','rb','go','rs','java','c','cpp','h','sh','bash','zsh','sql','dockerfile'];
+      const dataExts = ['json','yaml','yml','toml','xml'];
+      const webExts = ['css','scss','html','htm'];
+      const mdExts = ['md','markdown','mdx'];
+      const imageExts = ['png','jpg','jpeg','gif','svg','webp','ico','bmp'];
+      const pdfExts = ['pdf'];
+      if (mdExts.includes(ext)) return 'markdown';
+      if (imageExts.includes(ext)) return 'image';
+      if (pdfExts.includes(ext)) return 'pdf';
+      if (codeExts.includes(ext)) return 'code';
+      if (dataExts.includes(ext)) return 'data';
+      if (webExts.includes(ext)) return 'web';
+      return 'text';
+    }
+
+    function getCMLanguage(path) {
+      const ext = path.split('.').pop().toLowerCase();
+      if (['js','jsx','ts','tsx'].includes(ext)) return CM.javascript();
+      if (ext === 'py') return CM.python();
+      if (ext === 'json') return CM.json();
+      if (['yaml','yml'].includes(ext)) return CM.yaml();
+      if (ext === 'css' || ext === 'scss') return CM.css();
+      if (ext === 'html' || ext === 'htm') return CM.html();
+      if (ext === 'md' || ext === 'markdown') return CM.markdown();
+      return [];
+    }
+
+    async function openFileTab(filePath) {
+      // Check for already-open tab
+      for (const [id, tab] of tabs) {
+        if (tab.type === 'file' && tab.filePath === filePath) {
+          switchTab(id);
+          return;
+        }
+      }
+
+      const editorType = getEditorType(filePath);
+      const tabId = 'file-' + Date.now();
+      const fileName = filePath.split('/').pop();
+
+      const paneEl = document.createElement('div');
+      paneEl.className = 'terminal-pane';
+      paneEl.id = `pane-${tabId}`;
+      document.getElementById('terminal-area').appendChild(paneEl);
+
+      // Hide empty state
+      document.querySelectorAll('#terminal-area > div:not(.terminal-pane):not(.status-bar)').forEach(el => el.style.display = 'none');
+
+      const tab = {
+        id: tabId, type: 'file', name: fileName, filePath,
+        editorType, paneEl, dirty: false, editor: null,
+        status: 'connected',
+      };
+      tabs.set(tabId, tab);
+
+      try {
+        if (editorType === 'image') {
+          paneEl.innerHTML = `<div class="image-viewer"><img src="/api/file-raw?path=${encodeURIComponent(filePath)}"></div>`;
+        } else if (editorType === 'pdf') {
+          paneEl.innerHTML = `<iframe class="pdf-viewer" src="/api/file-raw?path=${encodeURIComponent(filePath)}"></iframe>`;
+        } else if (editorType === 'markdown' && typeof toastui !== 'undefined') {
+          const res = await fetch('/api/file?path=' + encodeURIComponent(filePath));
+          const content = await res.text();
+          const editorDiv = document.createElement('div');
+          editorDiv.className = 'file-editor-pane';
+          paneEl.appendChild(editorDiv);
+          const editor = new toastui.Editor({
+            el: editorDiv,
+            initialEditType: 'wysiwyg',
+            previewStyle: 'vertical',
+            height: '100%',
+            initialValue: content,
+            theme: 'dark',
+          });
+          tab.editor = editor;
+          editor.on('change', () => {
+            if (!tab.dirty) { tab.dirty = true; renderTabs(); }
+          });
+          // Ctrl+S save
+          editorDiv.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+              e.preventDefault();
+              saveFileTab(tabId);
+            }
+          });
+        } else {
+          // CodeMirror for code/data/web/text
+          const res = await fetch('/api/file?path=' + encodeURIComponent(filePath));
+          const content = await res.text();
+          const editorDiv = document.createElement('div');
+          editorDiv.className = 'file-editor-pane';
+          paneEl.appendChild(editorDiv);
+          const lang = getCMLanguage(filePath);
+          const extensions = [
+            CM.basicSetup,
+            CM.oneDark,
+            CM.keymap.of([{ key: 'Mod-s', run: () => { saveFileTab(tabId); return true; } }]),
+            CM.EditorView.updateListener.of(update => {
+              if (update.docChanged && !tab.dirty) { tab.dirty = true; renderTabs(); }
+            }),
+          ];
+          if (lang) extensions.push(lang);
+          const state = CM.EditorState.create({ doc: content, extensions });
+          const editor = new CM.EditorView({ state, parent: editorDiv });
+          tab.editor = editor;
+        }
+      } catch (err) {
+        paneEl.innerHTML = `<div style="padding:24px;color:var(--danger)">Error loading file: ${escHtml(err.message)}</div>`;
+      }
+
+      switchTab(tabId);
+      renderTabs();
+    }
+
+    async function saveFileTab(tabId) {
+      const tab = tabs.get(tabId);
+      if (!tab || tab.type !== 'file') return;
+      let content;
+      if (tab.editorType === 'markdown' && tab.editor && tab.editor.getMarkdown) {
+        content = tab.editor.getMarkdown();
+      } else if (tab.editor && tab.editor.state) {
+        content = tab.editor.state.doc.toString();
+      } else {
+        return;
+      }
+      try {
+        await fetch('/api/file?path=' + encodeURIComponent(tab.filePath), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'text/plain' },
+          body: content,
+        });
+        tab.dirty = false;
+        renderTabs();
+      } catch (err) {
+        alert('Save failed: ' + err.message);
+      }
+    }
+
     // File Browser
     let fileBrowserInitialized = false;
 
@@ -1816,7 +1981,7 @@
       $(treeEl).on('dblclick', 'li.file a', function(e) {
         e.preventDefault();
         const path = $(this).attr('rel') || '';
-        if (path) window.open('/api/file?path=' + encodeURIComponent(path.trim()), '_blank');
+        if (path) openFileTab(path.trim());
       });
 
       // Make file and directory links draggable

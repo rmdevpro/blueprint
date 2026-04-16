@@ -287,6 +287,30 @@ function registerCoreRoutes(
     }
   });
 
+  app.put('/api/file', express.text({ limit: '2mb' }), async (req, res) => {
+    try {
+      const filePath = req.query.path;
+      if (!filePath) return res.status(400).json({ error: 'path required' });
+      await writeFile(filePath, req.body);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/file-raw', async (req, res) => {
+    try {
+      const filePath = req.query.path;
+      if (!filePath) return res.status(400).send('path required');
+      const fileStat = await stat(filePath);
+      if (!fileStat.isFile()) return res.status(400).send('not a file');
+      if (fileStat.size > 10 * 1024 * 1024) return res.status(413).send('file too large (>10MB)');
+      res.sendFile(filePath);
+    } catch (err) {
+      res.status(400).send(`Cannot read file: ${err.message}`);
+    }
+  });
+
   // ── POST /api/jqueryfiletree ───────────────────────────────────────────────
 
   app.post('/api/jqueryfiletree', jqftConnector.getDirList);
