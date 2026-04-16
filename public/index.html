@@ -1575,8 +1575,7 @@
                 multiFolder: true,
                 onlyFolders: false,
               }, function(filePath) {
-                // Single click opens file in new tab
-                window.open('/api/file?path=' + encodeURIComponent(filePath.trim()), '_blank');
+                // Single click does nothing — double click opens file
               });
             }
           } else {
@@ -1585,6 +1584,13 @@
           }
         });
       }
+
+      // Double-click file to open in new tab
+      $(treeEl).on('dblclick', 'li.file a', function(e) {
+        e.preventDefault();
+        const path = $(this).attr('rel') || '';
+        if (path) window.open('/api/file?path=' + encodeURIComponent(path.trim()), '_blank');
+      });
 
       // Make file and directory links draggable
       $(treeEl).on('dragstart', 'a', function(e) {
