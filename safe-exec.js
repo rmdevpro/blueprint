@@ -16,7 +16,7 @@ function execFileAsync(cmd, args, options) {
   });
 }
 
-const WORKSPACE = '/mnt/workspace';
+const WORKSPACE = process.env.WORKSPACE || '/mnt/workspace';
 const CLAUDE_HOME = process.env.CLAUDE_HOME || '/home/hopper/.claude';
 const HOME = process.env.HOME || '/home/hopper';
 
