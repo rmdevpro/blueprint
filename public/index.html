@@ -1672,9 +1672,18 @@
         });
         const data = await res.json();
         if (data.error) return alert('Error: ' + data.error);
-        // Refresh by reinitializing the file browser
-        fileBrowserInitialized = false;
-        loadFiles();
+        // Refresh the expanded directory
+        const expandedDir = document.querySelector('#file-browser-tree li.directory.expanded > a');
+        if (expandedDir) {
+          const parentLi = expandedDir.closest('li.directory.expanded');
+          if (parentLi) {
+            const subUl = parentLi.querySelector('ul');
+            if (subUl) subUl.remove();
+            parentLi.classList.remove('expanded');
+            parentLi.classList.add('collapsed');
+            expandedDir.click();
+          }
+        }
       } catch (err) { alert('Error: ' + err.message); }
     }
 
@@ -1696,8 +1705,19 @@
         } catch (err) { alert('Upload failed: ' + err.message); }
       }
       document.getElementById('file-upload-input').value = '';
-      fileBrowserInitialized = false;
-      loadFiles();
+      // Refresh the expanded directory by collapsing and re-clicking it
+      const expandedDir = document.querySelector('#file-browser-tree li.directory.expanded > a');
+      if (expandedDir) {
+        const parentLi = expandedDir.closest('li.directory.expanded');
+        if (parentLi) {
+          // Remove children and re-trigger expansion
+          const subUl = parentLi.querySelector('ul');
+          if (subUl) subUl.remove();
+          parentLi.classList.remove('expanded');
+          parentLi.classList.add('collapsed');
+          expandedDir.click();
+        }
+      }
     }
 
     // Reload panel when switching tabs
