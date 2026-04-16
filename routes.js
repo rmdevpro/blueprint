@@ -838,6 +838,22 @@ function registerCoreRoutes(
     res.json({ ...task, history });
   });
 
+  app.put('/api/tasks/reorder', (req, res) => {
+    const { orders } = req.body;
+    if (!Array.isArray(orders)) return res.status(400).json({ error: 'orders array required' });
+    db.reorderTasks(orders);
+    res.json({ reordered: true });
+  });
+
+  app.put('/api/tasks/:id/move', (req, res) => {
+    const id = Number(req.params.id);
+    const { folder_path, sort_order } = req.body;
+    if (!folder_path) return res.status(400).json({ error: 'folder_path required' });
+    const path = normalizeFolderPath(folder_path);
+    db.moveTask(id, path, sort_order);
+    res.json({ moved: true });
+  });
+
   app.put('/api/tasks/:id', (req, res) => {
     const id = Number(req.params.id);
     const task = db.getTask(id);
@@ -856,22 +872,6 @@ function registerCoreRoutes(
       db.updateTaskStatus(id, status);
     }
     res.json(db.getTask(id));
-  });
-
-  app.put('/api/tasks/:id/move', (req, res) => {
-    const id = Number(req.params.id);
-    const { folder_path, sort_order } = req.body;
-    if (!folder_path) return res.status(400).json({ error: 'folder_path required' });
-    const path = normalizeFolderPath(folder_path);
-    db.moveTask(id, path, sort_order);
-    res.json({ moved: true });
-  });
-
-  app.put('/api/tasks/reorder', (req, res) => {
-    const { orders } = req.body;
-    if (!Array.isArray(orders)) return res.status(400).json({ error: 'orders array required' });
-    db.reorderTasks(orders);
-    res.json({ reordered: true });
   });
 
   app.delete('/api/tasks/:id', (req, res) => {

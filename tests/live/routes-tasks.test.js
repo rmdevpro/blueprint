@@ -3,11 +3,20 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { get, post, put, del } = require('../helpers/http-client');
-const { resetBaseline } = require('../helpers/reset-state');
-const { queryCount, queryJson } = require('../helpers/db-query');
+
+async function cleanAllTasks() {
+  const tree = await get('/api/tasks/tree?filter=all');
+  const ids = [];
+  function collect(node) {
+    for (const t of node.tasks) ids.push(t.id);
+    for (const child of Object.values(node.children)) collect(child);
+  }
+  collect(tree.data.tree);
+  for (const id of ids) await del(`/api/tasks/${id}`);
+}
 
 test('TSK-01: create task with folder_path and title', async () => {
-  await resetBaseline();
+
   const r = await post('/api/tasks', { folder_path: '/src/auth', title: 'Fix login bug' });
   assert.equal(r.status, 200);
   assert.equal(r.data.title, 'Fix login bug');
@@ -23,7 +32,7 @@ test('TSK-02: create task at root /', async () => {
 });
 
 test('TSK-03: tree endpoint returns nested folder structure', async () => {
-  await resetBaseline();
+  await cleanAllTasks();
   await post('/api/tasks', { folder_path: '/src/auth', title: 'Task A' });
   await post('/api/tasks', { folder_path: '/src/db', title: 'Task B' });
   await post('/api/tasks', { folder_path: '/', title: 'Root task' });
@@ -41,7 +50,7 @@ test('TSK-03: tree endpoint returns nested folder structure', async () => {
 });
 
 test('TSK-04: tree with filter=all includes done and archived', async () => {
-  await resetBaseline();
+  await cleanAllTasks();
   const t1 = await post('/api/tasks', { folder_path: '/', title: 'Active' });
   const t2 = await post('/api/tasks', { folder_path: '/', title: 'Done' });
   const t3 = await post('/api/tasks', { folder_path: '/', title: 'Archived' });
@@ -56,7 +65,7 @@ test('TSK-04: tree with filter=all includes done and archived', async () => {
 });
 
 test('TSK-05: get task by ID returns task with history', async () => {
-  await resetBaseline();
+
   const t = await post('/api/tasks', { folder_path: '/test', title: 'History test' });
   const r = await get(`/api/tasks/${t.data.id}`);
   assert.equal(r.status, 200);
@@ -67,7 +76,7 @@ test('TSK-05: get task by ID returns task with history', async () => {
 });
 
 test('TSK-06: update title records rename history', async () => {
-  await resetBaseline();
+
   const t = await post('/api/tasks', { folder_path: '/', title: 'Old title' });
   await put(`/api/tasks/${t.data.id}`, { title: 'New title' });
   const r = await get(`/api/tasks/${t.data.id}`);
@@ -79,7 +88,7 @@ test('TSK-06: update title records rename history', async () => {
 });
 
 test('TSK-07: update description records history', async () => {
-  await resetBaseline();
+
   const t = await post('/api/tasks', { folder_path: '/', title: 'Desc test' });
   await put(`/api/tasks/${t.data.id}`, { description: 'Some notes here' });
   const r = await get(`/api/tasks/${t.data.id}`);
@@ -89,7 +98,7 @@ test('TSK-07: update description records history', async () => {
 });
 
 test('TSK-08: complete task sets completed_at', async () => {
-  await resetBaseline();
+
   const t = await post('/api/tasks', { folder_path: '/', title: 'Complete me' });
   await put(`/api/tasks/${t.data.id}`, { status: 'done' });
   const r = await get(`/api/tasks/${t.data.id}`);
@@ -98,7 +107,7 @@ test('TSK-08: complete task sets completed_at', async () => {
 });
 
 test('TSK-09: reopen task clears completed_at', async () => {
-  await resetBaseline();
+
   const t = await post('/api/tasks', { folder_path: '/', title: 'Reopen me' });
   await put(`/api/tasks/${t.data.id}`, { status: 'done' });
   await put(`/api/tasks/${t.data.id}`, { status: 'todo' });
@@ -108,7 +117,7 @@ test('TSK-09: reopen task clears completed_at', async () => {
 });
 
 test('TSK-10: archive task', async () => {
-  await resetBaseline();
+
   const t = await post('/api/tasks', { folder_path: '/', title: 'Archive me' });
   await put(`/api/tasks/${t.data.id}`, { status: 'archived' });
   const r = await get(`/api/tasks/${t.data.id}`);
@@ -116,7 +125,7 @@ test('TSK-10: archive task', async () => {
 });
 
 test('TSK-11: move task to different folder records history', async () => {
-  await resetBaseline();
+
   const t = await post('/api/tasks', { folder_path: '/old', title: 'Move me' });
   await put(`/api/tasks/${t.data.id}/move`, { folder_path: '/new/location' });
   const r = await get(`/api/tasks/${t.data.id}`);
@@ -128,7 +137,7 @@ test('TSK-11: move task to different folder records history', async () => {
 });
 
 test('TSK-12: batch reorder updates sort_order', async () => {
-  await resetBaseline();
+  await cleanAllTasks();
   const t1 = await post('/api/tasks', { folder_path: '/proj', title: 'First' });
   const t2 = await post('/api/tasks', { folder_path: '/proj', title: 'Second' });
   const t3 = await post('/api/tasks', { folder_path: '/proj', title: 'Third' });
@@ -150,7 +159,7 @@ test('TSK-12: batch reorder updates sort_order', async () => {
 });
 
 test('TSK-13: delete task removes from tree', async () => {
-  await resetBaseline();
+
   const t = await post('/api/tasks', { folder_path: '/', title: 'Delete me' });
   await del(`/api/tasks/${t.data.id}`);
   const r = await get(`/api/tasks/${t.data.id}`);
@@ -168,7 +177,7 @@ test('TSK-15: create task with title too long returns 400', async () => {
 });
 
 test('TSK-16: tree pruning removes empty folders', async () => {
-  await resetBaseline();
+
   const t = await post('/api/tasks', { folder_path: '/a/b/c', title: 'Deep task' });
   let tree = await get('/api/tasks/tree?filter=todo');
   assert.ok(tree.data.tree.children.a, 'folder a must exist');
@@ -180,7 +189,7 @@ test('TSK-16: tree pruning removes empty folders', async () => {
 });
 
 test('TSK-17: sort order auto-increments', async () => {
-  await resetBaseline();
+  await cleanAllTasks();
   const t1 = await post('/api/tasks', { folder_path: '/proj', title: 'A' });
   const t2 = await post('/api/tasks', { folder_path: '/proj', title: 'B' });
   const t3 = await post('/api/tasks', { folder_path: '/proj', title: 'C' });
