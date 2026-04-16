@@ -1951,6 +1951,10 @@
 
     async function startVoice() {
       if (!activeTabId || !tabs.has(activeTabId)) return;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Microphone requires HTTPS. Access Blueprint via HTTPS or localhost to use voice input.');
+        return;
+      }
       try {
         voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       } catch (err) {
