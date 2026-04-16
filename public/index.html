@@ -1535,7 +1535,6 @@
 
       const treeEl = document.getElementById('file-browser-tree');
       treeEl.innerHTML = '';
-      closeFileViewer();
 
       // Fetch actual volume mounts from container
       let mounts = [];
@@ -2473,6 +2472,7 @@
 
     // ── Init ─────────────────────────────────────────
     loadState();
+    loadFiles();
     setInterval(loadState, REFRESH_MS);
     setTimeout(checkAuth, 1000);
     setInterval(checkAuth, 60000);
