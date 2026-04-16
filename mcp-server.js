@@ -91,20 +91,26 @@ const TOOLS = [
   },
   {
     name: 'blueprint_get_tasks',
-    description: 'List tasks.',
+    description: 'List tasks, optionally filtered by folder path and status.',
     inputSchema: {
       type: 'object',
-      properties: { project: { type: 'string' } },
-      required: ['project'],
+      properties: {
+        folder_path: { type: 'string', description: 'Filter by folder path (e.g. /src/auth)' },
+        filter: { type: 'string', enum: ['all', 'todo', 'done', 'archived'], description: 'Filter by status (default: todo)' },
+      },
     },
   },
   {
     name: 'blueprint_add_task',
-    description: 'Add a task.',
+    description: 'Add a task to a folder in the workspace.',
     inputSchema: {
       type: 'object',
-      properties: { project: { type: 'string' }, text: { type: 'string' } },
-      required: ['project', 'text'],
+      properties: {
+        folder_path: { type: 'string', description: 'Folder path (e.g. /src/auth). Use / for workspace root.' },
+        title: { type: 'string' },
+        description: { type: 'string' },
+      },
+      required: ['folder_path', 'title'],
     },
   },
   {
@@ -113,6 +119,49 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: { task_id: { type: 'number' } },
+      required: ['task_id'],
+    },
+  },
+  {
+    name: 'blueprint_reopen_task',
+    description: 'Reopen a completed task.',
+    inputSchema: {
+      type: 'object',
+      properties: { task_id: { type: 'number' } },
+      required: ['task_id'],
+    },
+  },
+  {
+    name: 'blueprint_archive_task',
+    description: 'Archive a task.',
+    inputSchema: {
+      type: 'object',
+      properties: { task_id: { type: 'number' } },
+      required: ['task_id'],
+    },
+  },
+  {
+    name: 'blueprint_move_task',
+    description: 'Move a task to a different folder.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'number' },
+        folder_path: { type: 'string' },
+      },
+      required: ['task_id', 'folder_path'],
+    },
+  },
+  {
+    name: 'blueprint_update_task',
+    description: 'Update task title or description.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'number' },
+        title: { type: 'string' },
+        description: { type: 'string' },
+      },
       required: ['task_id'],
     },
   },

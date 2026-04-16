@@ -30,7 +30,9 @@ const SESSION_NAME_MAX_LEN = 255;
 const PROMPT_MAX_LEN = 50000;
 const MESSAGE_CONTENT_MAX_LEN = 100000;
 const SEARCH_QUERY_MAX_LEN = 200;
-const TASK_TEXT_MAX_LEN = 1000;
+const TASK_TITLE_MAX_LEN = 500;
+const TASK_DESC_MAX_LEN = 10000;
+const TASK_FOLDER_MAX_LEN = 1000;
 const NOTES_MAX_LEN = 100000;
 const VALID_STATES = ['active', 'archived', 'hidden'];
 
@@ -778,36 +780,102 @@ function registerCoreRoutes(
 
   // ── Tasks ─────────────────────────────────────────────────────────────────
 
-  app.get('/api/projects/:name/tasks', (req, res) => {
-    const project = db.getProject(req.params.name);
-    if (!project) return res.status(404).json({ error: 'project not found' });
-    res.json({ tasks: db.getTasks(project.id) });
+  function normalizeFolderPath(p) {
+    if (!p || p === '/') return '/';
+    return '/' + p.replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/');
+  }
+
+  function buildTaskTree(tasks) {
+    const root = { path: '/', name: 'Workspace', tasks: [], children: {} };
+    for (const task of tasks) {
+      const parts = task.folder_path.replace(/^\//, '').split('/').filter(Boolean);
+      let node = root;
+      for (const part of parts) {
+        if (!node.children[part]) {
+          node.children[part] = {
+            path: node.path === '/' ? '/' + part : node.path + '/' + part,
+            name: part, tasks: [], children: {},
+          };
+        }
+        node = node.children[part];
+      }
+      node.tasks.push(task);
+    }
+    function prune(node) {
+      for (const key of Object.keys(node.children)) {
+        prune(node.children[key]);
+        if (node.children[key].tasks.length === 0 && Object.keys(node.children[key].children).length === 0) {
+          delete node.children[key];
+        }
+      }
+    }
+    prune(root);
+    return root;
+  }
+
+  app.get('/api/tasks/tree', (req, res) => {
+    const filter = req.query.filter || 'todo';
+    const tasks = db.getAllTasks(filter);
+    res.json({ tree: buildTaskTree(tasks) });
   });
 
-  app.post('/api/projects/:name/tasks', (req, res) => {
-    const project = db.getProject(req.params.name);
-    if (!project) return res.status(404).json({ error: 'project not found' });
-    const { text, created_by } = req.body;
-    if (!text) return res.status(400).json({ error: 'text required' });
-    if (text.length > TASK_TEXT_MAX_LEN)
-      return res.status(400).json({ error: `text too long (max ${TASK_TEXT_MAX_LEN})` });
-    const task = db.addTask(project.id, text, created_by || 'human');
-    fireEvent('task_added', { task_id: task.id, project: req.params.name, text });
+  app.post('/api/tasks', (req, res) => {
+    const { folder_path, title, description, created_by } = req.body;
+    if (!title) return res.status(400).json({ error: 'title required' });
+    if (title.length > TASK_TITLE_MAX_LEN) return res.status(400).json({ error: 'title too long' });
+    if (description && description.length > TASK_DESC_MAX_LEN) return res.status(400).json({ error: 'description too long' });
+    const path = normalizeFolderPath(folder_path);
+    if (path.length > TASK_FOLDER_MAX_LEN) return res.status(400).json({ error: 'folder_path too long' });
+    const task = db.addTask(path, title, description || '', null, created_by || 'human');
+    fireEvent('task_added', { task_id: task.id, folder_path: path, title });
     res.json(task);
   });
 
-  app.put('/api/tasks/:id/complete', (req, res) => {
-    db.completeTask(req.params.id);
-    res.json({ done: true });
+  app.get('/api/tasks/:id', (req, res) => {
+    const task = db.getTask(Number(req.params.id));
+    if (!task) return res.status(404).json({ error: 'task not found' });
+    const history = db.getTaskHistory(task.id);
+    res.json({ ...task, history });
   });
 
-  app.put('/api/tasks/:id/reopen', (req, res) => {
-    db.reopenTask(req.params.id);
-    res.json({ reopened: true });
+  app.put('/api/tasks/:id', (req, res) => {
+    const id = Number(req.params.id);
+    const task = db.getTask(id);
+    if (!task) return res.status(404).json({ error: 'task not found' });
+    const { title, description, status } = req.body;
+    if (title !== undefined) {
+      if (!title || title.length > TASK_TITLE_MAX_LEN) return res.status(400).json({ error: 'invalid title' });
+      db.updateTaskTitle(id, title);
+    }
+    if (description !== undefined) {
+      if (description.length > TASK_DESC_MAX_LEN) return res.status(400).json({ error: 'description too long' });
+      db.updateTaskDescription(id, description);
+    }
+    if (status !== undefined) {
+      if (!['todo', 'done', 'archived'].includes(status)) return res.status(400).json({ error: 'invalid status' });
+      db.updateTaskStatus(id, status);
+    }
+    res.json(db.getTask(id));
+  });
+
+  app.put('/api/tasks/:id/move', (req, res) => {
+    const id = Number(req.params.id);
+    const { folder_path, sort_order } = req.body;
+    if (!folder_path) return res.status(400).json({ error: 'folder_path required' });
+    const path = normalizeFolderPath(folder_path);
+    db.moveTask(id, path, sort_order);
+    res.json({ moved: true });
+  });
+
+  app.put('/api/tasks/reorder', (req, res) => {
+    const { orders } = req.body;
+    if (!Array.isArray(orders)) return res.status(400).json({ error: 'orders array required' });
+    db.reorderTasks(orders);
+    res.json({ reordered: true });
   });
 
   app.delete('/api/tasks/:id', (req, res) => {
-    db.deleteTask(req.params.id);
+    db.deleteTask(Number(req.params.id));
     res.json({ deleted: true });
   });
 

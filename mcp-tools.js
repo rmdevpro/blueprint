@@ -45,9 +45,13 @@ function registerMcpRoutes(app) {
         },
         { name: 'blueprint_get_project_notes', description: 'Read the shared project notes.' },
         { name: 'blueprint_get_session_notes', description: "Read a session's private notes." },
-        { name: 'blueprint_get_tasks', description: 'List all tasks for a project.' },
-        { name: 'blueprint_add_task', description: 'Add a task to the shared project task list.' },
+        { name: 'blueprint_get_tasks', description: 'List tasks by folder path or status filter.' },
+        { name: 'blueprint_add_task', description: 'Add a task to a workspace folder.' },
         { name: 'blueprint_complete_task', description: 'Mark a task as done.' },
+        { name: 'blueprint_reopen_task', description: 'Reopen a completed task.' },
+        { name: 'blueprint_archive_task', description: 'Archive a task.' },
+        { name: 'blueprint_move_task', description: 'Move a task to a different folder.' },
+        { name: 'blueprint_update_task', description: 'Update task title or description.' },
         {
           name: 'blueprint_get_project_claude_md',
           description: "Read a project's CLAUDE.md file.",
@@ -58,8 +62,6 @@ function registerMcpRoutes(app) {
         { name: 'blueprint_ask_cli', description: 'Ask any installed CLI (claude, gemini, codex) a question.' },
         { name: 'blueprint_ask_quorum', description: 'Ask a question to a multi-model quorum.' },
         { name: 'blueprint_set_session_config', description: 'Set session configuration.' },
-        { name: 'blueprint_reopen_task', description: 'Reopen a completed task.' },
-        { name: 'blueprint_delete_task', description: 'Delete a task.' },
         { name: 'blueprint_set_project_notes', description: 'Set notes for a project.' },
         { name: 'blueprint_set_session_notes', description: 'Set notes for a session.' },
         { name: 'blueprint_get_token_usage', description: 'Get token usage for a session.' },
@@ -118,23 +120,56 @@ function registerMcpRoutes(app) {
           break;
         }
         case 'blueprint_get_tasks': {
-          const project = db.getProject(args.project);
-          result = project ? { tasks: db.getTasks(project.id) } : { tasks: [] };
+          if (args.folder_path) {
+            result = { tasks: db.getTasksByFolder(args.folder_path) };
+          } else {
+            result = { tasks: db.getAllTasks(args.filter || 'todo') };
+          }
           break;
         }
         case 'blueprint_add_task': {
-          const project = db.getProject(args.project);
-          if (!project) throw new Error('Project not found');
-          if (!args.text || args.text.length > 1000)
-            return res.status(400).json({ error: 'text required (max 1000 chars)' });
-          result = db.addTask(project.id, args.text, 'agent');
+          if (!args.title || args.title.length > 500)
+            return res.status(400).json({ error: 'title required (max 500 chars)' });
+          const folderPath = args.folder_path || '/';
+          result = db.addTask(folderPath, args.title, args.description || '', null, 'agent');
           break;
         }
         case 'blueprint_complete_task': {
           if (!validateTaskId(args.task_id))
             return res.status(400).json({ error: 'valid numeric task_id required' });
-          db.completeTask(Number(args.task_id));
+          db.updateTaskStatus(Number(args.task_id), 'done');
           result = { completed: true };
+          break;
+        }
+        case 'blueprint_reopen_task': {
+          if (!validateTaskId(args.task_id))
+            return res.status(400).json({ error: 'valid numeric task_id required' });
+          db.updateTaskStatus(Number(args.task_id), 'todo');
+          result = { reopened: true };
+          break;
+        }
+        case 'blueprint_archive_task': {
+          if (!validateTaskId(args.task_id))
+            return res.status(400).json({ error: 'valid numeric task_id required' });
+          db.updateTaskStatus(Number(args.task_id), 'archived');
+          result = { archived: true };
+          break;
+        }
+        case 'blueprint_move_task': {
+          if (!validateTaskId(args.task_id))
+            return res.status(400).json({ error: 'valid numeric task_id required' });
+          if (!args.folder_path) return res.status(400).json({ error: 'folder_path required' });
+          db.moveTask(Number(args.task_id), args.folder_path);
+          result = { moved: true };
+          break;
+        }
+        case 'blueprint_update_task': {
+          if (!validateTaskId(args.task_id))
+            return res.status(400).json({ error: 'valid numeric task_id required' });
+          const taskId = Number(args.task_id);
+          if (args.title) db.updateTaskTitle(taskId, args.title);
+          if (args.description !== undefined) db.updateTaskDescription(taskId, args.description);
+          result = db.getTask(taskId) || { updated: true };
           break;
         }
         case 'blueprint_get_project_claude_md': {
@@ -193,20 +228,6 @@ function registerMcpRoutes(app) {
           if (args.state !== undefined) db.setSessionState(args.session_id, args.state);
           if (args.notes !== undefined) db.setSessionNotes(args.session_id, args.notes);
           result = { saved: true };
-          break;
-        }
-        case 'blueprint_reopen_task': {
-          if (!validateTaskId(args.task_id))
-            return res.status(400).json({ error: 'valid numeric task_id required' });
-          db.reopenTask(Number(args.task_id));
-          result = { reopened: true };
-          break;
-        }
-        case 'blueprint_delete_task': {
-          if (!validateTaskId(args.task_id))
-            return res.status(400).json({ error: 'valid numeric task_id required' });
-          db.deleteTask(Number(args.task_id));
-          result = { deleted: true };
           break;
         }
         case 'blueprint_set_project_notes': {

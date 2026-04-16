@@ -195,25 +195,51 @@
     }
     #notes-editor:focus { border-color: var(--accent); }
 
-    .task-item {
-      display: flex; align-items: center; gap: 8px; padding: 6px 0;
-      border-bottom: 1px solid var(--border); font-size: 13px;
+    /* ── Task tree ── */
+    #task-filter-bar { display:flex; gap:4px; margin-bottom:8px; align-items:center; }
+    #task-filter-bar .task-filter { font-size:11px; padding:2px 8px; }
+    #task-auto-label { margin-left:auto; font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:4px; cursor:pointer; }
+
+    #task-tree { overflow-y:auto; background:var(--bg-primary); border:1px solid var(--border); border-radius:6px; padding:4px; flex:1; min-height:0; }
+    #task-tree ul { list-style:none; padding-left:16px; margin:0; }
+    #task-tree > ul { padding-left:0; }
+    .task-folder-label {
+      display:flex; align-items:center; gap:4px; padding:3px 6px; cursor:pointer;
+      font-size:12px; color:var(--text-secondary); user-select:none; border-radius:4px;
     }
-    .task-item.done .task-text { text-decoration: line-through; color: var(--text-muted); }
-    .task-checkbox { cursor: pointer; }
-    .task-text { flex: 1; }
-    .task-delete {
-      background: none; border: none; color: var(--text-muted); cursor: pointer;
-      font-size: 11px; visibility: hidden;
+    .task-folder-label:hover { color:var(--text-primary); background:var(--bg-tertiary); }
+    .task-folder-label .folder-arrow { font-size:10px; transition:transform 0.15s; display:inline-block; }
+    .task-folder.collapsed .folder-arrow { transform:rotate(-90deg); }
+    .task-folder.collapsed > ul { display:none; }
+    .task-folder-label .folder-icon { margin-right:2px; }
+    .task-folder-label .folder-count { font-size:10px; color:var(--text-muted); margin-left:auto; }
+    .task-folder.selected > .task-folder-label { color:var(--accent); }
+
+    .task-node {
+      display:flex; align-items:center; gap:6px; padding:3px 6px; font-size:13px; cursor:grab; border-radius:4px;
     }
-    .task-item:hover .task-delete { visibility: visible; }
-    .task-delete:hover { color: var(--danger); }
+    .task-node:hover { background:var(--bg-hover); }
+    .task-node.done .task-label { text-decoration:line-through; color:var(--text-muted); }
+    .task-node.archived .task-label { color:var(--text-muted); font-style:italic; }
+    .task-node .task-index { color:var(--text-muted); font-size:11px; min-width:16px; text-align:right; }
+    .task-node .task-label { flex:1; cursor:default; }
+    .task-node .task-delete { visibility:hidden; background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:11px; }
+    .task-node:hover .task-delete { visibility:visible; }
+    .task-node .task-delete:hover { color:var(--danger); }
+    .task-node.drag-over-above { border-top:2px solid var(--accent); }
+    .task-node.drag-over-below { border-bottom:2px solid var(--accent); }
+    .task-folder.drag-over > .task-folder-label { background:var(--accent); color:var(--bg-primary); }
 
     #add-task-input {
-      width: 100%; padding: 8px; background: var(--bg-primary); border: 1px solid var(--border);
-      border-radius: 6px; color: var(--text-primary); font-size: 13px; margin-top: 8px; outline: none;
+      width:100%; padding:8px; background:var(--bg-primary); border:1px solid var(--border);
+      border-radius:6px; color:var(--text-primary); font-size:13px; margin-top:8px; outline:none;
     }
-    #add-task-input:focus { border-color: var(--accent); }
+    #add-task-input:focus { border-color:var(--accent); }
+
+    #task-detail-modal { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.7); z-index:999; align-items:center; justify-content:center; }
+    #task-detail-modal.visible { display:flex; }
+    #task-detail-history { max-height:200px; overflow-y:auto; font-size:12px; color:var(--text-secondary); }
+    #task-detail-history .hist-item { padding:4px 0; border-bottom:1px solid var(--border); }
 
     #panel-toggle {
       position: absolute; right: 0; top: 50%; transform: translateY(-50%);
@@ -477,9 +503,15 @@
         <textarea id="notes-editor" placeholder="Shared notes for this project..."></textarea>
       </div>
       <div id="panel-tasks" class="panel-section" style="display:none">
-        <h3>Tasks</h3>
-        <div id="task-list"></div>
-        <input id="add-task-input" type="text" placeholder="Add a task... (Enter to add)">
+        <div id="task-filter-bar">
+          <button class="filter-btn task-filter active" data-task-filter="todo" onclick="setTaskFilter('todo')">Active</button>
+          <button class="filter-btn task-filter" data-task-filter="all" onclick="setTaskFilter('all')">All</button>
+          <button class="filter-btn task-filter" data-task-filter="done" onclick="setTaskFilter('done')">Done</button>
+          <button class="filter-btn task-filter" data-task-filter="archived" onclick="setTaskFilter('archived')">Archive</button>
+          <label id="task-auto-label"><input type="checkbox" id="task-auto-nav" onchange="taskAutoNav=this.checked;if(taskAutoNav)autoNavigateTaskTree()"> Auto</label>
+        </div>
+        <div id="task-tree"></div>
+        <input id="add-task-input" type="text" placeholder="Add task to selected folder... (Enter)">
       </div>
       <div id="panel-files" class="panel-section">
         <div style="display:flex;justify-content:flex-end;margin-bottom:4px;gap:4px">
@@ -645,6 +677,28 @@
   </div>
 
   <script src="/lib/xterm/lib/xterm.js"></script>
+  <div id="task-detail-modal">
+    <div class="modal-content" style="width:500px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:28px;position:relative">
+      <button class="settings-close" onclick="closeTaskDetail()" style="position:absolute;top:12px;right:16px;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px">&times;</button>
+      <div class="settings-group" style="margin-bottom:16px">
+        <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Title</label>
+        <input id="task-detail-title" type="text" style="width:100%;padding:8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:14px">
+      </div>
+      <div class="settings-group" style="margin-bottom:16px">
+        <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Notes</label>
+        <textarea id="task-detail-description" rows="5" style="width:100%;padding:8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px;resize:vertical"></textarea>
+      </div>
+      <div class="settings-group" style="margin-bottom:16px">
+        <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">History</label>
+        <div id="task-detail-history"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="saveTaskDetail()" style="flex:1;padding:8px;background:var(--accent);color:#0d1117;border:none;border-radius:6px;cursor:pointer;font-weight:600">Save</button>
+        <button onclick="closeTaskDetail()" style="padding:8px 16px;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;cursor:pointer">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/lib/xterm-fit/lib/addon-fit.js"></script>
   <script src="/lib/xterm-web-links/lib/addon-web-links.js"></script>
   <script>
@@ -1069,6 +1123,7 @@
 
       renderTabs();
       renderSidebar();
+      if (taskAutoNav && activePanel === 'tasks') autoNavigateTaskTree();
     }
 
     function closeTab(tabId) {
@@ -1460,7 +1515,7 @@
           document.getElementById('notes-editor').value = data.notes || '';
         } catch {}
       } else if (activePanel === 'tasks') {
-        loadTasks(project);
+        loadTaskTree();
       } else if (activePanel === 'messages') {
       }
     }
@@ -1480,53 +1535,246 @@
       }, 1000);
     });
 
-    // Tasks
-    async function loadTasks(project) {
+    // ── Task Tree ────────────────────────────────────────
+    let taskFilter = 'todo';
+    let taskAutoNav = false;
+    let selectedTaskFolder = '/';
+    let editingTaskId = null;
+    let taskTreeData = null;
+
+    function setTaskFilter(filter) {
+      taskFilter = filter;
+      document.querySelectorAll('.task-filter').forEach(b => b.classList.toggle('active', b.dataset.taskFilter === filter));
+      loadTaskTree();
+    }
+
+    async function loadTaskTree() {
       try {
-        const res = await fetch(`/api/projects/${project}/tasks`);
+        const res = await fetch(`/api/tasks/tree?filter=${taskFilter}`);
         const data = await res.json();
-        renderTasks(data.tasks || []);
+        taskTreeData = data.tree;
+        renderTaskTree(data.tree);
       } catch {}
     }
 
-    function renderTasks(tasks) {
-      const container = document.getElementById('task-list');
+    function renderTaskTree(tree) {
+      const container = document.getElementById('task-tree');
       container.innerHTML = '';
-      for (const task of tasks) {
-        const item = document.createElement('div');
-        item.className = 'task-item' + (task.status === 'done' ? ' done' : '');
-        item.innerHTML = `
-          <input type="checkbox" class="task-checkbox" ${task.status === 'done' ? 'checked' : ''}>
-          <span class="task-text">${escHtml(task.text)}</span>
+      const ul = document.createElement('ul');
+      renderTaskNode(tree, ul, true);
+      container.appendChild(ul);
+    }
+
+    function renderTaskNode(node, parentUl, isRoot) {
+      // Render tasks at this level
+      node.tasks.forEach((task, idx) => {
+        const li = document.createElement('li');
+        li.className = 'task-node' + (task.status === 'done' ? ' done' : '') + (task.status === 'archived' ? ' archived' : '');
+        li.dataset.taskId = task.id;
+        li.dataset.folderPath = node.path;
+        li.draggable = true;
+        li.innerHTML = `
+          <input type="checkbox" style="cursor:pointer" ${task.status === 'done' ? 'checked' : ''}>
+          <span class="task-index">${idx + 1}</span>
+          <span class="task-label">${escHtml(task.title)}</span>
           <button class="task-delete" title="Delete">&#10005;</button>
         `;
-        item.querySelector('.task-checkbox').addEventListener('change', async (e) => {
-          const endpoint = e.target.checked ? 'complete' : 'reopen';
-          await fetch(`/api/tasks/${task.id}/${endpoint}`, { method: 'PUT' });
-          loadTasks(getCurrentProject());
+        li.querySelector('input[type=checkbox]').addEventListener('change', async (e) => {
+          await fetch(`/api/tasks/${task.id}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: e.target.checked ? 'done' : 'todo' }),
+          });
+          loadTaskTree();
         });
-        item.querySelector('.task-delete').addEventListener('click', async () => {
+        li.querySelector('.task-delete').addEventListener('click', async (e) => {
+          e.stopPropagation();
           await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' });
-          loadTasks(getCurrentProject());
+          loadTaskTree();
         });
-        container.appendChild(item);
+        li.addEventListener('dblclick', () => openTaskDetail(task.id));
+        // Drag
+        li.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('application/x-task-id', String(task.id));
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        li.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          const rect = li.getBoundingClientRect();
+          const mid = rect.top + rect.height / 2;
+          li.classList.toggle('drag-over-above', e.clientY < mid);
+          li.classList.toggle('drag-over-below', e.clientY >= mid);
+        });
+        li.addEventListener('dragleave', () => {
+          li.classList.remove('drag-over-above', 'drag-over-below');
+        });
+        li.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          li.classList.remove('drag-over-above', 'drag-over-below');
+          const dragId = e.dataTransfer.getData('application/x-task-id');
+          if (!dragId || dragId === String(task.id)) return;
+          const rect = li.getBoundingClientRect();
+          const above = e.clientY < rect.top + rect.height / 2;
+          // Reorder: move dragged task to this folder at this position
+          const folderTasks = node.tasks.filter(t => String(t.id) !== dragId);
+          const insertIdx = above ? idx : idx + 1;
+          const orders = [];
+          let pos = 0;
+          for (let i = 0; i < folderTasks.length; i++) {
+            if (i === insertIdx) pos++; // leave gap for dragged item
+            orders.push({ id: folderTasks[i].id, sort_order: pos++ });
+          }
+          // Move the dragged task
+          await fetch(`/api/tasks/${dragId}/move`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder_path: node.path, sort_order: insertIdx }),
+          });
+          if (orders.length) {
+            await fetch('/api/tasks/reorder', {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ orders }),
+            });
+          }
+          loadTaskTree();
+        });
+        parentUl.appendChild(li);
+      });
+
+      // Render child folders
+      const sortedChildren = Object.keys(node.children).sort();
+      for (const key of sortedChildren) {
+        const child = node.children[key];
+        const li = document.createElement('li');
+        li.className = 'task-folder' + (selectedTaskFolder === child.path ? ' selected' : '');
+        const totalCount = countTasks(child);
+        li.innerHTML = `<span class="task-folder-label">
+          <span class="folder-arrow">&#9654;</span>
+          <span class="folder-icon">&#128193;</span>
+          <span>${escHtml(child.name)}</span>
+          <span class="folder-count">${totalCount}</span>
+        </span>`;
+        const childUl = document.createElement('ul');
+        renderTaskNode(child, childUl, false);
+        li.appendChild(childUl);
+        li.querySelector('.task-folder-label').addEventListener('click', (e) => {
+          e.stopPropagation();
+          li.classList.toggle('collapsed');
+          selectedTaskFolder = child.path;
+          document.querySelectorAll('.task-folder.selected').forEach(f => f.classList.remove('selected'));
+          li.classList.add('selected');
+        });
+        // Drop on folder = move task into it
+        const label = li.querySelector('.task-folder-label');
+        label.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          li.classList.add('drag-over');
+        });
+        label.addEventListener('dragleave', () => li.classList.remove('drag-over'));
+        label.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          li.classList.remove('drag-over');
+          const dragId = e.dataTransfer.getData('application/x-task-id');
+          if (!dragId) return;
+          await fetch(`/api/tasks/${dragId}/move`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder_path: child.path }),
+          });
+          loadTaskTree();
+        });
+        parentUl.appendChild(li);
       }
+
+      // Root-level drop target for workspace root
+      if (isRoot) {
+        const rootLabel = parentUl.parentElement;
+        if (rootLabel) {
+          rootLabel.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+          rootLabel.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            const dragId = e.dataTransfer.getData('application/x-task-id');
+            if (!dragId) return;
+            await fetch(`/api/tasks/${dragId}/move`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ folder_path: '/' }),
+            });
+            loadTaskTree();
+          });
+        }
+      }
+    }
+
+    function countTasks(node) {
+      let c = node.tasks.length;
+      for (const key of Object.keys(node.children)) c += countTasks(node.children[key]);
+      return c;
+    }
+
+    async function openTaskDetail(taskId) {
+      try {
+        const res = await fetch(`/api/tasks/${taskId}`);
+        const task = await res.json();
+        editingTaskId = taskId;
+        document.getElementById('task-detail-title').value = task.title || '';
+        document.getElementById('task-detail-description').value = task.description || '';
+        const histEl = document.getElementById('task-detail-history');
+        histEl.innerHTML = (task.history || []).map(h => `<div class="hist-item"><strong>${h.event_type}</strong> ${h.old_value ? escHtml(h.old_value) + ' → ' : ''}${h.new_value ? escHtml(h.new_value) : ''}<br><span style="font-size:10px;color:var(--text-muted)">${h.created_at}</span></div>`).join('');
+        document.getElementById('task-detail-modal').classList.add('visible');
+      } catch {}
+    }
+
+    async function saveTaskDetail() {
+      if (!editingTaskId) return;
+      const title = document.getElementById('task-detail-title').value.trim();
+      const description = document.getElementById('task-detail-description').value;
+      if (!title) return;
+      await fetch(`/api/tasks/${editingTaskId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description }),
+      });
+      closeTaskDetail();
+      loadTaskTree();
+    }
+
+    function closeTaskDetail() {
+      editingTaskId = null;
+      document.getElementById('task-detail-modal').classList.remove('visible');
+    }
+
+    document.getElementById('task-detail-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'task-detail-modal') closeTaskDetail();
+    });
+
+    function autoNavigateTaskTree() {
+      if (!taskAutoNav || !activeTabId || !tabs.has(activeTabId)) return;
+      const project = tabs.get(activeTabId).project;
+      if (!project) return;
+      const projData = projectState.find(p => p.name === project);
+      if (!projData) return;
+      const projPath = projData.path || '';
+      // Expand folders matching the project path
+      document.querySelectorAll('#task-tree .task-folder').forEach(f => {
+        const label = f.querySelector('.task-folder-label span:nth-child(3)');
+        if (label && projPath.includes(label.textContent)) {
+          f.classList.remove('collapsed');
+          f.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      });
     }
 
     document.getElementById('add-task-input').addEventListener('keydown', async (e) => {
       if (e.key !== 'Enter') return;
       const input = e.target;
-      const text = input.value.trim();
-      if (!text) return;
-      const project = getCurrentProject();
-      if (!project) return;
-      await fetch(`/api/projects/${project}/tasks`, {
+      const title = input.value.trim();
+      if (!title) return;
+      await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ folder_path: selectedTaskFolder, title }),
       });
       input.value = '';
-      loadTasks(project);
+      loadTaskTree();
     });
 
     // Messages
