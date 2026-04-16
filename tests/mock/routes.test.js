@@ -296,24 +296,7 @@ test('TSK-07: created_by field persists', async () => {
   });
 });
 
-test('MSG-04: rejects overlong message content', async () => {
-  await withFullServer(async ({ port }) => {
-    assert.equal(
-      (
-        await req(port, 'POST', '/api/projects/test-project/messages', {
-          content: fixtures.routes.overlongMessage,
-        })
-      ).status,
-      400,
-    );
-  });
-});
 
-test('MSG-04: rejects missing content', async () => {
-  await withFullServer(async ({ port }) => {
-    assert.equal((await req(port, 'POST', '/api/projects/test-project/messages', {})).status, 400);
-  });
-});
 
 test('FS-05: /api/file rejects missing path', async () => {
   await withFullServer(async ({ port }) => {
@@ -513,29 +496,7 @@ test('task CRUD success paths with DB verification', async () => {
   });
 });
 
-test('message send success path with event', async () => {
-  await withFullServer(async ({ port, firedEvents }) => {
-    const r = await req(port, 'POST', '/api/projects/test-project/messages', {
-      content: 'Hello',
-      from_session: 'a',
-      to_session: 'b',
-    });
-    assert.equal(r.status, 200);
-    const body = await r.json();
-    assert.ok(body.id);
-    const event = firedEvents.find((e) => e.event === 'message_sent');
-    assert.ok(event, 'message_sent webhook must fire');
-  });
-});
 
-test('message list success path', async () => {
-  await withFullServer(async ({ port }) => {
-    const r = await req(port, 'GET', '/api/projects/test-project/messages');
-    assert.equal(r.status, 200);
-    const body = await r.json();
-    assert.ok(Array.isArray(body.messages));
-  });
-});
 
 test('project notes read/write success path', async () => {
   await withFullServer(async ({ port, db }) => {

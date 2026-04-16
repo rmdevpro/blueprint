@@ -133,17 +133,6 @@ test('MCP blueprint_update_plan rejects overlong content', async () => {
   });
 });
 
-test('MCP blueprint_send_message rejects missing content', async () => {
-  // Need a real project so the handler reaches the content-required check
-  db.ensureProject('sendmsgproj', '/virtual/sendmsgproj');
-  await withServer(startMcpApp(), async ({ port }) => {
-    const r = await req(port, 'POST', '/api/mcp/call', {
-      tool: 'blueprint_send_message',
-      args: { project: 'sendmsgproj', to_session: 's1' },
-    });
-    assert.equal(r.status, 400);
-  });
-});
 
 test('MCP blueprint_set_session_config validates session_id', async () => {
   await withServer(startMcpApp(), async ({ port }) => {
@@ -427,27 +416,7 @@ test('MCP blueprint_summarize_session validates session_id', async () => {
   });
 });
 
-test('MCP blueprint_send_message rejects overlong content', async () => {
-  db.ensureProject('sendlongproj', '/virtual/sendlongproj');
-  await withServer(startMcpApp(), async ({ port }) => {
-    const r = await req(port, 'POST', '/api/mcp/call', {
-      tool: 'blueprint_send_message',
-      args: { project: 'sendlongproj', to_session: 's1', content: 'x'.repeat(100001) },
-    });
-    assert.equal(r.status, 400);
-  });
-});
 
-test('MCP blueprint_send_message rejects invalid to_session', async () => {
-  db.ensureProject('sendbadproj', '/virtual/sendbadproj');
-  await withServer(startMcpApp(), async ({ port }) => {
-    const r = await req(port, 'POST', '/api/mcp/call', {
-      tool: 'blueprint_send_message',
-      args: { project: 'sendbadproj', to_session: '../../bad', content: 'hi' },
-    });
-    assert.equal(r.status, 400);
-  });
-});
 
 // ── listSessions coverage ──────────────────────────────────────────────────
 

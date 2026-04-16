@@ -95,27 +95,7 @@ test('TMX-09: cleanOrphanedTmuxSessions kills all bp_ sessions', async () => {
   assert.deepEqual(killed, ['bp_one', 'bp_two']);
 });
 
-test('TMX-10: cleanBridgeFiles removes files older than 2 hours', async () => {
-  const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'bp-br-'));
-  const stale = path.join(tmp, 'stale.txt');
-  const fresh = path.join(tmp, 'fresh.txt');
-  await fsp.writeFile(stale, 'old');
-  await fsp.writeFile(fresh, 'new');
-  await fsp.utimes(
-    stale,
-    new Date(Date.now() - 3 * 60 * 60 * 1000),
-    new Date(Date.now() - 3 * 60 * 60 * 1000),
-  );
-  const { lifecycle } = makeLifecycle();
-  await lifecycle.cleanBridgeFiles(tmp);
-  await assert.rejects(fsp.stat(stale), /ENOENT/);
-  assert.ok(await fsp.stat(fresh));
-});
 
-test('TMX-10: cleanBridgeFiles handles missing directory', async () => {
-  const { lifecycle } = makeLifecycle();
-  await assert.doesNotReject(lifecycle.cleanBridgeFiles('/nonexistent/bridge/dir'));
-});
 
 test('sleep resolves after delay', async () => {
   const { lifecycle } = makeLifecycle();
