@@ -2,8 +2,10 @@
 
 const express = require('express');
 const { createServer } = require('http');
+const { createServer: createHttpsServer } = require('https');
 const { WebSocketServer } = require('ws');
 const { join } = require('path');
+const fs = require('fs');
 
 const logger = require('./logger');
 const sharedState = require('./shared-state');
@@ -24,6 +26,9 @@ const { handleVoiceConnection } = require('./voice');
 // ── Configuration ───────────────────────────────────────────────────────────
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
+const HTTPS_PORT = parseInt(process.env.HTTPS_PORT, 10) || 3443;
+const TLS_CERT = process.env.TLS_CERT || '/app/certs/cert.pem';
+const TLS_KEY = process.env.TLS_KEY || '/app/certs/key.pem';
 const CLAUDE_HOME = safe.CLAUDE_HOME;
 const WORKSPACE = safe.WORKSPACE;
 const MAX_TMUX_SESSIONS = parseInt(process.env.MAX_TMUX_SESSIONS || '5', 10);
@@ -99,6 +104,19 @@ const server = createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 const voiceWss = new WebSocketServer({ noServer: true });
 
+// HTTPS server (if certs exist)
+let httpsServer = null;
+try {
+  if (fs.existsSync(TLS_CERT) && fs.existsSync(TLS_KEY)) {
+    httpsServer = createHttpsServer({
+      cert: fs.readFileSync(TLS_CERT),
+      key: fs.readFileSync(TLS_KEY),
+    }, app);
+  }
+} catch (err) {
+  // No certs — HTTPS disabled, HTTP only
+}
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -135,7 +153,7 @@ const { checkAuthStatus } = registerCoreRoutes(app, {
 
 // ── WebSocket upgrade handler ───────────────────────────────────────────────
 
-server.on('upgrade', (req, socket, head) => {
+function handleUpgrade(req, socket, head) {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (url.pathname === '/ws/voice') {
@@ -151,7 +169,10 @@ server.on('upgrade', (req, socket, head) => {
     return;
   }
   wss.handleUpgrade(req, socket, head, (ws) => terminal.handleTerminalConnection(ws, match[1]));
-});
+}
+
+server.on('upgrade', handleUpgrade);
+if (httpsServer) httpsServer.on('upgrade', handleUpgrade);
 
 // ── Exports for testing ─────────────────────────────────────────────────────
 
@@ -182,7 +203,14 @@ if (require.main === module) {
       );
 
       server.listen(PORT, '0.0.0.0', () => {
-        logger.info('Blueprint running', { module: 'server', port: PORT });
+        logger.info('Blueprint running (HTTP)', { module: 'server', port: PORT });
+
+        if (httpsServer) {
+          httpsServer.listen(HTTPS_PORT, '0.0.0.0', () => {
+            logger.info('Blueprint running (HTTPS)', { module: 'server', port: HTTPS_PORT });
+          });
+        }
+
         keepalive.start();
         watchers.startSettingsWatcher();
 

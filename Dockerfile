@@ -1,7 +1,7 @@
 FROM node:22-slim
 
 RUN apt-get update && apt-get install -y \
-    git curl ca-certificates python3 make g++ tmux ssh openssh-client gosu jq sudo \
+    git curl ca-certificates openssl python3 make g++ tmux ssh openssh-client gosu jq sudo \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
     libpango-1.0-0 libcairo2 libasound2 libxshmfence1 \

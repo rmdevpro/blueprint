@@ -49,6 +49,14 @@ run_as_hopper() {
     [ -n "$CODEX_KEY" ] && export OPENAI_API_KEY="$CODEX_KEY" && echo "[entrypoint] Exported OPENAI_API_KEY from settings"
   fi
 
+  # Generate self-signed TLS cert if none exists (enables HTTPS for getUserMedia etc.)
+  if [ ! -f /app/certs/cert.pem ]; then
+    mkdir -p /app/certs
+    openssl req -x509 -newkey rsa:2048 -keyout /app/certs/key.pem -out /app/certs/cert.pem \
+      -days 365 -nodes -subj "/CN=blueprint" 2>/dev/null
+    echo "[entrypoint] Generated self-signed TLS certificate"
+  fi
+
   # Ensure Claude CLI settings exist
   if [ ! -f "$CLAUDE/settings.json" ]; then
     echo '{"skipDangerousModePermissionPrompt":true}' > "$CLAUDE/settings.json"
