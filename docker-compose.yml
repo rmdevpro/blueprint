@@ -6,7 +6,6 @@ services:
     container_name: blueprint
     ports:
       - '7866:3000'
-      - '7865:3443'
     volumes:
       - joshua26_workspace:/mnt/workspace
       - joshua26_storage:/mnt/storage
