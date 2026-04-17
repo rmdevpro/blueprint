@@ -1,0 +1,18 @@
+services:
+  blueprint-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: blueprint-oauth-test
+    ports:
+      - '7880:3000'
+    tmpfs:
+      - /mnt/workspace
+      - /mnt/storage
+    environment:
+      - CLAUDE_HOME=/home/hopper/.claude
+      - CLAUDE_CONFIG_DIR=/home/hopper/.claude
+      - BLUEPRINT_DATA=/home/hopper/.blueprint
+      - HOME=/home/hopper
+      - MAX_TMUX_SESSIONS=5
+    restart: "no"
