@@ -21,9 +21,6 @@ const safe = require('./safe-exec');
 // ── Configuration ──────────────────────────────────────────────────────────
 
 const QDRANT_URL = process.env.QDRANT_URL || 'http://localhost:6333';
-const EMBEDDING_URL = process.env.EMBEDDING_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai';
-const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'gemini-embedding-001';
-const EMBEDDING_DIMS = parseInt(process.env.EMBEDDING_DIMS || '384', 10);
 const DEBOUNCE_MS = parseInt(process.env.QDRANT_DEBOUNCE_MS || '10000', 10);
 const CHUNK_WINDOW = 3; // sliding window of N conversation turns
 const CHUNK_OVERLAP = 1;
@@ -33,10 +30,87 @@ const CLAUDE_HOME = safe.CLAUDE_HOME;
 
 const COLLECTIONS = {
   docs: 'docs',
+  code: 'code',
   claude: 'claude_sessions',
   gemini: 'gemini_sessions',
   codex: 'codex_sessions',
 };
+
+function _parseSetting(key, fallback) {
+  const raw = db.getSetting(key, null);
+  if (raw == null) return fallback;
+  try { return JSON.parse(raw); } catch { return raw; }
+}
+
+function getCollectionConfig(col) {
+  const defaults = {
+    docs: { enabled: true, dims: 384, patterns: ['*.md', '*.txt', '*.pdf', '*.rst', '*.adoc'] },
+    code: { enabled: false, dims: 384, patterns: ['*.js', '*.ts', '*.py', '*.go', '*.rs', '*.java', '*.sh', 'Dockerfile', 'Makefile', '*.yml', '*.yaml', '*.json'] },
+    claude: { enabled: true, dims: 384 },
+    gemini: { enabled: true, dims: 384 },
+    codex: { enabled: true, dims: 384 },
+  };
+  return _parseSetting('vector_collection_' + col, defaults[col] || { enabled: true, dims: 384 });
+}
+
+function getIgnorePatterns() {
+  const raw = _parseSetting('vector_ignore_patterns', 'node_modules/**\n.git/**\n*.lock\n*.min.js\ndist/**\nbuild/**');
+  return raw.split('\n').map(p => p.trim()).filter(p => p);
+}
+
+function getAdditionalPaths() {
+  return _parseSetting('vector_additional_paths', []);
+}
+
+function getEmbeddingConfig() {
+  const provider = _parseSetting('vector_embedding_provider', 'huggingface');
+
+  switch (provider) {
+    case 'gemini': {
+      let key = _parseSetting('gemini_api_key', '') || process.env.GOOGLE_API_KEY || '';
+      return { url: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-embedding-001', key };
+    }
+    case 'openai': {
+      let key = _parseSetting('codex_api_key', '') || process.env.OPENAI_API_KEY || '';
+      return { url: 'https://api.openai.com/v1', model: 'text-embedding-3-small', key };
+    }
+    case 'custom': {
+      const url = _parseSetting('vector_custom_url', '');
+      const key = _parseSetting('vector_custom_key', '');
+      return { url: url || 'http://localhost:11434/v1', model: 'custom', key: key || 'no-key' };
+    }
+    case 'huggingface':
+    default: {
+      const hfToken = process.env.HF_TOKEN || '';
+      return { url: 'https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2', model: 'hf-free', key: hfToken, isHF: true };
+    }
+  }
+}
+
+/**
+ * Simple glob pattern matching. Supports *, **, and exact names.
+ */
+function globMatch(pattern, filePath) {
+  const name = basename(filePath);
+  // Exact match (e.g. "Dockerfile")
+  if (!pattern.includes('*')) return name === pattern;
+  // *.ext pattern
+  if (pattern.startsWith('*.')) return name.endsWith(pattern.slice(1));
+  // **/ directory pattern (for ignore)
+  if (pattern.endsWith('/**')) {
+    const dir = pattern.slice(0, -3);
+    return filePath.includes('/' + dir + '/') || filePath.startsWith(dir + '/');
+  }
+  return false;
+}
+
+function matchesPatterns(filePath, patterns) {
+  return patterns.some(p => globMatch(p, filePath));
+}
+
+function isIgnored(filePath, ignorePatterns) {
+  return ignorePatterns.some(p => globMatch(p, filePath));
+}
 
 // ── SQLite sync state ──────────────────────────────────────────────────────
 
@@ -68,33 +142,41 @@ const syncStmts = {
 
 // ── Embedding API ──────────────────────────────────────────────────────────
 
-function getApiKey() {
-  // Check environment first, then Blueprint settings
-  if (process.env.GOOGLE_API_KEY) return process.env.GOOGLE_API_KEY;
-  let key = db.getSetting('gemini_api_key', '');
-  // Settings are stored JSON-stringified — unwrap if needed
-  if (key && key.startsWith('"')) {
-    try { key = JSON.parse(key); } catch { /* use as-is */ }
+async function embed(texts, dims) {
+  const cfg = getEmbeddingConfig();
+  if (!cfg.key && !cfg.isHF) throw new Error('No embedding API key configured');
+
+  // HuggingFace Inference API has a different format
+  if (cfg.isHF) {
+    const response = await fetch(cfg.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(cfg.key ? { 'Authorization': `Bearer ${cfg.key}` } : {}),
+      },
+      body: JSON.stringify({ inputs: texts }),
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`HF Embedding API error ${response.status}: ${body}`);
+    }
+    return await response.json();
   }
-  return key || null;
-}
 
-async function embed(texts) {
-  const apiKey = getApiKey();
-  if (!apiKey) throw new Error('No embedding API key configured (GOOGLE_API_KEY or gemini_api_key setting)');
+  // OpenAI-compatible endpoint (Gemini, OpenAI, custom)
+  const headers = { 'Content-Type': 'application/json' };
+  if (cfg.key && cfg.key !== 'no-key') {
+    headers['Authorization'] = `Bearer ${cfg.key}`;
+    headers['x-goog-api-key'] = cfg.key; // Gemini compat
+  }
 
-  // Gemini's OpenAI-compatible endpoint accepts both Bearer token and x-goog-api-key
-  const response = await fetch(`${EMBEDDING_URL}/embeddings`, {
+  const response = await fetch(`${cfg.url}/embeddings`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-      'x-goog-api-key': apiKey,
-    },
+    headers,
     body: JSON.stringify({
-      model: EMBEDDING_MODEL,
+      model: cfg.model,
       input: texts,
-      dimensions: EMBEDDING_DIMS,
+      dimensions: dims || 384,
     }),
   });
 
@@ -118,14 +200,14 @@ async function qdrantHealthy() {
   }
 }
 
-async function ensureCollection(name) {
+async function ensureCollection(name, dims) {
   const r = await fetch(`${QDRANT_URL}/collections/${name}`);
   if (r.ok) return;
 
   const cr = await fetch(`${QDRANT_URL}/collections/${name}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ vectors: { size: EMBEDDING_DIMS, distance: 'Cosine' } }),
+    body: JSON.stringify({ vectors: { size: dims || 384, distance: 'Cosine' } }),
   });
   if (!cr.ok) throw new Error(`Failed to create collection ${name}: ${await cr.text()}`);
   logger.info(`Created Qdrant collection: ${name}`, { module: 'qdrant-sync' });
@@ -345,8 +427,8 @@ function pointId(filePath, chunkIndex) {
 
 // ── Sync logic ─────────────────────────────────────────────────────────────
 
-async function syncDocFile(filePath) {
-  const relPath = relative(join(WORKSPACE, 'docs'), filePath);
+async function syncFileToCollection(filePath, collection, baseDir, dims) {
+  const relPath = relative(baseDir, filePath);
   const syncState = syncStmts.get.get(filePath);
   const fileStat = await stat(filePath);
   const content = await readFile(filePath, 'utf-8');
@@ -355,7 +437,7 @@ async function syncDocFile(filePath) {
   if (syncState && syncState.last_hash === hash) return 0;
 
   // Delete old points for this file
-  await deletePointsByFilter(COLLECTIONS.docs, {
+  await deletePointsByFilter(collection, {
     must: [{ key: 'file_path', match: { value: relPath } }],
   });
 
@@ -363,7 +445,7 @@ async function syncDocFile(filePath) {
   if (chunks.length === 0) return 0;
 
   const texts = chunks.map(c => c.text);
-  const embeddings = await embed(texts);
+  const embeddings = await embed(texts, dims);
 
   const points = chunks.map((chunk, i) => ({
     id: pointId(filePath, i),
@@ -372,17 +454,17 @@ async function syncDocFile(filePath) {
       file_path: relPath,
       section: chunk.metadata.section,
       text: chunk.text.substring(0, 5000),
-      type: 'doc',
+      type: collection === COLLECTIONS.code ? 'code' : 'doc',
       indexed_at: new Date().toISOString(),
     },
   }));
 
-  await upsertPoints(COLLECTIONS.docs, points);
-  syncStmts.upsert.run(filePath, COLLECTIONS.docs, 0, fileStat.mtimeMs, hash);
+  await upsertPoints(collection, points);
+  syncStmts.upsert.run(filePath, collection, 0, fileStat.mtimeMs, hash);
   return points.length;
 }
 
-async function syncSessionFile(filePath, collection, parser) {
+async function syncSessionFile(filePath, collection, parser, dims) {
   const syncState = syncStmts.get.get(filePath);
   const fileStat = await stat(filePath);
 
@@ -410,7 +492,7 @@ async function syncSessionFile(filePath, collection, parser) {
   const allEmbeddings = [];
   for (let i = 0; i < texts.length; i += 20) {
     const batch = texts.slice(i, i + 20);
-    const batchEmbeddings = await embed(batch);
+    const batchEmbeddings = await embed(batch, dims);
     allEmbeddings.push(...batchEmbeddings);
   }
 
@@ -434,32 +516,52 @@ async function syncSessionFile(filePath, collection, parser) {
 
 // ── Directory scanning ─────────────────────────────────────────────────────
 
-async function scanDocs() {
-  const docsDir = join(WORKSPACE, 'docs');
-  if (!existsSync(docsDir)) return 0;
-
+async function scanCollection(collection, dirs, patterns, dims) {
+  const ignorePatterns = getIgnorePatterns();
   let total = 0;
-  const scan = async (dir) => {
+
+  const scan = async (dir, baseDir) => {
+    if (!existsSync(dir)) return;
     const entries = await readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       const full = join(dir, entry.name);
+      const rel = relative(baseDir, full);
+      if (isIgnored(rel, ignorePatterns)) continue;
       if (entry.isDirectory()) {
-        await scan(full);
-      } else if (entry.name.endsWith('.md') || entry.name.endsWith('.txt')) {
+        await scan(full, baseDir);
+      } else if (matchesPatterns(full, patterns)) {
         try {
-          total += await syncDocFile(full);
+          total += await syncFileToCollection(full, collection, baseDir, dims);
         } catch (err) {
-          logger.error('Doc sync error', { module: 'qdrant-sync', file: full, err: err.message });
+          logger.error('File sync error', { module: 'qdrant-sync', file: full, collection, err: err.message });
         }
       }
     }
   };
-  await scan(docsDir);
+
+  for (const dir of dirs) {
+    await scan(dir, dir);
+  }
   return total;
 }
 
+async function scanDocs() {
+  const cfg = getCollectionConfig('docs');
+  if (!cfg.enabled) return 0;
+  const dirs = [join(WORKSPACE, 'docs'), ...getAdditionalPaths().filter(p => existsSync(p))];
+  return scanCollection(COLLECTIONS.docs, dirs, cfg.patterns || ['*.md', '*.txt'], cfg.dims);
+}
+
+async function scanCode() {
+  const cfg = getCollectionConfig('code');
+  if (!cfg.enabled) return 0;
+  return scanCollection(COLLECTIONS.code, [WORKSPACE], cfg.patterns || ['*.js', '*.py'], cfg.dims);
+}
+
 async function scanClaudeSessions() {
-  // Claude sessions: ~/.claude/projects/<encoded-path>/*.jsonl
+  const cfg = getCollectionConfig('claude');
+  if (!cfg.enabled) return 0;
+
   const projectsDir = join(CLAUDE_HOME, 'projects');
   if (!existsSync(projectsDir)) return 0;
 
@@ -476,6 +578,7 @@ async function scanClaudeSessions() {
           join(sessDir, file),
           COLLECTIONS.claude,
           parseClaudeJsonl,
+          cfg.dims,
         );
       } catch (err) {
         logger.error('Claude session sync error', { module: 'qdrant-sync', file, err: err.message });
@@ -486,7 +589,9 @@ async function scanClaudeSessions() {
 }
 
 async function scanGeminiSessions() {
-  // Gemini sessions: ~/.gemini/tmp/<hash>/chats/session-*.json
+  const cfg = getCollectionConfig('gemini');
+  if (!cfg.enabled) return 0;
+
   const geminiBase = join(process.env.HOME || '/home/hopper', '.gemini', 'tmp');
   if (!existsSync(geminiBase)) return 0;
 
@@ -505,6 +610,7 @@ async function scanGeminiSessions() {
             join(chatsDir, file),
             COLLECTIONS.gemini,
             parseGeminiSession,
+            cfg.dims,
           );
         } catch (err) {
           logger.error('Gemini session sync error', { module: 'qdrant-sync', file, err: err.message });
@@ -516,7 +622,9 @@ async function scanGeminiSessions() {
 }
 
 async function scanCodexSessions() {
-  // Codex sessions: ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
+  const cfg = getCollectionConfig('codex');
+  if (!cfg.enabled) return 0;
+
   const codexBase = join(process.env.CODEX_HOME || join(process.env.HOME || '/home/hopper', '.codex'), 'sessions');
   if (!existsSync(codexBase)) return 0;
 
@@ -529,7 +637,7 @@ async function scanCodexSessions() {
         await walkDir(full);
       } else if (entry.name.endsWith('.jsonl')) {
         try {
-          total += await syncSessionFile(full, COLLECTIONS.codex, parseCodexSession);
+          total += await syncSessionFile(full, COLLECTIONS.codex, parseCodexSession, cfg.dims);
         } catch (err) {
           logger.error('Codex session sync error', { module: 'qdrant-sync', file: full, err: err.message });
         }
@@ -592,20 +700,23 @@ async function start() {
   _running = true;
   logger.info('Qdrant sync starting', { module: 'qdrant-sync', url: QDRANT_URL });
 
-  // Ensure collections exist
-  for (const name of Object.values(COLLECTIONS)) {
-    await ensureCollection(name);
+  // Ensure collections exist with per-collection dims
+  for (const [key, name] of Object.entries(COLLECTIONS)) {
+    const cfg = getCollectionConfig(key);
+    if (cfg.enabled) await ensureCollection(name, cfg.dims);
   }
 
   // Initial full scan
   try {
     const docCount = await scanDocs();
+    const codeCount = await scanCode();
     const claudeCount = await scanClaudeSessions();
     const geminiCount = await scanGeminiSessions();
     const codexCount = await scanCodexSessions();
     logger.info('Qdrant initial sync complete', {
       module: 'qdrant-sync',
       docs: docCount,
+      code: codeCount,
       claude: claudeCount,
       gemini: geminiCount,
       codex: codexCount,
@@ -616,6 +727,7 @@ async function start() {
 
   // Set up file watchers
   watchDir(join(WORKSPACE, 'docs'), scanDocs);
+  watchDir(WORKSPACE, scanCode);
   watchDir(join(CLAUDE_HOME, 'projects'), scanClaudeSessions);
 
   const geminiBase = join(process.env.HOME || '/home/hopper', '.gemini');
@@ -623,6 +735,11 @@ async function start() {
 
   const codexBase = process.env.CODEX_HOME || join(process.env.HOME || '/home/hopper', '.codex');
   watchDir(codexBase, scanCodexSessions);
+
+  // Watch additional paths
+  for (const p of getAdditionalPaths()) {
+    watchDir(p, scanDocs);
+  }
 }
 
 function stop() {
@@ -637,14 +754,18 @@ function stop() {
 async function search(query, collections = null, limit = 10) {
   if (!(await qdrantHealthy())) throw new Error('Qdrant not available');
 
-  // Embed the query
-  const [queryVector] = await embed([query]);
-
-  // Search specified collections (default: all)
+  // Search specified collections (default: all enabled)
   const targetCollections = collections || Object.values(COLLECTIONS);
   const results = [];
 
   for (const col of targetCollections) {
+    // Find the config key for this collection name
+    const cfgKey = Object.entries(COLLECTIONS).find(([, v]) => v === col)?.[0] || col;
+    const cfg = getCollectionConfig(cfgKey);
+
+    // Embed query at this collection's dimensions
+    const [queryVector] = await embed([query], cfg.dims);
+
     try {
       const hits = await searchPoints(col, queryVector, limit);
       for (const hit of hits) {
@@ -661,6 +782,33 @@ async function search(query, collections = null, limit = 10) {
 
   // Sort by score descending, take top N
   return results.sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
+async function reindexCollection(colKey) {
+  const colName = COLLECTIONS[colKey] || colKey;
+  const cfg = getCollectionConfig(colKey);
+
+  // Delete and recreate collection with current dims
+  try {
+    await fetch(`${QDRANT_URL}/collections/${colName}`, { method: 'DELETE' });
+  } catch { /* may not exist */ }
+  await ensureCollection(colName, cfg.dims);
+
+  // Clear sync state for this collection
+  const rows = syncStmts.getByCollection.all(colName);
+  for (const row of rows) syncStmts.delete.run(row.file_path);
+
+  // Re-scan
+  let count = 0;
+  switch (colKey) {
+    case 'docs': count = await scanDocs(); break;
+    case 'code': count = await scanCode(); break;
+    case 'claude': count = await scanClaudeSessions(); break;
+    case 'gemini': count = await scanGeminiSessions(); break;
+    case 'codex': count = await scanCodexSessions(); break;
+  }
+  logger.info(`Reindexed ${colKey}: ${count} points`, { module: 'qdrant-sync' });
+  return count;
 }
 
 async function status() {
@@ -684,4 +832,4 @@ async function status() {
   return { available: true, running: _running, url: QDRANT_URL, collections };
 }
 
-module.exports = { start, stop, search, status, embed, qdrantHealthy };
+module.exports = { start, stop, search, status, embed, qdrantHealthy, reindexCollection };

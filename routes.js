@@ -953,7 +953,16 @@ function registerCoreRoutes(
       thinking_level: 'none',
       keepalive_mode: 'always',
       keepalive_idle_minutes: 30,
-      tasks_enabled: true,
+      vector_embedding_provider: 'huggingface',
+      vector_custom_url: '',
+      vector_custom_key: '',
+      vector_collection_docs: { enabled: true, dims: 384, patterns: ['*.md', '*.txt', '*.pdf', '*.rst', '*.adoc'] },
+      vector_collection_code: { enabled: false, dims: 384, patterns: ['*.js', '*.ts', '*.py', '*.go', '*.rs', '*.java', '*.sh', 'Dockerfile', 'Makefile', '*.yml', '*.yaml', '*.json'] },
+      vector_collection_claude: { enabled: true, dims: 384 },
+      vector_collection_gemini: { enabled: true, dims: 384 },
+      vector_collection_codex: { enabled: true, dims: 384 },
+      vector_ignore_patterns: 'node_modules/**\n.git/**\n*.lock\n*.min.js\ndist/**\nbuild/**',
+      vector_additional_paths: [],
     };
     res.json({ ...defaults, ...settings });
   });
@@ -982,6 +991,32 @@ function registerCoreRoutes(
       }
     }
     res.json({ saved: true });
+  });
+
+  // ── Qdrant / Vector Search ────────────────────────────────────────────────
+
+  app.get('/api/qdrant/status', async (req, res) => {
+    try {
+      const qdrantSync = require('./qdrant-sync');
+      const statusData = await qdrantSync.status();
+      res.json(statusData);
+    } catch (err) {
+      res.json({ available: false, error: err.message });
+    }
+  });
+
+  app.post('/api/qdrant/reindex', async (req, res) => {
+    const { collection } = req.body;
+    if (!collection) return res.status(400).json({ error: 'collection required' });
+    try {
+      const qdrantSync = require('./qdrant-sync');
+      qdrantSync.reindexCollection(collection).catch(err =>
+        logger.error('Reindex error', { module: 'routes', collection, err: err.message })
+      );
+      res.json({ started: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // ── CLAUDE.md management ──────────────────────────────────────────────────
