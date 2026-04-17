@@ -179,15 +179,6 @@ const TOOLS = [
     },
   },
   {
-    name: 'blueprint_smart_compaction',
-    description: 'Run smart compaction.',
-    inputSchema: {
-      type: 'object',
-      properties: { session_id: { type: 'string' }, project: { type: 'string' } },
-      required: ['project'],
-    },
-  },
-  {
     name: 'blueprint_docs',
     description: 'Manage Blueprint documentation library. Actions: list, search, read, create, update, delete.',
     inputSchema: {

@@ -1,7 +1,7 @@
 /**
  * Shared helper for spinning up in-process Express servers for mock handler tests.
  * Consolidates the listen/close boilerplate used across routes.test.js, mcp-tools.test.js,
- * openai-compat.test.js, and mcp-external.test.js.
+ * mcp-external.test.js.
  */
 'use strict';
 

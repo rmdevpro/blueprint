@@ -79,16 +79,6 @@ db.exec(`
     value TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    from_session TEXT,
-    to_session TEXT,
-    content TEXT NOT NULL,
-    read INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT (datetime('now'))
-  );
-
   CREATE TABLE IF NOT EXISTS session_meta (
     session_id TEXT PRIMARY KEY,
     file_path TEXT NOT NULL,
@@ -197,16 +187,6 @@ const stmts = {
   `),
   deleteSessionMeta: db.prepare('DELETE FROM session_meta WHERE session_id = ?'),
 
-  getMessages: db.prepare(
-    'SELECT * FROM messages WHERE project_id = ? AND to_session = ? AND read = 0 ORDER BY created_at ASC',
-  ),
-  getAllMessages: db.prepare(
-    'SELECT * FROM messages WHERE project_id = ? ORDER BY created_at DESC LIMIT 50',
-  ),
-  sendMessage: db.prepare(
-    'INSERT INTO messages (project_id, from_session, to_session, content) VALUES (?, ?, ?, ?)',
-  ),
-  markRead: db.prepare('UPDATE messages SET read = 1 WHERE id = ?'),
 };
 
 module.exports = {
@@ -343,20 +323,6 @@ module.exports = {
   },
   getTaskHistory(taskId) {
     return stmts.getTaskHistory.all(taskId);
-  },
-
-  getUnreadMessages(projectId, toSession) {
-    return stmts.getMessages.all(projectId, toSession);
-  },
-  getRecentMessages(projectId) {
-    return stmts.getAllMessages.all(projectId);
-  },
-  sendMessage(projectId, fromSession, toSession, content) {
-    const info = stmts.sendMessage.run(projectId, fromSession, toSession, content);
-    return { id: info.lastInsertRowid };
-  },
-  markMessageRead(id) {
-    stmts.markRead.run(id);
   },
 
   getSessionFull(id) {

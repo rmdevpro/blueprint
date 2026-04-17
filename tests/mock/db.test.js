@@ -107,18 +107,6 @@ test('DB-05: task CRUD lifecycle', async () => {
   });
 });
 
-test('DB-06: message CRUD', async () => {
-  await withDb(async (db) => {
-    const p = db.ensureProject('proj', '/workspace/proj');
-    const m = db.sendMessage(p.id, 'a', 'b', 'hello');
-    assert.ok(m.id);
-    assert.equal(db.getUnreadMessages(p.id, 'b').length, 1);
-    db.markMessageRead(m.id);
-    assert.equal(db.getUnreadMessages(p.id, 'b').length, 0);
-    assert.equal(db.getRecentMessages(p.id).length, 1);
-  });
-});
-
 test('DB-07: settings JSON and raw fallback', async () => {
   await withDb(async (db) => {
     db.setSetting('j', JSON.stringify({ a: 1 }));
@@ -147,12 +135,9 @@ test('DB-09: delete project cascades sessions and messages', async () => {
   await withDb(async (db) => {
     const p = db.ensureProject('proj', '/workspace/proj');
     db.upsertSession('s1', p.id, 'S');
-    db.sendMessage(p.id, 'a', 'b', 'M');
     assert.ok(db.db.prepare('SELECT COUNT(*) AS c FROM sessions').get().c > 0);
-    assert.ok(db.db.prepare('SELECT COUNT(*) AS c FROM messages').get().c > 0);
     db.deleteProject(p.id);
     assert.equal(db.db.prepare('SELECT COUNT(*) AS c FROM sessions').get().c, 0);
-    assert.equal(db.db.prepare('SELECT COUNT(*) AS c FROM messages').get().c, 0);
   });
 });
 

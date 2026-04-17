@@ -18,7 +18,6 @@ const crypto = require('crypto');
 
 const express = require('express');
 const { registerMcpRoutes } = require('./mcp-tools');
-const { registerOpenAIRoutes } = require('./openai-compat');
 const { registerWebhookRoutes } = require('./webhooks');
 const { registerExternalMcpRoutes } = require('./mcp-external');
 const jqftConnector = require('jqueryfiletree/dist/connectors/jqueryFileTree');
@@ -816,27 +815,6 @@ function registerCoreRoutes(
     }
   });
 
-  // ── Project notes ─────────────────────────────────────────────────────────
-
-  app.get('/api/projects/:name/notes', (req, res) => {
-    const project = db.getProject(req.params.name);
-    if (!project) return res.status(404).json({ error: 'project not found' });
-    res.json({ notes: db.getProjectNotes(project.id) });
-  });
-
-  app.put('/api/projects/:name/notes', (req, res) => {
-    const project = db.getProject(req.params.name);
-    if (!project) return res.status(404).json({ error: 'project not found' });
-    const notes = req.body.notes || '';
-    if (notes.length > NOTES_MAX_LEN)
-      return res.status(400).json({ error: `notes too long (max ${NOTES_MAX_LEN})` });
-    db.setProjectNotes(project.id, notes);
-    res.json({ saved: true });
-  });
-
-  // ── Session notes ─────────────────────────────────────────────────────────
-
-
   // ── Tasks ─────────────────────────────────────────────────────────────────
 
   function normalizeFolderPath(p) {
@@ -1310,7 +1288,6 @@ function registerCoreRoutes(
   // ── Register sub-route modules ────────────────────────────────────────────
 
   registerMcpRoutes(app);
-  registerOpenAIRoutes(app);
   registerWebhookRoutes(app);
   registerExternalMcpRoutes(app);
 

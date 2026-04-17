@@ -27,7 +27,6 @@ test('ENG-20: all application modules importable', () => {
     'shared-state',
     'mcp-tools',
     'mcp-external',
-    'openai-compat',
   ];
   for (const m of modules)
     assert.doesNotThrow(() => require(path.join(ROOT, m)), `Failed to require ${m}`);
@@ -61,7 +60,6 @@ test('ENG-09: no bare catch {} blocks in application code', () => {
     'mcp-tools.js',
     'mcp-external.js',
     'mcp-server.js',
-    'openai-compat.js',
     'webhooks.js',
   ];
   for (const file of files) {
