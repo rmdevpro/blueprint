@@ -71,7 +71,11 @@ const syncStmts = {
 function getApiKey() {
   // Check environment first, then Blueprint settings
   if (process.env.GOOGLE_API_KEY) return process.env.GOOGLE_API_KEY;
-  const key = db.getSetting('gemini_api_key', '');
+  let key = db.getSetting('gemini_api_key', '');
+  // Settings are stored JSON-stringified — unwrap if needed
+  if (key && key.startsWith('"')) {
+    try { key = JSON.parse(key); } catch { /* use as-is */ }
+  }
   return key || null;
 }
 
@@ -79,11 +83,13 @@ async function embed(texts) {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error('No embedding API key configured (GOOGLE_API_KEY or gemini_api_key setting)');
 
+  // Gemini's OpenAI-compatible endpoint accepts both Bearer token and x-goog-api-key
   const response = await fetch(`${EMBEDDING_URL}/embeddings`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
+      'x-goog-api-key': apiKey,
     },
     body: JSON.stringify({
       model: EMBEDDING_MODEL,
