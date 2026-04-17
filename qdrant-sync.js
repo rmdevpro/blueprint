@@ -592,7 +592,7 @@ async function scanGeminiSessions() {
   const cfg = getCollectionConfig('gemini');
   if (!cfg.enabled) return 0;
 
-  const geminiBase = join(process.env.HOME || '/home/hopper', '.gemini', 'tmp');
+  const geminiBase = join(process.env.HOME || '/home/blueprint', '.gemini', 'tmp');
   if (!existsSync(geminiBase)) return 0;
 
   let total = 0;
@@ -625,7 +625,7 @@ async function scanCodexSessions() {
   const cfg = getCollectionConfig('codex');
   if (!cfg.enabled) return 0;
 
-  const codexBase = join(process.env.CODEX_HOME || join(process.env.HOME || '/home/hopper', '.codex'), 'sessions');
+  const codexBase = join(process.env.CODEX_HOME || join(process.env.HOME || '/home/blueprint', '.codex'), 'sessions');
   if (!existsSync(codexBase)) return 0;
 
   let total = 0;
@@ -730,10 +730,10 @@ async function start() {
   watchDir(WORKSPACE, scanCode);
   watchDir(join(CLAUDE_HOME, 'projects'), scanClaudeSessions);
 
-  const geminiBase = join(process.env.HOME || '/home/hopper', '.gemini');
+  const geminiBase = join(process.env.HOME || '/home/blueprint', '.gemini');
   watchDir(geminiBase, scanGeminiSessions);
 
-  const codexBase = process.env.CODEX_HOME || join(process.env.HOME || '/home/hopper', '.codex');
+  const codexBase = process.env.CODEX_HOME || join(process.env.HOME || '/home/blueprint', '.codex');
   watchDir(codexBase, scanCodexSessions);
 
   // Watch additional paths

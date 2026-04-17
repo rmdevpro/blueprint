@@ -19,7 +19,7 @@ services:
       - CLAUDE_HOME=/storage/.claude
       - CLAUDE_CONFIG_DIR=/storage/.claude
       - BLUEPRINT_DATA=/storage
-      - HOME=/home/hopper
+      - HOME=/home/blueprint
       - MAX_TMUX_SESSIONS=10
       - TMUX_CLEANUP_MINUTES=2
       - LOG_LEVEL=DEBUG

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Blueprint entrypoint — runs as root, drops to hopper via gosu
+# Blueprint entrypoint — runs as root, drops to blueprint user via gosu
 # This allows dynamic docker socket group matching at startup
 
 SOCK=/var/run/docker.sock
@@ -11,43 +11,37 @@ if [ -S "$SOCK" ]; then
     if ! getent group "$GID" > /dev/null 2>&1; then
       groupadd -g "$GID" dockerhost
     fi
-    usermod -aG "$(getent group "$GID" | cut -d: -f1)" hopper
-    echo "[entrypoint] Added hopper to docker socket group (GID $GID)"
+    usermod -aG "$(getent group "$GID" | cut -d: -f1)" blueprint
+    echo "[entrypoint] Added blueprint to docker socket group (GID $GID)"
   else
     echo "[entrypoint] WARNING: docker socket owned by root — docker commands may fail"
   fi
 fi
 
-# Everything below runs as hopper
-run_as_hopper() {
+# Everything below runs as blueprint user
+run_as_blueprint() {
+  CLAUDE="$HOME/.claude"
+  BP_DATA="${BLUEPRINT_DATA:-$HOME/.blueprint}"
+  WORK="${WORKSPACE:-$HOME/workspace}"
+
   # Ensure .claude.json exists for workspace trust
   test -f "$HOME/.claude.json" || echo '{}' > "$HOME/.claude.json"
-
-  # Ensure data directories exist
-  CLAUDE="${CLAUDE_HOME:-$HOME/.claude}"
-  BP_DATA="${BLUEPRINT_DATA:-$HOME/.blueprint}"
-
-  # Symlink $HOME/.claude to CLAUDE_HOME so the CLI finds credentials
-  if [ "$CLAUDE" != "$HOME/.claude" ] && [ ! -e "$HOME/.claude" ]; then
-    ln -s "$CLAUDE" "$HOME/.claude"
-    echo "[entrypoint] Linked $HOME/.claude -> $CLAUDE"
-  fi
-
-  # Ensure .claude.json config exists in CLAUDE_CONFIG_DIR (where the CLI actually reads it)
   if [ ! -f "$CLAUDE/.claude.json" ]; then
     echo '{}' > "$CLAUDE/.claude.json"
   fi
-  mkdir -p "$BP_DATA"
-  mkdir -p "$CLAUDE/projects"
-  mkdir -p "$BP_DATA/quorum" 2>/dev/null || true
+  mkdir -p "$BP_DATA" "$CLAUDE/projects" "$WORK"
 
   # Ensure docs library exists with standard structure
-  WORKSPACE="${WORKSPACE:-/mnt/workspace}"
-  mkdir -p "$WORKSPACE/docs/guides" "$WORKSPACE/docs/processes" "$WORKSPACE/docs/reference" "$WORKSPACE/docs/system-prompts"
-  # Seed standard docs from /app/config/guides if docs/guides is empty
-  if [ -d /app/config/guides ] && [ -z "$(ls -A "$WORKSPACE/docs/guides" 2>/dev/null)" ]; then
-    cp /app/config/guides/*.md "$WORKSPACE/docs/guides/" 2>/dev/null || true
+  mkdir -p "$WORK/docs/guides" "$WORK/docs/processes" "$WORK/docs/reference" "$WORK/docs/system-prompts"
+  if [ -d /app/config/guides ] && [ -z "$(ls -A "$WORK/docs/guides" 2>/dev/null)" ]; then
+    cp /app/config/guides/*.md "$WORK/docs/guides/" 2>/dev/null || true
     echo "[entrypoint] Seeded docs library from config/guides"
+  fi
+
+  # Seed default CLAUDE.md if not present
+  if [ -f /app/config/CLAUDE.md ] && [ ! -f "$CLAUDE/CLAUDE.md" ]; then
+    cp /app/config/CLAUDE.md "$CLAUDE/CLAUDE.md"
+    echo "[entrypoint] Seeded global CLAUDE.md"
   fi
 
   # Export API keys from Blueprint DB for CLI use
@@ -64,7 +58,7 @@ run_as_hopper() {
     echo "[entrypoint] Created settings.json"
   fi
 
-  # Register Blueprint MCP server globally (user scope — survives project changes)
+  # Register Blueprint MCP server globally
   claude mcp add-json --scope user blueprint '{"command":"node","args":["/app/mcp-server.js"],"env":{"BLUEPRINT_PORT":"3000"}}' 2>/dev/null || true
 
   # Register Playwright MCP server (headless Chromium for browser automation)
@@ -77,21 +71,12 @@ run_as_hopper() {
     echo "[entrypoint] Installed Blueprint skills to $CLAUDE/skills/"
   fi
 
-  # Verify Claude CLI credentials (non-interactive)
-  if [ -f "$CLAUDE/.credentials.json" ]; then
-    timeout 15 claude --print --no-session-persistence "ok" > /dev/null 2>&1 && \
-      echo "[entrypoint] Claude CLI credentials verified" || \
-      echo "[entrypoint] Claude CLI probe failed — credentials may need refresh"
-  fi
-
-
-  # Mark onboarding as completed in ~/.claude.json
-  # Query installed CLI version so it doesn't re-trigger on updates
+  # Mark onboarding as completed
   CLI_VERSION=$(claude --version 2>/dev/null | sed 's/ .*//' || true)
   CLI_VERSION="${CLI_VERSION:-99.99.99}"
   node -e "
     const fs = require('fs');
-    const f = (process.env.CLAUDE_CONFIG_DIR || process.env.CLAUDE_HOME || (process.env.HOME + '/.claude')) + '/.claude.json';
+    const f = (process.env.HOME + '/.claude') + '/.claude.json';
     let d = {};
     try { d = JSON.parse(fs.readFileSync(f, 'utf8')); } catch {}
     const ver = process.argv[1] || '99.99.99';
@@ -108,21 +93,20 @@ run_as_hopper() {
   " "$CLI_VERSION" || echo "[entrypoint] WARNING: Failed to set onboarding state"
 }
 
-# Fix ownership of workspace for hopper user
-chown -R hopper:hopper /mnt/workspace 2>/dev/null || true
-chown -R hopper:hopper /mnt/storage 2>/dev/null || true
+# Fix ownership for blueprint user
+chown -R blueprint:blueprint /home/blueprint/workspace 2>/dev/null || true
 
 # Start Qdrant vector database in background
-QDRANT_STORAGE="${BLUEPRINT_DATA:-$HOME/.blueprint}/qdrant"
+QDRANT_STORAGE="${BLUEPRINT_DATA:-/home/blueprint/.blueprint}/qdrant"
 mkdir -p "$QDRANT_STORAGE" 2>/dev/null || true
-chown -R hopper:hopper "$QDRANT_STORAGE" 2>/dev/null || true
+chown -R blueprint:blueprint "$QDRANT_STORAGE" 2>/dev/null || true
 if command -v qdrant &>/dev/null; then
   export QDRANT__STORAGE__STORAGE_PATH="$QDRANT_STORAGE"
-  gosu hopper qdrant --disable-telemetry &
+  gosu blueprint qdrant --disable-telemetry &
   echo "[entrypoint] Qdrant started on port 6333 (storage: $QDRANT_STORAGE)"
 fi
 
-# Run setup as hopper, then exec the main command as hopper
-export -f run_as_hopper
-gosu hopper bash -c "run_as_hopper"
-exec gosu hopper "$@"
+# Run setup as blueprint, then exec the main command as blueprint
+export -f run_as_blueprint
+gosu blueprint bash -c "run_as_blueprint"
+exec gosu blueprint "$@"

@@ -12,37 +12,36 @@ RUN curl -fsSL https://github.com/qdrant/qdrant/releases/download/v1.17.1/qdrant
 RUN npm install -g @anthropic-ai/claude-code @google/gemini-cli @openai/codex
 
 # Reuse the existing 'node' user (UID 1000) — HF Spaces runs as UID 1000
-RUN usermod -l hopper -d /home/hopper -m node && \
-    groupmod -n hopper node && \
-    mkdir -p /home/hopper/.claude /home/hopper/.blueprint && \
-    chown -R hopper:hopper /home/hopper
+RUN usermod -l blueprint -d /home/blueprint -m node && \
+    groupmod -n blueprint node && \
+    mkdir -p /home/blueprint/.claude /home/blueprint/.blueprint /home/blueprint/workspace && \
+    chown -R blueprint:blueprint /home/blueprint
 
 # Copy and install app dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && chown -R hopper:hopper /app
+RUN npm ci --omit=dev && chown -R blueprint:blueprint /app
 
 # Copy app source
-COPY --chown=hopper:hopper . .
+COPY --chown=blueprint:blueprint . .
 
 # Pre-create settings to skip permissions prompt and onboarding
-RUN mkdir -p /home/hopper/.claude && \
-    echo '{"skipDangerousModePermissionPrompt":true,"hasCompletedOnboarding":true,"theme":"dark","preferredTheme":"dark"}' > /home/hopper/.claude/settings.json && \
-    echo '{"skipDangerousModePermissionPrompt":true,"hasCompletedOnboarding":true,"theme":"dark","hasPickedTheme":true,"preferredTheme":"dark"}' > /home/hopper/.claude/settings.local.json && \
-    chown -R hopper:hopper /home/hopper
+RUN mkdir -p /home/blueprint/.claude && \
+    echo '{"skipDangerousModePermissionPrompt":true,"hasCompletedOnboarding":true,"theme":"dark","preferredTheme":"dark"}' > /home/blueprint/.claude/settings.json && \
+    echo '{"skipDangerousModePermissionPrompt":true,"hasCompletedOnboarding":true,"theme":"dark","hasPickedTheme":true,"preferredTheme":"dark"}' > /home/blueprint/.claude/settings.local.json && \
+    chown -R blueprint:blueprint /home/blueprint
 
-COPY --chown=hopper:hopper entrypoint-hf.sh /entrypoint-hf.sh
+COPY --chown=blueprint:blueprint entrypoint-hf.sh /entrypoint-hf.sh
 RUN chmod +x /entrypoint-hf.sh
 
-USER hopper
+USER blueprint
 
-ENV HOME=/home/hopper
-ENV CLAUDE_HOME=/home/hopper/.claude
-ENV BLUEPRINT_DATA=/home/hopper/.blueprint
-ENV WORKSPACE=/home/hopper/workspace
+ENV HOME=/home/blueprint
+ENV BLUEPRINT_DATA=/home/blueprint/.blueprint
+ENV WORKSPACE=/home/blueprint/workspace
 ENV PORT=7860
 
-WORKDIR /home/hopper
+WORKDIR /home/blueprint/workspace
 EXPOSE 7860
 
 ENTRYPOINT ["/entrypoint-hf.sh"]

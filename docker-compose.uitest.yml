@@ -13,7 +13,7 @@ services:
       - CLAUDE_HOME=/data/.claude
       - CLAUDE_CONFIG_DIR=/data/.claude
       - BLUEPRINT_DATA=/data/blueprint
-      - HOME=/home/hopper
+      - HOME=/home/blueprint
       - MAX_TMUX_SESSIONS=50
     restart: unless-stopped
 

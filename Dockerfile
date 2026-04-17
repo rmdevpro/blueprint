@@ -34,28 +34,28 @@ RUN npm ci --omit=dev
 COPY . .
 
 # Create non-root user (Claude CLI refuses --dangerously-skip-permissions as root)
-RUN useradd -m -s /bin/bash hopper && \
-    mkdir -p /home/hopper/.claude /home/hopper/.blueprint /mnt/workspace /mnt/storage && \
-    chown -R hopper:hopper /home/hopper /mnt/workspace /mnt/storage /app && \
-    echo 'hopper ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/hopper
+RUN useradd -m -s /bin/bash blueprint && \
+    mkdir -p /home/blueprint/.claude /home/blueprint/.blueprint /home/blueprint/workspace && \
+    chown -R blueprint:blueprint /home/blueprint /app && \
+    echo 'blueprint ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/blueprint
 
 # Pre-create settings to skip bypass permissions prompt and onboarding
-RUN mkdir -p /home/hopper/.claude && \
-    echo '{"skipDangerousModePermissionPrompt":true,"hasCompletedOnboarding":true,"theme":"dark","preferredTheme":"dark"}' > /home/hopper/.claude/settings.json && \
-    echo '{"skipDangerousModePermissionPrompt":true,"hasCompletedOnboarding":true,"theme":"dark","hasPickedTheme":true,"preferredTheme":"dark"}' > /home/hopper/.claude/settings.local.json && \
-    chown -R hopper:hopper /home/hopper
+RUN mkdir -p /home/blueprint/.claude && \
+    echo '{"skipDangerousModePermissionPrompt":true,"hasCompletedOnboarding":true,"theme":"dark","preferredTheme":"dark"}' > /home/blueprint/.claude/settings.json && \
+    echo '{"skipDangerousModePermissionPrompt":true,"hasCompletedOnboarding":true,"theme":"dark","hasPickedTheme":true,"preferredTheme":"dark"}' > /home/blueprint/.claude/settings.local.json && \
+    chown -R blueprint:blueprint /home/blueprint
 
 # Entrypoint ensures runtime directories exist after volume mounts
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-ENV HOME=/home/hopper
-ENV CLAUDE_HOME=/home/hopper/.claude
-ENV BLUEPRINT_DATA=/home/hopper/.blueprint
+ENV HOME=/home/blueprint
+ENV BLUEPRINT_DATA=/home/blueprint/.blueprint
+ENV WORKSPACE=/home/blueprint/workspace
 
-WORKDIR /mnt/workspace
+WORKDIR /home/blueprint/workspace
 EXPOSE 3000
 
-# Entrypoint runs as root to handle docker socket permissions, then drops to hopper via gosu
+# Entrypoint runs as root to handle docker socket permissions, then drops to blueprint via gosu
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node", "/app/server.js"]

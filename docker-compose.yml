@@ -7,13 +7,10 @@ services:
     ports:
       - '7866:3000'
     volumes:
-      - joshua26_workspace:/mnt/workspace
-      - joshua26_storage:/mnt/storage
+      - joshua26_workspace:/home/blueprint/workspace
+      - joshua26_storage:/home/blueprint/storage
     environment:
-      - CLAUDE_HOME=/mnt/workspace/blueprint/.claude
-      - CLAUDE_CONFIG_DIR=/mnt/workspace/blueprint/.claude
-      - BLUEPRINT_DATA=/mnt/workspace/blueprint/data
-      - HOME=/home/hopper
+      - HOME=/home/blueprint
       - MAX_TMUX_SESSIONS=50
     restart: unless-stopped
 

@@ -40,7 +40,7 @@ if [ "$NO_PERSIST" = "false" ]; then
     SESSION_ID="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "stub-$(date +%s)")"
   fi
 
-  CLAUDE_HOME_DIR="${CLAUDE_HOME:-/home/hopper/.claude}"
+  CLAUDE_HOME_DIR="${CLAUDE_HOME:-/home/blueprint/.claude}"
   CWD_ENCODED="$(pwd | sed 's|/|-|g')"
   SESS_DIR="$CLAUDE_HOME_DIR/projects/$CWD_ENCODED"
   mkdir -p "$SESS_DIR" 2>/dev/null || true

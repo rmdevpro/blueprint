@@ -50,7 +50,7 @@ services:
       - CLAUDE_HOME=/mnt/workspace/blueprint/.claude
       - CLAUDE_CONFIG_DIR=/mnt/workspace/blueprint/.claude
       - BLUEPRINT_DATA=/mnt/workspace/blueprint/data
-      - HOME=/home/hopper
+      - HOME=/home/blueprint
       - MAX_TMUX_SESSIONS=50
     restart: unless-stopped
 

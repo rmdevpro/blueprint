@@ -3,13 +3,11 @@ set -e
 
 # Blueprint HF Spaces entrypoint — runs as non-root user (UID 1000)
 
-# Ensure data directories exist (persistent across restarts via /data volume)
-CLAUDE="${CLAUDE_HOME:-$HOME/.claude}"
-BP_DATA="${BLUEPRINT_DATA:-/data/blueprint}"
-
+CLAUDE="$HOME/.claude"
+BP_DATA="${BLUEPRINT_DATA:-$HOME/.blueprint}"
 WORK="${WORKSPACE:-$HOME/workspace}"
+
 mkdir -p "$WORK" "$BP_DATA" "$CLAUDE/projects" 2>/dev/null || true
-mkdir -p "$BP_DATA/quorum" 2>/dev/null || true
 
 # Ensure docs library exists with standard structure
 mkdir -p "$WORK/docs/guides" "$WORK/docs/processes" "$WORK/docs/reference" "$WORK/docs/system-prompts"
@@ -18,10 +16,14 @@ if [ -d /app/config/guides ] && [ -z "$(ls -A "$WORK/docs/guides" 2>/dev/null)" 
   echo "[entrypoint] Seeded docs library from config/guides"
 fi
 
+# Seed default CLAUDE.md if not present
+if [ -f /app/config/CLAUDE.md ] && [ ! -f "$CLAUDE/CLAUDE.md" ]; then
+  cp /app/config/CLAUDE.md "$CLAUDE/CLAUDE.md"
+  echo "[entrypoint] Seeded global CLAUDE.md"
+fi
+
 # Ensure .claude.json exists for workspace trust
 test -f "$HOME/.claude.json" || echo '{}' > "$HOME/.claude.json"
-
-# Ensure .claude.json config exists in CLAUDE_CONFIG_DIR
 if [ ! -f "$CLAUDE/.claude.json" ]; then
   echo '{}' > "$CLAUDE/.claude.json"
 fi
@@ -60,7 +62,7 @@ CLI_VERSION=$(claude --version 2>/dev/null | sed 's/ .*//' || true)
 CLI_VERSION="${CLI_VERSION:-99.99.99}"
 node -e "
   const fs = require('fs');
-  const f = (process.env.CLAUDE_CONFIG_DIR || process.env.CLAUDE_HOME || (process.env.HOME + '/.claude')) + '/.claude.json';
+  const f = (process.env.HOME + '/.claude') + '/.claude.json';
   let d = {};
   try { d = JSON.parse(fs.readFileSync(f, 'utf8')); } catch {}
   const ver = process.argv[1] || '99.99.99';

@@ -11,8 +11,8 @@ test('FRS-01/ENT-03: data directories exist', () => {
   assert.ok(storage.includes('blueprint.db'), 'blueprint.db should exist');
 });
 
-test('ENT-02: process runs as hopper user', () => {
-  assert.equal(dockerExec('whoami'), 'hopper');
+test('ENT-02: process runs as blueprint user', () => {
+  assert.equal(dockerExec('whoami'), 'blueprint');
 });
 
 test('ENT-09: onboarding flags set correctly', () => {
@@ -23,9 +23,9 @@ test('ENT-09: onboarding flags set correctly', () => {
   }
 });
 
-test('ENT-10: storage owned by hopper', () => {
+test('ENT-10: storage owned by blueprint', () => {
   const owner = dockerExec('stat -c %U /storage');
-  assert.equal(owner, 'hopper');
+  assert.equal(owner, 'blueprint');
 });
 
 test('ENG-13: health returns 200', async () => {
