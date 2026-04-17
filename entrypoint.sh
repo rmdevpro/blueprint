@@ -117,7 +117,8 @@ QDRANT_STORAGE="${BLUEPRINT_DATA:-$HOME/.blueprint}/qdrant"
 mkdir -p "$QDRANT_STORAGE" 2>/dev/null || true
 chown -R hopper:hopper "$QDRANT_STORAGE" 2>/dev/null || true
 if command -v qdrant &>/dev/null; then
-  gosu hopper qdrant --storage-path "$QDRANT_STORAGE" --port 6333 &
+  export QDRANT__STORAGE__STORAGE_PATH="$QDRANT_STORAGE"
+  gosu hopper qdrant --disable-telemetry &
   echo "[entrypoint] Qdrant started on port 6333 (storage: $QDRANT_STORAGE)"
 fi
 

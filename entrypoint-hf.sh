@@ -80,7 +80,8 @@ node -e "
 QDRANT_STORAGE="${BP_DATA}/qdrant"
 mkdir -p "$QDRANT_STORAGE" 2>/dev/null || true
 if command -v qdrant &>/dev/null; then
-  qdrant --storage-path "$QDRANT_STORAGE" --port 6333 &
+  export QDRANT__STORAGE__STORAGE_PATH="$QDRANT_STORAGE"
+  qdrant --disable-telemetry &
   echo "[entrypoint] Qdrant started on port 6333 (storage: $QDRANT_STORAGE)"
 fi
 
