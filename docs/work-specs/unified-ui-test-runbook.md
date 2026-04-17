@@ -4,7 +4,7 @@
 **Container:** blueprint-merged on M5
 **Branch:** merge/easy-fixes-into-refactor
 **Tool:** Local Playwright MCP (NOT Malory)
-**Total:** 117 test blocks (79 from refactor + 38 new)
+**Total:** 131 test blocks (79 from refactor + 38 NF + 14 settings/vector)
 
 ## CRITICAL: What "test" means
 
@@ -285,6 +285,66 @@ For each test:
 ### NF-38: Workspace and Mounts
 **Action:** Fetch `/api/state` and `/api/mounts`.
 **Verify:** workspace = `/mnt/workspace`. Mounts include `/mnt/workspace` and `/mnt/storage`.
+
+---
+
+## Phase 9: Settings Reorganization + Vector Search (14 blocks)
+
+### NF-39: Settings Has Four Tabs
+**Action:** Open settings modal. Count tab buttons.
+**Verify:** Four tabs visible: General, Claude Code, Vector Search, System Prompts.
+
+### NF-40: General Tab Shows Appearance and API Keys
+**Action:** Click General tab.
+**Verify:** Appearance section (theme, font size, font family) and API Keys section (Gemini, OpenAI/Codex, Deepgram) visible. NO Claude Code / Keepalive sections. NO Features section.
+
+### NF-41: Claude Code Tab Shows Model and Keepalive
+**Action:** Click Claude Code tab.
+**Verify:** Default Model dropdown, Thinking Level dropdown, Keepalive Mode dropdown, Idle timeout input all visible. General tab content hidden.
+
+### NF-42: Claude Code Settings Persist
+**Action:** On Claude Code tab, change thinking level to "high". Close and reopen settings.
+**Verify:** Thinking level still shows "high". Server `/api/settings` returns `thinking_level: "high"`.
+
+### NF-43: Vector Search Tab Shows Status
+**Action:** Click Vector Search tab.
+**Verify:** Qdrant status indicator visible (green circle + "Connected" or red circle + "Not available"). Provider dropdown visible.
+
+### NF-44: Vector Search Provider Dropdown
+**Action:** On Vector Search tab, verify provider dropdown options.
+**Verify:** Options include: Hugging Face Free, Gemini, OpenAI, Custom. Gemini/OpenAI may be grayed out if no keys set.
+
+### NF-45: Vector Search Custom Provider Fields
+**Action:** Select "Custom" from provider dropdown.
+**Verify:** Endpoint URL and API Key fields appear. Select "Hugging Face Free" — custom fields hidden.
+
+### NF-46: Vector Search Collections Visible
+**Action:** On Vector Search tab, scroll to Collections section.
+**Verify:** 5 collection cards: Documents (checked), Code (unchecked), Claude Sessions (checked), Gemini Sessions (checked), Codex Sessions (checked). Each has dims input and Re-index button. Documents and Code have patterns textarea.
+
+### NF-47: Vector Search Collection Dims Configurable
+**Action:** Change Documents dims from 384 to 768. Close and reopen settings, go to Vector Search tab.
+**Verify:** Documents dims shows 768. Server `/api/settings` returns `vector_collection_docs.dims: 768`.
+
+### NF-48: Vector Search Collection Patterns Editable
+**Action:** Add "*.rst" to Documents patterns textarea. Save (onchange).
+**Verify:** Server `/api/settings` returns `vector_collection_docs.patterns` includes "*.rst".
+
+### NF-49: Vector Search Ignore Patterns
+**Action:** Verify ignore patterns textarea visible with default content.
+**Verify:** Contains "node_modules/**", ".git/**", "*.lock" etc.
+
+### NF-50: Vector Search Additional Paths
+**Action:** Type "/storage/test" in additional path input, click Add.
+**Verify:** Path appears in list with remove button. Server `/api/settings` returns `vector_additional_paths: ["/storage/test"]`.
+
+### NF-51: Vector Search Re-index Button
+**Action:** Click Re-index on Documents collection.
+**Verify:** Button text changes to "Indexing...", then reverts to "Re-index".
+
+### NF-52: Qdrant Status API
+**Action:** Fetch `/api/qdrant/status`.
+**Verify:** Returns `available: true`, `running: true`, collections object with point counts.
 
 ---
 
