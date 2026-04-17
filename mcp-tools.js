@@ -1,11 +1,9 @@
 'use strict';
 
-const { readFile, readdir, writeFile, mkdir, realpath, unlink } = require('fs/promises');
-const { join, basename, resolve: pathResolve, sep } = require('path');
-const { randomUUID } = require('crypto');
+const { readFile, readdir } = require('fs/promises');
+const { join, basename } = require('path');
 const safe = require('./safe-exec');
 const sessionUtils = require('./session-utils');
-const config = require('./config');
 const logger = require('./logger');
 
 const _CLAUDE_HOME = safe.CLAUDE_HOME;
@@ -14,7 +12,6 @@ const WORKSPACE = safe.WORKSPACE;
 const db = require('./db');
 
 const SESSION_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
-const CONTENT_MAX_LEN = 100000;
 
 function validateMcpSessionId(sessionId) {
   if (!sessionId) return false;
@@ -54,8 +51,6 @@ function registerMcpRoutes(app) {
           name: 'blueprint_get_project_claude_md',
           description: "Read a project's CLAUDE.md file.",
         },
-        { name: 'blueprint_read_plan', description: "Read a session's plan file." },
-        { name: 'blueprint_update_plan', description: "Write or update a session's plan file." },
         { name: 'blueprint_session', description: 'Session management — info, transition, or resume.' },
         { name: 'blueprint_docs', description: 'Manage documentation library (list, search, read, create, update, delete).' },
         { name: 'blueprint_set_session_config', description: 'Set session configuration.' },
@@ -65,23 +60,6 @@ function registerMcpRoutes(app) {
       ],
     });
   });
-
-  async function isPlanPathSafe(planBase, fullPath) {
-    if (!fullPath.startsWith(planBase + sep)) return false;
-    try {
-      const realPath = await realpath(fullPath);
-      let realBase;
-      try {
-        realBase = await realpath(planBase);
-      } catch (_e) {
-        realBase = planBase;
-      }
-      return realPath === realBase || realPath.startsWith(realBase + sep);
-    } catch (err) {
-      if (err.code === 'ENOENT') return true;
-      return false;
-    }
-  }
 
   app.post('/api/mcp/call', async (req, res) => {
     const { tool, args } = req.body;
@@ -167,38 +145,6 @@ function registerMcpRoutes(app) {
               result = { content: '' };
             } else throw err;
           }
-          break;
-        }
-        case 'blueprint_read_plan': {
-          if (!validateMcpSessionId(args.session_id))
-            return res.status(400).json({ error: 'invalid session_id format' });
-          const planBase = join(db.DATA_DIR, 'plans');
-          const planFile = pathResolve(planBase, args.project, `${args.session_id}.md`);
-          if (!(await isPlanPathSafe(planBase, planFile)))
-            return res.status(403).json({ error: 'Path traversal blocked' });
-          try {
-            result = { content: await readFile(planFile, 'utf-8') };
-          } catch (err) {
-            if (err.code === 'ENOENT') {
-              result = { content: '', exists: false };
-            } else throw err;
-          }
-          break;
-        }
-        case 'blueprint_update_plan': {
-          if (!validateMcpSessionId(args.session_id))
-            return res.status(400).json({ error: 'invalid session_id format' });
-          if (!args.content) return res.status(400).json({ error: 'content required' });
-          if (args.content.length > CONTENT_MAX_LEN)
-            return res.status(400).json({ error: `content too long (max ${CONTENT_MAX_LEN})` });
-          const planBase = join(db.DATA_DIR, 'plans');
-          const planDir = pathResolve(planBase, args.project);
-          const planFile = pathResolve(planDir, `${args.session_id}.md`);
-          if (!(await isPlanPathSafe(planBase, planFile)))
-            return res.status(403).json({ error: 'Path traversal blocked' });
-          await mkdir(planDir, { recursive: true });
-          await writeFile(planFile, args.content);
-          result = { saved: true, path: planFile };
           break;
         }
         case 'blueprint_get_token_usage': {

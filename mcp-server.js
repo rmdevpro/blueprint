@@ -157,28 +157,6 @@ const TOOLS = [
     },
   },
   {
-    name: 'blueprint_read_plan',
-    description: 'Read session plan file.',
-    inputSchema: {
-      type: 'object',
-      properties: { session_id: { type: 'string' }, project: { type: 'string' } },
-      required: ['session_id', 'project'],
-    },
-  },
-  {
-    name: 'blueprint_update_plan',
-    description: 'Write session plan file.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        session_id: { type: 'string' },
-        project: { type: 'string' },
-        content: { type: 'string' },
-      },
-      required: ['session_id', 'project', 'content'],
-    },
-  },
-  {
     name: 'blueprint_docs',
     description: 'Manage Blueprint documentation library. Actions: list, search, read, create, update, delete.',
     inputSchema: {
