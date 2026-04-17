@@ -2259,14 +2259,16 @@
       const code = document.getElementById('auth-code-input').value.trim();
       if (!code) return;
 
-      // Send the code to whichever session triggered the auth
+      // Send the code then Enter as separate messages
       if (authTriggerTabId && tabs.has(authTriggerTabId)) {
         const tab = tabs.get(authTriggerTabId);
         if (tab.ws && tab.ws.readyState === WebSocket.OPEN) {
-          tab.ws.send(code + '\r');
+          tab.ws.send(code);
+          setTimeout(() => tab.ws.send('\n'), 100);
         }
       } else if (window._loginWs && window._loginWs.readyState === WebSocket.OPEN) {
-        window._loginWs.send(code + '\r');
+        window._loginWs.send(code);
+        setTimeout(() => window._loginWs.send('\n'), 100);
       }
 
       // Dismiss modal after a short delay to let the CLI process
