@@ -282,37 +282,12 @@ For each test:
 **Action:** POST to `/api/sessions/test/smart-compact`.
 **Verify:** Returns 404.
 
-### NF-31: Ask CLI Validates Input
-**Action:** POST to `/api/cli/ask` with `{cli: "claude"}` (no prompt).
-**Verify:** Returns `{error: "prompt required"}`.
+### NF-31 to NF-37: REMOVED
+Ask CLI, Quorum, Guides, Skills, and Prompts tests removed — features were deleted or replaced by consolidated MCP tools.
 
-### NF-32: Ask CLI Real Call
-**Action:** POST to `/api/cli/ask` with `{cli: "claude", prompt: "Reply with only pong"}`.
-**Verify:** Returns result containing "pong".
-
-### NF-33: Quorum Validates Input
-**Action:** POST to `/api/quorum/ask` with `{project: "t"}` (no question).
-**Verify:** Returns `{error: "question required"}`.
-
-### NF-34: Guides Accessible
-**Action:** Fetch all three guide files via `/api/file`.
-**Verify:** All return 200 with correct content.
-
-### NF-35: Skills Installed
-**Action:** Fetch session and guides SKILL.md files via `/api/file`.
-**Verify:** Both return 200.
-
-### NF-36: New Prompts Exist
-**Action:** Fetch session-nudge.md, session-resume.md, session-transition.md via `/api/file`.
-**Verify:** All return 200.
-
-### NF-37: Old Prompts Gone
-**Action:** Fetch compaction-auto.md, compaction-prep-to-agent.md via `/api/file`.
-**Verify:** All return 404 (or non-200).
-
-### NF-38: Workspace and Mounts
-**Action:** Fetch `/api/state` and `/api/mounts`.
-**Verify:** workspace = `/mnt/workspace`. Mounts include `/mnt/workspace` and `/mnt/storage`.
+### NF-38: Workspace Path
+**Action:** Fetch `/api/state`.
+**Verify:** workspace = `/home/blueprint/workspace`. No references to hopper or /mnt/workspace.
 
 ---
 
