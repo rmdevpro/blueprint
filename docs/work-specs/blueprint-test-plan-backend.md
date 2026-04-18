@@ -231,7 +231,7 @@ Every scenario is marked as **MOCK**, **LIVE**, **BROWSER**, or a combination. B
 |------------|--------|
 | SES-10 | AI-generated session summary quality evaluation |
 | CMP-42 | Git commit during prep phase (live portion) |
-| CMP-43 | Live smart compaction with real checker |
+| ~~CMP-43~~ REMOVED | ~~Live smart compaction~~ |
 | CMP-44 | Multiple compaction cycles with real compaction |
 | CMP-45 | Compaction verbose mode with real pipeline |
 | CST-09 | Cold recall quality evaluation |
@@ -736,7 +736,7 @@ This is the highest-risk subsystem. It requires both granular stage tests and fu
 
 | ID | Capability | Layer | Status |
 |----|-----------|-------|--------|
-| CMP-43 | Live smart compaction API call on real server | Live (Non-Det) | NONE |
+| CMP-43 | ~~Live smart compaction~~ REMOVED | — | — |
 | CMP-44 | Multiple compaction cycles reset threshold state correctly | Live (Non-Det) | NONE |
 | CMP-45 | Compaction verbose mode emits detailed stage logs | Live (Non-Det) | NONE |
 
@@ -986,7 +986,7 @@ Previously in this section:
 | ENT-07 | Skill installation from config/skills | Live | NONE |
 | ENT-08 | Credential verification | Live | NONE |
 | ENT-09 | Onboarding flags set | Live | NONE |
-| ENT-10 | Ownership fix to hopper user | Live | NONE |
+| ENT-10 | Ownership fix to blueprint user | Live | NONE |
 | ENT-11 | Docker socket owned by root emits warning (no docker group GID match) | Live | NONE |
 | ENT-12 | Startup with missing `tmux` binary — server starts degraded, session creation returns clear error | Live | NONE |
 
@@ -1642,7 +1642,7 @@ See §3.6 for methodology. Mock tests import functions; live tests use `child_pr
 | ID | Input | Expected | Layer | Gray-box |
 |----|-------|----------|-------|----------|
 | ENT-01 | Docker socket mounted | GID matches | Live | `stat -c %g` |
-| ENT-02 | Fresh container | Process runs as `hopper` user (not root) after gosu | Live | `whoami` inside running container returns `hopper` |
+| ENT-02 | Fresh container | Process runs as `blueprint` user (not root) after gosu | Live | `whoami` inside running container returns `blueprint` |
 | ENT-03 | Fresh container | Dirs created | Live | `ls -la` |
 | ENT-04 | Fresh container | `$CLAUDE_HOME` points to symlinked location | Live | `readlink $CLAUDE_HOME` or `ls -la` shows symlink |
 | ENT-05 | No prior settings | `settings.json` defaults | Live | Read + verify |
@@ -1650,7 +1650,7 @@ See §3.6 for methodology. Mock tests import functions; live tests use `child_pr
 | ENT-07 | `config/skills` directory contains skill files | Skills installed into `$CLAUDE_HOME` | Live | Verify skill files exist in expected location after startup |
 | ENT-08 | Fresh container with credentials mounted | Credential file exists and is valid | Live | `docker exec` reads credential file, verifies JSON structure |
 | ENT-09 | Fresh container | Onboarding flags set | Live | Read `.claude.json` |
-| ENT-10 | Fresh container | `/storage` and subdirectories owned by `hopper` user | Live | `stat -c %U` on `/storage`, `/storage/sessions`, `/storage/bridges` |
+| ENT-10 | Fresh container | workspace owned by `blueprint` user | Live | `stat -c %U` on `/home/blueprint/workspace` |
 | ENT-11 | Root-only socket GID | Warning logged | Live | Container logs |
 | ENT-12 | `tmux` hidden via PATH override | Server starts degraded, session creation → clear error | Live | API error response |
 
@@ -2872,11 +2872,11 @@ QRM-01..15: REMOVED — quorum.js deleted.
 
 ### 16.1 Mock (`tests/mock/`)
 
-`config.test.js`, `logger.test.js`, `db.test.js`, `safe-exec.test.js`, `session-utils.test.js`, `tmux-lifecycle.test.js`, `session-resolver.test.js`, `watchers.test.js`, `ws-terminal.test.js`, `keepalive.test.js`, `compaction.test.js`, `quorum.test.js`, `webhooks.test.js`, `server.test.js`, `auth-parsing.test.js`, `mcp-tools.test.js`, `mcp-external.test.js`, `openai-compat.test.js`, `routes.test.js`
+`config.test.js`, `logger.test.js`, `db.test.js`, `safe-exec.test.js`, `session-utils.test.js`, `tmux-lifecycle.test.js`, `session-resolver.test.js`, `watchers.test.js`, `ws-terminal.test.js`, `keepalive.test.js`, `webhooks.test.js`, `server.test.js`, `auth-parsing.test.js`, `mcp-tools.test.js`, `routes.test.js` (removed: compaction, quorum, mcp-external, openai-compat)
 
 ### 16.2 Live (`tests/live/`)
 
-`startup.test.js`, `routes-filesystem.test.js`, `routes-projects.test.js`, `routes-sessions.test.js`, `routes-tasks.test.js`, `routes-messages.test.js`, `routes-settings.test.js`, `routes-auth.test.js`, `routes-health.test.js`, `mcp-tools.test.js`, `mcp-external.test.js`, `mcp-server.test.js`, `openai-compat.test.js`, `quorum.test.js`, `webhooks.test.js`, `watchers.test.js`, `ws-terminal.test.js`, `compaction-integration.test.js`, `context-stress.test.js`, `fresh-container.test.js`
+`startup.test.js`, `routes-filesystem.test.js`, `routes-projects.test.js`, `routes-sessions.test.js`, `routes-tasks.test.js`, `routes-settings.test.js`, `routes-auth.test.js`, `routes-health.test.js`, `mcp-tools.test.js`, `mcp-server.test.js`, `webhooks.test.js`, `watchers.test.js`, `ws-terminal.test.js`, `fresh-container.test.js` (removed: routes-messages, mcp-external, openai-compat, quorum, compaction-integration, context-stress)
 
 ### 16.3 Browser (`tests/browser/`)
 
@@ -2909,7 +2909,7 @@ Numbered from most foundational to most complex. Dependencies noted.
 5. **Core routes live tests (sessions, projects, tasks, messages, settings)** — Depends on running container (#1) and foundational modules (#2-4).
 6. **WebSocket terminal** — Depends on sessions (#5) and tmux (#4).
 7. **Browser UI core workflows (primary gate)** — Depends on live routes (#5) and WS (#6).
-8. **MCP tools (individual), MCP stdio, OpenAI compat, quorum** — Depends on routes (#5).
+8. **MCP tools (3 consolidated), MCP stdio, Qdrant sync** — Depends on routes (#5).
 9. **Watchers, keepalive, and hot-reload** — Depends on config (#2) and sessions (#5).
 10. **Compaction stage tests (highest risk)** — Depends on watchers (#9) and session-utils (#4).
 11. **Webhooks** — Depends on routes (#5).
