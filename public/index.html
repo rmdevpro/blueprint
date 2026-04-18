@@ -478,15 +478,17 @@
         <button onclick="loadState()" title="Refresh">&#x21bb;</button>
       </div>
     </div>
-    <div id="filter-bar">
-      <button class="filter-btn active" data-filter="active" onclick="setFilter('active')">Active</button>
-      <button class="filter-btn" data-filter="all" onclick="setFilter('all')">All</button>
-      <button class="filter-btn" data-filter="archived" onclick="setFilter('archived')">Archived</button>
-      <button class="filter-btn" data-filter="hidden" onclick="setFilter('hidden')">Hidden</button>
-      <select id="session-sort" style="margin-left:auto;background:var(--bg-primary);border:1px solid var(--border);color:var(--text-muted);font-size:10px;border-radius:4px;padding:2px 4px;cursor:pointer" onchange="sessionSortBy=this.value;renderSidebar()">
-        <option value="date">Date</option>
-        <option value="name">Name</option>
-        <option value="messages">Messages</option>
+    <div id="filter-bar" style="display:flex;gap:4px;align-items:center">
+      <select id="session-filter" style="background:var(--bg-primary);border:1px solid var(--border);color:var(--text-muted);font-size:10px;border-radius:4px;padding:2px 4px;cursor:pointer" onchange="setFilter(this.value)">
+        <option value="active">&#128269; Active</option>
+        <option value="all">&#128269; All</option>
+        <option value="archived">&#128269; Archived</option>
+        <option value="hidden">&#128269; Hidden</option>
+      </select>
+      <select id="session-sort" style="background:var(--bg-primary);border:1px solid var(--border);color:var(--text-muted);font-size:10px;border-radius:4px;padding:2px 4px;cursor:pointer" onchange="sessionSortBy=this.value;renderSidebar()">
+        <option value="date">&#8645; Date</option>
+        <option value="name">&#8645; Name</option>
+        <option value="messages">&#8645; Messages</option>
       </select>
     </div>
     <div style="padding:4px 16px">
@@ -890,9 +892,6 @@ build/**</textarea>
 
     function setFilter(filter) {
       sessionFilter = filter;
-      document.querySelectorAll('.filter-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.filter === filter);
-      });
       renderSidebar();
     }
 
@@ -967,7 +966,7 @@ build/**</textarea>
       // Skip re-render if state hasn't changed (prevents DOM detach during clicks)
       const stateHash = JSON.stringify(projectState.map(p => ({
         n: p.name, m: p.missing, st: p.state,
-        s: p.sessions.map(s => ({ id: s.id, name: s.name, active: s.active, state: s.state, mc: s.messageCount, ts: s.timestamp }))
+        s: p.sessions.map(s => ({ id: s.id, name: s.name, active: s.active, state: s.state, cli: s.cli_type, mc: s.messageCount, ts: s.timestamp }))
       }))) + sessionFilter + sessionSortBy + activeTabId + [...tabs.keys()].join(',');
       if (stateHash === renderSidebar._lastHash) return;
       renderSidebar._lastHash = stateHash;
@@ -1002,20 +1001,43 @@ build/**</textarea>
           <span>${escHtml(project.name)}</span>
           <span class="count">${filteredCount}</span>
           <button class="term-btn proj-config-btn" title="Project config" style="font-size:12px">&#9998;</button>
-          <button class="term-btn new-btn" title="New session">+</button>
-          <button class="term-btn" title="Open terminal">&gt;_</button>
+          <span class="new-session-wrap" style="position:relative">
+            <button class="term-btn new-btn" title="New session">+</button>
+            <div class="new-session-menu" style="display:none;position:absolute;top:100%;right:0;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:4px 0;z-index:100;min-width:120px;box-shadow:0 4px 12px rgba(0,0,0,0.3)">
+              <div class="context-menu-item" data-cli="claude" style="padding:4px 12px;font-size:12px;cursor:pointer;color:var(--text-primary)"><span style="color:#e8a55d;font-weight:bold">C</span> Claude</div>
+              <div class="context-menu-item" data-cli="gemini" style="padding:4px 12px;font-size:12px;cursor:pointer;color:var(--text-primary)"><span style="color:#4285f4;font-weight:bold">G</span> Gemini</div>
+              <div class="context-menu-item" data-cli="codex" style="padding:4px 12px;font-size:12px;cursor:pointer;color:var(--text-primary)"><span style="color:#10a37f;font-weight:bold">X</span> Codex</div>
+              <div class="context-menu-divider" style="border-top:1px solid var(--border);margin:4px 0"></div>
+              <div class="context-menu-item" data-cli="terminal" style="padding:4px 12px;font-size:12px;cursor:pointer;color:var(--text-primary)">&#9002; Terminal</div>
+            </div>
+          </span>
         `;
         header.querySelector('.proj-config-btn').addEventListener('click', (e) => {
           e.stopPropagation();
           openProjectConfig(project.name);
         });
-        header.querySelector('.new-btn').addEventListener('click', (e) => {
+        const newBtn = header.querySelector('.new-btn');
+        const newMenu = header.querySelector('.new-session-menu');
+        newBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          createSession(project.name);
+          // Toggle dropdown
+          const isVisible = newMenu.style.display !== 'none';
+          document.querySelectorAll('.new-session-menu').forEach(m => m.style.display = 'none');
+          newMenu.style.display = isVisible ? 'none' : 'block';
         });
-        header.querySelector('.term-btn:not(.new-btn):not(.proj-config-btn)').addEventListener('click', (e) => {
-          e.stopPropagation();
-          openTerminal(project.name);
+        newMenu.querySelectorAll('.context-menu-item').forEach(item => {
+          item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            newMenu.style.display = 'none';
+            const cli = item.dataset.cli;
+            if (cli === 'terminal') {
+              openTerminal(project.name);
+            } else {
+              createSession(project.name, cli);
+            }
+          });
+          item.addEventListener('mouseenter', () => item.style.background = 'var(--bg-hover)');
+          item.addEventListener('mouseleave', () => item.style.background = '');
         });
         header.addEventListener('click', () => {
           if (expandedProjects.has(project.name)) {
@@ -1072,7 +1094,13 @@ build/**</textarea>
               </span>
             </div>
             <div class="session-meta">
-              ${session.active ? '<span class="active-dot"></span>' : ''}
+              ${(() => {
+                const cli = session.cli_type || 'claude';
+                const colors = { claude: '#e8a55d', gemini: '#4285f4', codex: '#10a37f' };
+                const labels = { claude: 'C', gemini: 'G', codex: 'X' };
+                const color = session.active ? (colors[cli] || '#8b949e') : '#484f58';
+                return `<span style="font-weight:bold;font-size:10px;color:${color}" title="${cli}">${labels[cli] || '?'}</span>`;
+              })()}
               <span>${timeAgo(session.timestamp)}</span>
               <span class="msg-count">${session.messageCount}</span>
             </div>
@@ -1142,7 +1170,7 @@ build/**</textarea>
       .catch(err => console.error('Failed to open session:', err));
     }
 
-    function createSession(projectName) {
+    function createSession(projectName, cliType = 'claude') {
       // Prevent duplicate modals from double-click
       if (document.querySelector('[id^="new-session-overlay-"]')) return;
       // Show prompt-first modal instead of creating session immediately
@@ -1186,7 +1214,7 @@ build/**</textarea>
           const res = await fetch('/api/sessions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project: projectName, prompt }),
+            body: JSON.stringify({ project: projectName, prompt, cli_type: cliType }),
           });
           const data = await res.json();
           if (data.error) { alert('Error: ' + data.error); btn.textContent = 'Start Session'; btn.disabled = false; return; }
@@ -2255,6 +2283,9 @@ build/**</textarea>
       document.querySelectorAll('.context-menu').forEach(m => m.remove());
     }
     document.addEventListener('click', removeContextMenu);
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.new-session-menu').forEach(m => m.style.display = 'none');
+    });
 
     function refreshFileBrowserDir(dirPath) {
       const treeEl = document.getElementById('file-browser-tree');

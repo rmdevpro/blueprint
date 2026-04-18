@@ -218,6 +218,7 @@ function registerCoreRoutes(
         tmux: tmuxName(s.id),
         active: await safe.tmuxExists(tmuxName(s.id)),
         state: s.state || (s.archived ? 'archived' : 'active'),
+        cli_type: s.cli_type || 'claude',
         archived: !!s.archived,
       });
     }

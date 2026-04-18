@@ -28,7 +28,7 @@ const { handleVoiceConnection } = require('./voice');
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const CLAUDE_HOME = safe.CLAUDE_HOME;
 const WORKSPACE = safe.WORKSPACE;
-const MAX_TMUX_SESSIONS = parseInt(process.env.MAX_TMUX_SESSIONS || '5', 10);
+const MAX_TMUX_SESSIONS = parseInt(process.env.MAX_TMUX_SESSIONS || '10', 10);
 const TMUX_CLEANUP_DELAY = parseInt(process.env.TMUX_CLEANUP_MINUTES || '30', 10) * 60 * 1000;
 
 // ── Global error handlers ───────────────────────────────────────────────────
@@ -272,6 +272,7 @@ if (require.main === module) {
       server.listen(PORT, '0.0.0.0', () => {
         logger.info('Blueprint running', { module: 'server', port: PORT });
         keepalive.start();
+        tmux.startPeriodicScan();
         watchers.startSettingsWatcher();
 
         watchers.registerMcpServer().catch((err) =>

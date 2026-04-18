@@ -4,7 +4,7 @@
 **Fallback Target:** http://192.168.1.120:7869 (M5 test container — NOT a substitute for HF testing)
 **Branch:** huggingface-space
 **Tool:** Playwright MCP (local, NOT Malory)
-**Total:** 131 test blocks (79 from refactor + 38 NF + 14 settings/vector)
+**Total:** 147 test blocks (79 from refactor + 38 NF + 14 settings/vector + 16 multi-CLI/lifecycle)
 
 ## CRITICAL: Test on HF Spaces, NOT just M5
 
@@ -373,6 +373,74 @@ For each test:
 ### NF-52: Qdrant Status API
 **Action:** Fetch `/api/qdrant/status`.
 **Verify:** Returns `available: true`, `running: true`, collections object with point counts.
+
+---
+
+## Phase 10: Multi-CLI Sessions, Lifecycle, MCP Management (16 blocks)
+
+### NF-53: Filter Bar is Dropdown
+**Action:** Open the sidebar. Check the session filter control.
+**Verify:** Filter is a dropdown (`<select>`) with options: Active, All, Archived, Hidden. Not buttons.
+
+### NF-54: Sort Bar is Dropdown
+**Action:** Check the session sort control.
+**Verify:** Sort is a dropdown with options: Date, Name, Messages. Both filter and sort are side by side.
+
+### NF-55: Plus Button Opens CLI Dropdown
+**Action:** Click the `+` button on a project header.
+**Verify:** A dropdown appears with options: C Claude, G Gemini, X Codex, Terminal.
+
+### NF-56: Create Claude Session via Dropdown
+**Action:** Click `+` → Claude on a project.
+**Verify:** New session created with `cli_type: claude`. Session appears in sidebar.
+
+### NF-57: Session Shows CLI Type Indicator
+**Action:** Look at the session item in the sidebar.
+**Verify:** CLI type indicator (C/G/X) appears on the session's second line, colored (orange C, blue G, green X). Active sessions have bright color, inactive are dimmed.
+
+### NF-58: Terminal Button Gone from Project Header
+**Action:** Look at the project header row.
+**Verify:** No `>_` terminal button. Only `✎` (config) and `+` (new session dropdown).
+
+### NF-59: Create Session via MCP (new action)
+**Action:** Call `blueprint_sessions action=new cli=claude project=<name>`.
+**Verify:** Returns `session_id`, `tmux`, `cli`.
+
+### NF-60: Connect to Session by Name (connect action)
+**Action:** Call `blueprint_sessions action=connect query="<session name>"`.
+**Verify:** Returns `session_id`, `tmux`, `cli`. Tmux session is running.
+
+### NF-61: Restart Session (restart action)
+**Action:** Call `blueprint_sessions action=restart session_id=<id>`.
+**Verify:** Returns `restarted: true`, `tmux`. Session is relaunched.
+
+### NF-62: MCP Register
+**Action:** Call `blueprint_sessions action=mcp_register mcp_name="test-mcp" mcp_config={...}`.
+**Verify:** Returns `registered: "test-mcp"`.
+
+### NF-63: MCP List Available
+**Action:** Call `blueprint_sessions action=mcp_list_available`.
+**Verify:** Returns servers array including "test-mcp".
+
+### NF-64: MCP Enable for Project
+**Action:** Call `blueprint_sessions action=mcp_enable mcp_name="test-mcp" project=<name>`.
+**Verify:** Returns `enabled`. `.mcp.json` written to project directory.
+
+### NF-65: MCP List Enabled
+**Action:** Call `blueprint_sessions action=mcp_list_enabled project=<name>`.
+**Verify:** Returns servers array including "test-mcp".
+
+### NF-66: MCP Disable
+**Action:** Call `blueprint_sessions action=mcp_disable mcp_name="test-mcp" project=<name>`.
+**Verify:** Returns `disabled`. `.mcp.json` updated.
+
+### NF-67: Tmux Periodic Scan Running
+**Action:** Check server logs for periodic scan message.
+**Verify:** Log shows "Started periodic tmux scan" with interval, max sessions, idle thresholds.
+
+### NF-68: Only 3 MCP Tools
+**Action:** Fetch `/api/mcp/tools`.
+**Verify:** Exactly 3 tools: `blueprint_files`, `blueprint_sessions`, `blueprint_tasks`.
 
 ---
 
