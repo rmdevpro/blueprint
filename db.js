@@ -73,6 +73,7 @@ db.exec(`
     archived INTEGER DEFAULT 0,
     state TEXT DEFAULT 'active',
     model_override TEXT,
+    cli_type TEXT DEFAULT 'claude',
     user_renamed INTEGER DEFAULT 0,
     notes TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now')),
