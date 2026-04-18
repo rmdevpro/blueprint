@@ -104,6 +104,32 @@ function tmuxCreateClaude(sessionName, cwd, claudeArgs = []) {
   tmuxExecSync(['set-option', '-t', safeName, 'history-limit', '10000']);
 }
 
+function tmuxCreateGemini(sessionName, cwd, geminiArgs = []) {
+  const safeName = sanitizeTmuxName(sessionName);
+  const escapedCwd = shellEscape(cwd);
+  const escapedArgs = geminiArgs.map((a) => shellEscape(a)).join(' ');
+  const envExports = `export HOME=${shellEscape(HOME)}`;
+  const cmd = `cd ${escapedCwd} && ${envExports} && exec gemini ${escapedArgs}`;
+  tmuxExecSync(['new-session', '-d', '-s', safeName, '-x', '200', '-y', '50', cmd], {
+    timeout: 30000,
+  });
+  tmuxExecSync(['set-option', '-t', safeName, 'mouse', 'off']);
+  tmuxExecSync(['set-option', '-t', safeName, 'history-limit', '10000']);
+}
+
+function tmuxCreateCodex(sessionName, cwd, codexArgs = []) {
+  const safeName = sanitizeTmuxName(sessionName);
+  const escapedCwd = shellEscape(cwd);
+  const escapedArgs = codexArgs.map((a) => shellEscape(a)).join(' ');
+  const envExports = `export HOME=${shellEscape(HOME)}`;
+  const cmd = `cd ${escapedCwd} && ${envExports} && exec codex ${escapedArgs}`;
+  tmuxExecSync(['new-session', '-d', '-s', safeName, '-x', '200', '-y', '50', cmd], {
+    timeout: 30000,
+  });
+  tmuxExecSync(['set-option', '-t', safeName, 'mouse', 'off']);
+  tmuxExecSync(['set-option', '-t', safeName, 'history-limit', '10000']);
+}
+
 function tmuxCreateBash(sessionName, cwd) {
   const safeName = sanitizeTmuxName(sessionName);
   const escapedCwd = shellEscape(cwd);
@@ -243,6 +269,8 @@ module.exports = {
   tmuxExecAsync,
   tmuxExists,
   tmuxCreateClaude,
+  tmuxCreateGemini,
+  tmuxCreateCodex,
   tmuxCreateBash,
   tmuxKill,
   tmuxSendKeysAsync,

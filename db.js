@@ -50,6 +50,11 @@ try {
 } catch (_e) {
   /* already migrated */
 }
+try {
+  db.exec("ALTER TABLE sessions ADD COLUMN cli_type TEXT DEFAULT 'claude'");
+} catch (_e) {
+  /* column exists */
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS projects (
@@ -115,6 +120,20 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_task_history_task ON task_history(task_id);
+
+  CREATE TABLE IF NOT EXISTS mcp_registry (
+    name TEXT PRIMARY KEY,
+    transport TEXT NOT NULL DEFAULT 'stdio',
+    config TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS mcp_project_enabled (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    mcp_name TEXT NOT NULL REFERENCES mcp_registry(name) ON DELETE CASCADE,
+    PRIMARY KEY (project_id, mcp_name)
+  );
 `);
 
 // ── Prepared Statements ────────────────────────────────────────────────────
@@ -130,10 +149,11 @@ const stmts = {
     'SELECT s.*, p.name as project_name, p.path as project_path FROM sessions s JOIN projects p ON s.project_id = p.id WHERE s.id LIKE ? LIMIT 1',
   ),
   upsertSession: db.prepare(`
-    INSERT INTO sessions (id, project_id, name, updated_at)
-    VALUES (?, ?, ?, datetime('now'))
+    INSERT INTO sessions (id, project_id, name, cli_type, updated_at)
+    VALUES (?, ?, ?, ?, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
       name = COALESCE(sessions.name, excluded.name),
+      cli_type = COALESCE(excluded.cli_type, sessions.cli_type),
       updated_at = excluded.updated_at
   `),
   renameSession: db.prepare(
@@ -190,6 +210,14 @@ const stmts = {
   `),
   deleteSessionMeta: db.prepare('DELETE FROM session_meta WHERE session_id = ?'),
 
+  // MCP registry
+  getMcpServers: db.prepare('SELECT * FROM mcp_registry ORDER BY name'),
+  getMcpServer: db.prepare('SELECT * FROM mcp_registry WHERE name = ?'),
+  registerMcp: db.prepare('INSERT OR REPLACE INTO mcp_registry (name, transport, config, description) VALUES (?, ?, ?, ?)'),
+  unregisterMcp: db.prepare('DELETE FROM mcp_registry WHERE name = ?'),
+  enableMcpForProject: db.prepare('INSERT OR IGNORE INTO mcp_project_enabled (project_id, mcp_name) VALUES (?, ?)'),
+  disableMcpForProject: db.prepare('DELETE FROM mcp_project_enabled WHERE project_id = ? AND mcp_name = ?'),
+  getEnabledMcpForProject: db.prepare('SELECT m.* FROM mcp_registry m JOIN mcp_project_enabled e ON m.name = e.mcp_name WHERE e.project_id = ?'),
 };
 
 module.exports = {
@@ -222,8 +250,8 @@ module.exports = {
   getSessionByPrefix(prefix) {
     return stmts.getSessionByPrefix.get(prefix + '%');
   },
-  upsertSession(id, projectId, name) {
-    stmts.upsertSession.run(id, projectId, name);
+  upsertSession(id, projectId, name, cliType = 'claude') {
+    stmts.upsertSession.run(id, projectId, name, cliType);
     return stmts.getSession.get(id);
   },
   renameSession(id, name) {
@@ -382,5 +410,28 @@ module.exports = {
       }
     }
     return settings;
+  },
+
+  // MCP registry
+  getMcpServers() {
+    return stmts.getMcpServers.all();
+  },
+  getMcpServer(name) {
+    return stmts.getMcpServer.get(name);
+  },
+  registerMcp(name, transport, config, description = '') {
+    stmts.registerMcp.run(name, transport, JSON.stringify(config), description);
+  },
+  unregisterMcp(name) {
+    stmts.unregisterMcp.run(name);
+  },
+  enableMcpForProject(projectId, mcpName) {
+    stmts.enableMcpForProject.run(projectId, mcpName);
+  },
+  disableMcpForProject(projectId, mcpName) {
+    stmts.disableMcpForProject.run(projectId, mcpName);
+  },
+  getEnabledMcpForProject(projectId) {
+    return stmts.getEnabledMcpForProject.all(projectId);
   },
 };

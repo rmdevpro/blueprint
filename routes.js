@@ -550,7 +550,11 @@ function registerCoreRoutes(
 
   app.post('/api/sessions', async (req, res) => {
     try {
-      const { project, prompt } = req.body;
+      const { project, prompt, cli_type } = req.body;
+      const cliType = cli_type || 'claude';
+      const VALID_CLI_TYPES = ['claude', 'gemini', 'codex'];
+      if (!VALID_CLI_TYPES.includes(cliType))
+        return res.status(400).json({ error: `invalid cli_type: ${cliType}. Must be one of: ${VALID_CLI_TYPES.join(', ')}` });
       if (!project) return res.status(400).json({ error: 'project required' });
       if (project.length > PROJECT_NAME_MAX_LEN)
         return res
@@ -581,29 +585,40 @@ function registerCoreRoutes(
             err: err.message,
           });
         }
-        /* expected for ENOENT: no sessions dir yet */
       }
 
       const tmpId = `new_${Date.now()}`;
       const tmux = tmuxName(tmpId);
 
       await ensureSettings();
+      await enforceTmuxLimit();
 
-      const model = db.getSetting('default_model', '"claude-sonnet-4-6"');
-      const claudeArgs = [];
-      try {
-        const m = JSON.parse(model);
-        if (m) claudeArgs.push('--model', m);
-      } catch (parseErr) {
-        if (parseErr instanceof SyntaxError) {
-          logger.debug('Invalid default_model JSON in settings', { module: 'routes' });
-        } else {
-          throw parseErr;
+      // Launch the appropriate CLI
+      switch (cliType) {
+        case 'gemini':
+          safe.tmuxCreateGemini(tmux, projectPath);
+          break;
+        case 'codex':
+          safe.tmuxCreateCodex(tmux, projectPath);
+          break;
+        case 'claude':
+        default: {
+          const model = db.getSetting('default_model', '"claude-sonnet-4-6"');
+          const claudeArgs = [];
+          try {
+            const m = JSON.parse(model);
+            if (m) claudeArgs.push('--model', m);
+          } catch (parseErr) {
+            if (parseErr instanceof SyntaxError) {
+              logger.debug('Invalid default_model JSON in settings', { module: 'routes' });
+            } else {
+              throw parseErr;
+            }
+          }
+          safe.tmuxCreateClaude(tmux, projectPath, claudeArgs);
+          break;
         }
       }
-
-      await enforceTmuxLimit();
-      safe.tmuxCreateClaude(tmux, projectPath, claudeArgs);
 
       const proj = db.ensureProject(project, projectPath);
       const nameMaxLen = config.get('session.nameMaxLength', 60);
@@ -611,7 +626,7 @@ function registerCoreRoutes(
         prompt && prompt.replace(/\s+/g, ' ').trim()
           ? prompt.substring(0, nameMaxLen).replace(/\n/g, ' ').trim()
           : 'New Session';
-      db.upsertSession(tmpId, proj.id, sessionName);
+      db.upsertSession(tmpId, proj.id, sessionName, cliType);
 
       if (prompt) {
         const promptDelayMs = config.get('session.promptInjectionDelayMs', 2000);
@@ -684,8 +699,22 @@ function registerCoreRoutes(
       const tmux = tmuxName(sessionId);
       if (!(await safe.tmuxExists(tmux))) {
         await ensureSettings();
-        const claudeArgs = sessionId.startsWith('new_') ? [] : ['--resume', sessionId];
-        safe.tmuxCreateClaude(tmux, projectPath, claudeArgs);
+        const session = db.getSession(sessionId);
+        const cliType = session?.cli_type || 'claude';
+        switch (cliType) {
+          case 'gemini':
+            safe.tmuxCreateGemini(tmux, projectPath);
+            break;
+          case 'codex':
+            safe.tmuxCreateCodex(tmux, projectPath);
+            break;
+          case 'claude':
+          default: {
+            const claudeArgs = sessionId.startsWith('new_') ? [] : ['--resume', sessionId];
+            safe.tmuxCreateClaude(tmux, projectPath, claudeArgs);
+            break;
+          }
+        }
         await sleep(1000);
       }
       res.json({ id: sessionId, tmux, project });

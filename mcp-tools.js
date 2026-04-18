@@ -128,57 +128,92 @@ async function handleFiles(args, res) {
 
 // ── blueprint_sessions ───────────────────────────────────────────────────────
 
+async function ensureSessionTmux(session, projectPath) {
+  const tmux = `bp_${safe.sanitizeTmuxName(session.id.substring(0, 12))}`;
+  if (!(await safe.tmuxExists(tmux))) {
+    const cliType = session.cli_type || 'claude';
+    switch (cliType) {
+      case 'gemini':
+        safe.tmuxCreateGemini(tmux, projectPath);
+        break;
+      case 'codex':
+        safe.tmuxCreateCodex(tmux, projectPath);
+        break;
+      case 'claude':
+      default: {
+        const claudeArgs = session.id.startsWith('new_') ? [] : ['--resume', session.id];
+        safe.tmuxCreateClaude(tmux, projectPath, claudeArgs);
+        break;
+      }
+    }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  return tmux;
+}
+
 async function handleSessions(args, res) {
   switch (args.action) {
+    case 'new': {
+      if (!args.project) return res.status(400).json({ error: 'project required' });
+      const cliType = args.cli || 'claude';
+      const VALID_CLI_TYPES = ['claude', 'gemini', 'codex'];
+      if (!VALID_CLI_TYPES.includes(cliType))
+        return res.status(400).json({ error: `invalid cli type: ${cliType}` });
+      // Create via the sessions API
+      const r = await fetch(
+        `http://localhost:${process.env.BLUEPRINT_PORT || 3000}/api/sessions`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project: args.project, cli_type: cliType, prompt: args.prompt || '' }),
+        },
+      );
+      const data = await r.json();
+      if (data.error) return { error: data.error };
+      return { session_id: data.id, tmux: data.tmux, project: data.project, cli: cliType };
+    }
+    case 'connect': {
+      // Find session by name query or session_id, ensure tmux running, return tmux name
+      let session;
+      if (args.session_id) {
+        if (!validateSessionId(args.session_id))
+          return res.status(400).json({ error: 'invalid session_id format' });
+        session = db.getSessionFull(args.session_id);
+      } else if (args.query) {
+        const matches = db.searchSessionsByName(args.query);
+        if (matches.length === 0) return { error: 'no session found matching query' };
+        session = matches[0]; // Best match (most recently updated)
+      } else {
+        return res.status(400).json({ error: 'session_id or query required' });
+      }
+      if (!session) return { error: 'session not found' };
+      const projectPath = session.project_path || safe.resolveProjectPath(session.project_name);
+      const tmux = await ensureSessionTmux(session, projectPath);
+      return {
+        session_id: session.id,
+        name: session.name,
+        project: session.project_name,
+        cli: session.cli_type || 'claude',
+        tmux,
+      };
+    }
+    case 'restart': {
+      if (!validateSessionId(args.session_id))
+        return res.status(400).json({ error: 'session_id required' });
+      const session = db.getSessionFull(args.session_id);
+      if (!session) return { error: 'session not found' };
+      const tmux = `bp_${safe.sanitizeTmuxName(args.session_id.substring(0, 12))}`;
+      // Kill existing tmux session
+      await safe.tmuxKill(tmux);
+      // Recreate
+      const projectPath = session.project_path || safe.resolveProjectPath(session.project_name);
+      const newTmux = await ensureSessionTmux(session, projectPath);
+      return { session_id: session.id, tmux: newTmux, cli: session.cli_type || 'claude', restarted: true };
+    }
     case 'list': {
       const project = args.project;
       if (!project) return res.status(400).json({ error: 'project required' });
       return await listSessions(project);
-    }
-    case 'info': {
-      // Lookup by session_id or by name query
-      if (args.session_id) {
-        if (!validateSessionId(args.session_id))
-          return res.status(400).json({ error: 'invalid session_id format' });
-        const session = db.getSessionFull(args.session_id);
-        if (!session) return { error: 'session not found' };
-        const tmuxName = `bp_${safe.sanitizeTmuxName(args.session_id)}`;
-        const tmuxRunning = await safe.tmuxExists(tmuxName);
-        const sessDir = sessionUtils.sessionsDir(session.project_path || '');
-        const sessionFile = join(sessDir, `${args.session_id}.jsonl`);
-        let fileExists = false;
-        try { fs.statSync(sessionFile); fileExists = true; } catch {}
-        return {
-          session_id: session.id,
-          name: session.name,
-          project: session.project_name,
-          state: session.state,
-          notes: session.notes,
-          tmux: tmuxName,
-          tmux_running: tmuxRunning,
-          session_file: sessionFile,
-          file_exists: fileExists,
-        };
-      }
-      if (args.query) {
-        // Search sessions by name
-        const matches = db.searchSessionsByName(args.query);
-        const results = [];
-        for (const s of matches) {
-          const tmuxName = `bp_${safe.sanitizeTmuxName(s.id)}`;
-          const tmuxRunning = await safe.tmuxExists(tmuxName);
-          results.push({
-            session_id: s.id,
-            name: s.name,
-            project: s.project_name,
-            state: s.state,
-            tmux: tmuxName,
-            tmux_running: tmuxRunning,
-          });
-        }
-        return results;
-      }
-      return res.status(400).json({ error: 'session_id or query required' });
     }
     case 'config': {
       if (!validateSessionId(args.session_id))
@@ -269,6 +304,79 @@ async function handleSessions(args, res) {
       const cliFilter = args.cli ? args.cli.split(',').map(c => c.trim()) : ['claude', 'gemini', 'codex'];
       const collections = cliFilter.map(c => c + '_sessions');
       return await qdrant.search(args.query, collections, args.limit || 10);
+    }
+    // MCP server management
+    case 'mcp_list_available':
+      return { servers: db.getMcpServers() };
+    case 'mcp_register': {
+      if (!args.mcp_name) return res.status(400).json({ error: 'mcp_name required' });
+      if (!args.mcp_config) return res.status(400).json({ error: 'mcp_config required (JSON object with command/args or url)' });
+      const transport = args.mcp_transport || 'stdio';
+      db.registerMcp(args.mcp_name, transport, args.mcp_config, args.mcp_description || '');
+      return { registered: args.mcp_name };
+    }
+    case 'mcp_unregister': {
+      if (!args.mcp_name) return res.status(400).json({ error: 'mcp_name required' });
+      db.unregisterMcp(args.mcp_name);
+      return { unregistered: args.mcp_name };
+    }
+    case 'mcp_enable': {
+      if (!args.mcp_name) return res.status(400).json({ error: 'mcp_name required' });
+      if (!args.project) return res.status(400).json({ error: 'project required' });
+      const proj = db.getProject(args.project);
+      if (!proj) return res.status(404).json({ error: 'project not found' });
+      const server = db.getMcpServer(args.mcp_name);
+      if (!server) return res.status(404).json({ error: 'MCP server not registered' });
+      db.enableMcpForProject(proj.id, args.mcp_name);
+      // Write .mcp.json to project directory
+      const enabled = db.getEnabledMcpForProject(proj.id);
+      const mcpJson = {};
+      for (const s of enabled) {
+        try { mcpJson[s.name] = JSON.parse(s.config); } catch { mcpJson[s.name] = s.config; }
+      }
+      fs.writeFileSync(join(proj.path, '.mcp.json'), JSON.stringify({ mcpServers: mcpJson }, null, 2));
+      // Restart the calling session if session_id provided
+      if (args.session_id) {
+        const session = db.getSessionFull(args.session_id);
+        if (session) {
+          const tmux = `bp_${safe.sanitizeTmuxName(args.session_id.substring(0, 12))}`;
+          await safe.tmuxKill(tmux);
+          const projectPath = session.project_path || proj.path;
+          await ensureSessionTmux(session, projectPath);
+        }
+      }
+      return { enabled: args.mcp_name, project: args.project };
+    }
+    case 'mcp_disable': {
+      if (!args.mcp_name) return res.status(400).json({ error: 'mcp_name required' });
+      if (!args.project) return res.status(400).json({ error: 'project required' });
+      const proj = db.getProject(args.project);
+      if (!proj) return res.status(404).json({ error: 'project not found' });
+      db.disableMcpForProject(proj.id, args.mcp_name);
+      // Rewrite .mcp.json
+      const enabled = db.getEnabledMcpForProject(proj.id);
+      const mcpJson = {};
+      for (const s of enabled) {
+        try { mcpJson[s.name] = JSON.parse(s.config); } catch { mcpJson[s.name] = s.config; }
+      }
+      fs.writeFileSync(join(proj.path, '.mcp.json'), JSON.stringify({ mcpServers: mcpJson }, null, 2));
+      // Restart the calling session if session_id provided
+      if (args.session_id) {
+        const session = db.getSessionFull(args.session_id);
+        if (session) {
+          const tmux = `bp_${safe.sanitizeTmuxName(args.session_id.substring(0, 12))}`;
+          await safe.tmuxKill(tmux);
+          const projectPath = session.project_path || proj.path;
+          await ensureSessionTmux(session, projectPath);
+        }
+      }
+      return { disabled: args.mcp_name, project: args.project };
+    }
+    case 'mcp_list_enabled': {
+      if (!args.project) return res.status(400).json({ error: 'project required' });
+      const proj = db.getProject(args.project);
+      if (!proj) return res.status(404).json({ error: 'project not found' });
+      return { servers: db.getEnabledMcpForProject(proj.id) };
     }
     default:
       return res.status(400).json({ error: `invalid action: ${args.action}` });
