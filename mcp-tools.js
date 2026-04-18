@@ -161,7 +161,7 @@ async function handleSessions(args, res) {
         return res.status(400).json({ error: `invalid cli type: ${cliType}` });
       // Create via the sessions API
       const r = await fetch(
-        `http://localhost:${process.env.BLUEPRINT_PORT || 3000}/api/sessions`,
+        `http://localhost:${process.env.BLUEPRINT_PORT || process.env.PORT || 3000}/api/sessions`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -235,7 +235,7 @@ async function handleSessions(args, res) {
     }
     case 'transition': {
       const r = await fetch(
-        `http://localhost:${process.env.BLUEPRINT_PORT || 3000}/api/sessions/${args.session_id || 'current'}/session`,
+        `http://localhost:${process.env.BLUEPRINT_PORT || process.env.PORT || 3000}/api/sessions/${args.session_id || 'current'}/session`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -249,7 +249,7 @@ async function handleSessions(args, res) {
       if (!validateSessionId(args.session_id))
         return res.status(400).json({ error: 'session_id required' });
       const r = await fetch(
-        `http://localhost:${process.env.BLUEPRINT_PORT || 3000}/api/sessions/${args.session_id}/session`,
+        `http://localhost:${process.env.BLUEPRINT_PORT || process.env.PORT || 3000}/api/sessions/${args.session_id}/session`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
