@@ -45,150 +45,70 @@ function apiCall(method, path, body) {
 
 const TOOLS = [
   {
-    name: 'blueprint_search_sessions',
-    description: 'Search across all session conversations.',
-    inputSchema: {
-      type: 'object',
-      properties: { query: { type: 'string' }, project: { type: 'string' } },
-      required: ['query'],
-    },
-  },
-  {
-    name: 'blueprint_summarize_session',
-    description: 'Get an AI summary of a session.',
-    inputSchema: {
-      type: 'object',
-      properties: { session_id: { type: 'string' }, project: { type: 'string' } },
-      required: ['session_id', 'project'],
-    },
-  },
-  {
-    name: 'blueprint_list_sessions',
-    description: 'List sessions for a project.',
-    inputSchema: {
-      type: 'object',
-      properties: { project: { type: 'string' } },
-      required: ['project'],
-    },
-  },
-  {
-    name: 'blueprint_get_tasks',
-    description: 'List tasks, optionally filtered by folder path and status.',
+    name: 'blueprint_files',
+    description: 'Workspace file operations — read, write, list, delete, grep, and semantic search across documents and code.',
     inputSchema: {
       type: 'object',
       properties: {
-        folder_path: { type: 'string', description: 'Filter by folder path (e.g. /src/auth)' },
-        filter: { type: 'string', enum: ['all', 'todo', 'done', 'archived'], description: 'Filter by status (default: todo)' },
-      },
-    },
-  },
-  {
-    name: 'blueprint_add_task',
-    description: 'Add a task to a folder in the workspace.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        folder_path: { type: 'string', description: 'Folder path (e.g. /src/auth). Use / for workspace root.' },
-        title: { type: 'string' },
-        description: { type: 'string' },
-      },
-      required: ['folder_path', 'title'],
-    },
-  },
-  {
-    name: 'blueprint_complete_task',
-    description: 'Mark task done.',
-    inputSchema: {
-      type: 'object',
-      properties: { task_id: { type: 'number' } },
-      required: ['task_id'],
-    },
-  },
-  {
-    name: 'blueprint_reopen_task',
-    description: 'Reopen a completed task.',
-    inputSchema: {
-      type: 'object',
-      properties: { task_id: { type: 'number' } },
-      required: ['task_id'],
-    },
-  },
-  {
-    name: 'blueprint_archive_task',
-    description: 'Archive a task.',
-    inputSchema: {
-      type: 'object',
-      properties: { task_id: { type: 'number' } },
-      required: ['task_id'],
-    },
-  },
-  {
-    name: 'blueprint_move_task',
-    description: 'Move a task to a different folder.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        task_id: { type: 'number' },
-        folder_path: { type: 'string' },
-      },
-      required: ['task_id', 'folder_path'],
-    },
-  },
-  {
-    name: 'blueprint_update_task',
-    description: 'Update task title or description.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        task_id: { type: 'number' },
-        title: { type: 'string' },
-        description: { type: 'string' },
-      },
-      required: ['task_id'],
-    },
-  },
-  {
-    name: 'blueprint_get_project_claude_md',
-    description: 'Read CLAUDE.md.',
-    inputSchema: {
-      type: 'object',
-      properties: { project: { type: 'string' } },
-      required: ['project'],
-    },
-  },
-  {
-    name: 'blueprint_docs',
-    description: 'Manage Blueprint documentation library. Actions: list, search, read, create, update, delete.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        action: { type: 'string', enum: ['list', 'search', 'read', 'create', 'update', 'delete'], description: 'CRUDS operation' },
-        path: { type: 'string', description: 'Path relative to /workspace/docs/ (e.g. guides/installing-aider.md)' },
-        content: { type: 'string', description: 'Content for create/update actions' },
-        query: { type: 'string', description: 'Search query for search action' },
+        action: {
+          type: 'string',
+          enum: ['list', 'read', 'create', 'update', 'delete', 'grep', 'search_documents', 'search_code'],
+          description: 'Operation to perform',
+        },
+        path: { type: 'string', description: 'File or directory path relative to workspace' },
+        content: { type: 'string', description: 'File content for create/update actions' },
+        query: { type: 'string', description: 'Search query for semantic search actions' },
+        pattern: { type: 'string', description: 'Regex pattern for grep action' },
+        file_type: { type: 'string', description: 'File extension filter for grep (e.g. "js", "py", "md")' },
+        context_lines: { type: 'number', description: 'Lines of context around grep matches (default 2)' },
+        limit: { type: 'number', description: 'Max results for search actions (default 10)' },
       },
       required: ['action'],
     },
   },
   {
-    name: 'blueprint_vector_search',
-    description: 'Search across docs and session history using vector similarity. Returns semantically similar content from indexed documents and conversations.',
+    name: 'blueprint_sessions',
+    description: 'Session operations across all CLIs (Claude, Gemini, Codex) — list, lookup by name, config, search, summarize, and session lifecycle.',
     inputSchema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Natural language search query' },
-        collections: { type: 'string', description: 'Comma-separated collection names to search (docs, claude_sessions, gemini_sessions, codex_sessions). Default: all.' },
-        limit: { type: 'number', description: 'Max results (default 10)' },
+        action: {
+          type: 'string',
+          enum: ['list', 'info', 'config', 'tokens', 'summarize', 'transition', 'resume', 'grep', 'search_semantic'],
+          description: 'Operation to perform',
+        },
+        session_id: { type: 'string', description: 'Session ID for actions that target a specific session' },
+        project: { type: 'string', description: 'Project name' },
+        query: { type: 'string', description: 'Search query — for info action, searches by session name; for grep/search_semantic, searches content' },
+        pattern: { type: 'string', description: 'Regex pattern for grep action' },
+        cli: { type: 'string', description: 'Filter to specific CLI: claude, gemini, codex. Comma-separated for multiple. Default: all.' },
+        name: { type: 'string', description: 'New session name for config action' },
+        state: { type: 'string', enum: ['active', 'archived', 'hidden'], description: 'New session state for config action' },
+        notes: { type: 'string', description: 'Session notes for config action' },
+        limit: { type: 'number', description: 'Max results for search actions (default 10)' },
+        tail_lines: { type: 'number', description: 'Lines of session tail for resume action (default 60)' },
       },
-      required: ['query'],
+      required: ['action'],
     },
   },
   {
-    name: 'blueprint_vector_status',
-    description: 'Get Qdrant vector index status — availability, collection stats, point counts.',
+    name: 'blueprint_tasks',
+    description: 'Task management — create, complete, reopen, archive, move, and update tasks organized by workspace folder.',
     inputSchema: {
       type: 'object',
-      properties: {},
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['get', 'add', 'complete', 'reopen', 'archive', 'move', 'update'],
+          description: 'Operation to perform',
+        },
+        task_id: { type: 'number', description: 'Task ID for actions that target a specific task' },
+        folder_path: { type: 'string', description: 'Folder path (e.g. /src/auth). Use / for workspace root.' },
+        title: { type: 'string', description: 'Task title for add/update actions' },
+        description: { type: 'string', description: 'Task description for add/update actions' },
+        filter: { type: 'string', enum: ['all', 'todo', 'done', 'archived'], description: 'Status filter for get action (default: todo)' },
+      },
+      required: ['action'],
     },
   },
 ];
@@ -206,7 +126,7 @@ async function handleMessage(msg) {
       sendResponse(id, {
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'blueprint', version: '0.1.0' },
+        serverInfo: { name: 'blueprint', version: '0.2.0' },
       });
       break;
     case 'notifications/initialized':

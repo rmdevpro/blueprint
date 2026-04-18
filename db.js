@@ -146,7 +146,10 @@ const stmts = {
     "UPDATE sessions SET archived = ?, state = ?, updated_at = datetime('now') WHERE id = ?",
   ),
   getSessionFull: db.prepare(
-    'SELECT s.*, p.name as project_name FROM sessions s JOIN projects p ON s.project_id = p.id WHERE s.id = ?',
+    'SELECT s.*, p.name as project_name, p.path as project_path FROM sessions s JOIN projects p ON s.project_id = p.id WHERE s.id = ?',
+  ),
+  searchSessionsByName: db.prepare(
+    'SELECT s.*, p.name as project_name, p.path as project_path FROM sessions s JOIN projects p ON s.project_id = p.id WHERE s.name LIKE ? ORDER BY s.updated_at DESC LIMIT 20',
   ),
   deleteSession: db.prepare('DELETE FROM sessions WHERE id = ?'),
   getSessionNotes: db.prepare('SELECT notes FROM sessions WHERE id = ?'),
@@ -327,6 +330,9 @@ module.exports = {
 
   getSessionFull(id) {
     return stmts.getSessionFull.get(id);
+  },
+  searchSessionsByName(query) {
+    return stmts.searchSessionsByName.all(`%${query}%`);
   },
   setSessionState(id, state) {
     const archived = state === 'archived' ? 1 : 0;
