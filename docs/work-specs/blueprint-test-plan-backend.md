@@ -170,7 +170,7 @@ Per WPR-103 §2, the test plan defines a two-layer strategy. Each layer has sub-
 - PTY spawn (node-pty)
 - File system events (where necessary for timing control)
 - Timers (`Date.now()`, `setTimeout`) — use `test.mock.timers` for long-duration tests (e.g., MSG-07 1-hour bridge cleanup, WS-06 30s heartbeat)
-- HTTP fetch calls (webhooks, quorum external APIs)
+- HTTP fetch calls (webhooks, embedding APIs)
 - WebSocket connections
 - Logger output streams
 
@@ -312,7 +312,7 @@ Deterministic fixtures are required for scenarios involving non-deterministic or
 
 | Fixture | Purpose | Format |
 |---------|---------|--------|
-| Stub Claude CLI responses | Session creation, summary, compaction checker, quorum | Shell script with configurable response files |
+| Stub Claude CLI responses | Session creation, summary | Shell script with configurable response files |
 | ANSI-polluted PTY output | Auth URL detection (BRW-28, AUTH-ANSI-01..03) | Raw text files with real terminal control characters, cursor repositioning, color codes |
 | Chunked WebSocket frames | Auth URL arriving fragmented across frames | Binary frame fixtures |
 | Malformed JSONL | Concurrent write corruption, truncated lines | `.jsonl` files with known defects |
@@ -456,8 +456,9 @@ Coverage completeness is enforced by structural coverage tooling (`c8`) per §3.
 13. MCP internal tools (`mcp-tools.js`)
 14. MCP external/admin tools (`mcp-external.js`)
 15. MCP stdio server (`mcp-server.js`)
-16. OpenAI-compatible chat/model routes (`openai-compat.js`)
-17. Quorum orchestration (`quorum.js`)
+16. ~~OpenAI-compatible~~ REMOVED
+17. ~~Quorum~~ REMOVED
+18. Qdrant vector search (`qdrant-sync.js`) — NEW
 18. Webhooks (`webhooks.js`)
 19. Browser UI shell and workflows (`public/index.html`)
 20. Health and degradation semantics
@@ -846,14 +847,14 @@ This is the highest-risk subsystem. It requires both granular stage tests and fu
 | MCP-06a | `blueprint_search_sessions` — valid query returns results, empty query returns empty | Live | NONE |
 | MCP-06b | `blueprint_summarize_session` — valid session returns summary text | Live | NONE |
 | MCP-06c | `blueprint_list_sessions` — returns session list for project | Live | NONE |
-| MCP-06d | `blueprint_get_project_notes` — returns notes content | Live | NONE |
-| MCP-06e | `blueprint_get_session_notes` — returns session notes | Live | NONE |
+| MCP-06d | ~~`blueprint_get_project_notes`~~ REMOVED | — | — |
+| MCP-06e | ~~`blueprint_get_session_notes`~~ REMOVED | — | — |
 | MCP-06f | `blueprint_get_tasks` — returns task list | Live | NONE |
 | MCP-06g | `blueprint_add_task` — creates task, verify DB row | Live | NONE |
 | MCP-06h | `blueprint_complete_task` — marks complete | Live | NONE |
 | MCP-06i | `blueprint_get_project_claude_md` — returns CLAUDE.md content | Live | NONE |
-| MCP-06j | `blueprint_read_plan` — returns plan file content, ENOENT returns empty | Live | NONE |
-| MCP-06k | `blueprint_update_plan` — writes plan file, path traversal blocked | Live | NONE |
+| MCP-06j | ~~`blueprint_read_plan`~~ REMOVED | — | — |
+| MCP-06k | ~~`blueprint_update_plan`~~ REMOVED | — | — |
 | MCP-06l | `blueprint_set_session_config` — updates config, verify DB | Live | NONE |
 | MCP-06m | `blueprint_reopen_task` — reopens completed task | Live | NONE |
 | MCP-06n | `blueprint_delete_task` — deletes task, verify DB | Live | NONE |
@@ -861,9 +862,9 @@ This is the highest-risk subsystem. It requires both granular stage tests and fu
 | MCP-06p | `blueprint_set_session_notes` — sets session notes | Live | NONE |
 | MCP-06q | `blueprint_get_token_usage` — returns token usage data | Live | NONE |
 | MCP-07 | Content-length limits enforced | Live | NONE |
-| MCP-08 | `blueprint_send_message` with bridge delivery lifecycle | Live | NONE |
-| MCP-09 | `blueprint_smart_compaction` tool proxy | Live | NONE |
-| MCP-10 | `blueprint_ask_quorum` tool proxy | Live | NONE |
+| MCP-08 | ~~`blueprint_send_message`~~ REMOVED | — | — |
+| MCP-09 | ~~`blueprint_smart_compaction`~~ REMOVED | — | — |
+| MCP-10 | ~~`blueprint_ask_quorum`~~ REMOVED | — | — |
 
 #### 4.1.21 MCP Tools (External/Admin -- `mcp-external.js`)
 
@@ -949,12 +950,12 @@ Previously in this section:
 | QRM-07 | OpenAI-compatible junior with tool-call loop (max 10 turns) | Mock | NONE |
 | QRM-08 | Lead synthesis path | Mock | NONE |
 | QRM-09 | `askQuorum` writes artifact files and returns metadata | Live (Non-Det) | NONE |
-| QRM-10 | `/api/quorum/ask` route validation and success | Live (Non-Det) | NONE |
+| QRM-10 | ~~`/api/quorum/ask`~~ REMOVED | — | — |
 | QRM-11 | File read truncation at 10KB | Mock | NONE |
 | QRM-12 | One junior fails, lead still synthesizes remaining | Mock | NONE |
 | QRM-13 | All juniors fail, returns error without crash | Mock | NONE |
 | QRM-14 | Malformed tool-call args from OpenAI-compatible junior | Mock | NONE |
-| QRM-15 | Stub-based quorum: artifact file creation with Claude-only stub juniors | Live | NONE |
+| QRM-15 | ~~Stub-based quorum~~ REMOVED | — | — |
 
 #### 4.1.26 Webhooks (`webhooks.js`)
 
@@ -1522,7 +1523,7 @@ These tests verify that the threshold if-else-if chain does not trigger actions 
 | QRM-12 | 1 of 3 juniors fails | Lead uses remaining 2 | Mock |
 | QRM-13 | All juniors fail | Error, no crash | Mock |
 | QRM-14 | Malformed tool-call args | Handled gracefully | Mock |
-| QRM-15 | Stub-based quorum with Claude-only juniors → artifact files created on disk, metadata returned | Live | Gray-box: verify round directory created, junior response files exist, synthesis file exists |
+| QRM-15 | ~~Stub-based quorum~~ REMOVED | — | — |
 
 ### 5.16 MCP Stdio Server
 
@@ -1621,7 +1622,7 @@ See §3.6 for methodology. Mock tests import functions; live tests use `child_pr
 | FS-03 | `GET /api/file` valid + outside workspace | 200 for both (AD-001) | Live |
 | FS-04 | `POST /api/jqueryFileTree` | HTML listing | Live |
 | FS-05 | File > 1MB | 413 | Mock + Live |
-| FS-06 | `blueprint_update_plan` with `../` | 403 | Mock + Live |
+| FS-06 | ~~`blueprint_update_plan` with `../`~~ REMOVED — plan tools deleted | — | — |
 
 ### 5.25 Health Endpoint
 
@@ -1678,14 +1679,14 @@ See §3.6 for methodology. Mock tests import functions; live tests use `child_pr
 | MCP-06a | `blueprint_search_sessions` | `{query: "test"}` / `{query: ""}` | Results array / empty array | — |
 | MCP-06b | `blueprint_summarize_session` | Valid session ID | Non-empty summary text | — |
 | MCP-06c | `blueprint_list_sessions` | Valid project name | Session array for project | — |
-| MCP-06d | `blueprint_get_project_notes` | Valid project | Notes content string | — |
-| MCP-06e | `blueprint_get_session_notes` | Valid session | Notes content string | — |
+| MCP-06d | ~~`blueprint_get_project_notes`~~ REMOVED | — | — | — |
+| MCP-06e | ~~`blueprint_get_session_notes`~~ REMOVED | — | — | — |
 | MCP-06f | `blueprint_get_tasks` | Valid project | Task array | — |
 | MCP-06g | `blueprint_add_task` | `{project, text}` | Task created | DB: `SELECT count(*) FROM tasks` incremented by 1 |
 | MCP-06h | `blueprint_complete_task` | Valid task ID | Task completed | DB: `completed_at IS NOT NULL` |
 | MCP-06i | `blueprint_get_project_claude_md` | Valid project | CLAUDE.md content | — |
-| MCP-06j | `blueprint_read_plan` | Valid session / nonexistent | Plan content / empty string | — |
-| MCP-06k | `blueprint_update_plan` | Valid content / path `../../../etc/passwd` | Plan written / error (path traversal blocked, error response returned) | File on disk for valid; file absent for traversal |
+| MCP-06j | ~~`blueprint_read_plan`~~ REMOVED | — | — | — |
+| MCP-06k | ~~`blueprint_update_plan`~~ REMOVED | — | — | — |
 | MCP-06l | `blueprint_set_session_config` | `{id, name: "new-name"}` | Config updated | DB: session name matches |
 | MCP-06m | `blueprint_reopen_task` | Completed task ID | Task reopened | DB: `completed_at IS NULL` |
 | MCP-06n | `blueprint_delete_task` | Valid task ID | Task deleted | DB: `SELECT count(*) FROM tasks WHERE id = ?` returns 0 |
@@ -1726,12 +1727,12 @@ See §3.6 for methodology. Mock tests import functions; live tests use `child_pr
 | `GET /api/file` | Path outside workspace | 200 (AD-001) |
 | `GET /api/file` | File > 1MB | 413 |
 | `POST /api/mcp/call` | Unknown tool | Error response |
-| `POST /api/mcp/call` (`blueprint_update_plan`) | Path `../../../etc/passwd` | 403 |
-| `POST /api/mcp/call` (`blueprint_update_plan`) | Content > 100K chars | 400 |
+| ~~`blueprint_update_plan` path traversal~~ REMOVED | — | — |
+| ~~`blueprint_update_plan` content limit~~ REMOVED | — | — |
 | `POST /v1/chat/completions` | Empty messages | 400 |
 | `POST /v1/chat/completions` | Missing model | 200 (defaults) |
 | `POST /v1/chat/completions` | Prompt > 100KB | 400 |
-| `POST /api/quorum/ask` | Empty question | 400 |
+| ~~`POST /api/quorum/ask`~~ REMOVED | — | — |
 | `PUT /api/settings` | Non-existent key | 200 (created — settings is a flexible KV store) |
 | `DELETE /api/webhooks/:index` | Out of bounds | 404 |
 | `POST /api/projects/:name/tasks` | Text > 1000 chars | 400 |
@@ -1853,10 +1854,10 @@ Count-before/count-after pattern for every side-effecting tool:
 |------|------------|-------------|
 | `blueprint_create_session` | Tmux + DB | Count before/after |
 | `blueprint_add_task` | DB row | Count before/after |
-| `blueprint_send_message` | DB + bridge file | Count + dir check |
-| `blueprint_update_plan` | File on disk | Existence + content |
+| ~~`blueprint_send_message`~~ REMOVED | — | — |
+| ~~`blueprint_update_plan`~~ REMOVED | — | — |
 | `blueprint_set_project_notes` | DB notes | Read before/after |
-| `blueprint_smart_compaction` | Pipeline | State + token changes |
+| ~~`blueprint_smart_compaction`~~ REMOVED | — | — |
 
 ---
 
@@ -2206,7 +2207,7 @@ Every error handling path in the application code (catch blocks, error callbacks
 | Area | Blocker | Mitigation | Gate Impact |
 |------|---------|-----------|-------------|
 | OAuth E2E | No auth server | Test detection via stub | Does not block release |
-| Multi-model quorum | No GPT/Gemini keys | Claude-only juniors (QRM-15 in standard gate) | Does not block release |
+| ~~Multi-model quorum~~ REMOVED | — | — | — |
 | Playwright MCP | Not in container | Verify registration (ENT-06) | Does not block release |
 | `/clear` ID mutation | Anthropic #37451 | kill/restart workaround | Does not block release |
 
@@ -2649,39 +2650,11 @@ Single source of truth. Updated on every write/run. One row per scenario.
 
 ### 15.25 OpenAI-Compatible API
 
-| ID | Layer | Test File | Status | Last Run | Result | Notes |
-|----|-------|-----------|--------|----------|--------|-------|
-| OAI-01 | Live | tests/live/openai-compat.test.js | Not started | - | Not run | |
-| OAI-02 | Live | tests/live/openai-compat.test.js | Not started | - | Not run | |
-| OAI-03 | Live | tests/live/openai-compat.test.js | Not started | - | Not run | |
-| OAI-04 | Live | tests/live/openai-compat.test.js | Not started | - | Not run | |
-| OAI-05 | Live | tests/live/openai-compat.test.js | Not started | - | Not run | |
-| OAI-06 | Live | tests/live/openai-compat.test.js | Not started | - | Not run | |
-| OAI-07 | Mock | tests/mock/openai-compat.test.js | Not started | - | Not run | |
-| OAI-08 | Mock | tests/mock/openai-compat.test.js | Not started | - | Not run | |
-| OAI-09 | Live | tests/live/openai-compat.test.js | Not started | - | Not run | |
-| OAI-10 | Live | tests/live/openai-compat.test.js | Not started | - | Not run | |
-| OAI-11 | Mock + Live | tests/mock/openai-compat.test.js, tests/live/openai-compat.test.js | Not started | - | Not run | |
+OAI-01..11: REMOVED — openai-compat.js deleted.
 
 ### 15.26 Quorum System
 
-| ID | Layer | Test File | Status | Last Run | Result | Notes |
-|----|-------|-----------|--------|----------|--------|-------|
-| QRM-01 | Mock | tests/mock/quorum.test.js | Not started | - | Not run | |
-| QRM-02 | Mock | tests/mock/quorum.test.js | Not started | - | Not run | |
-| QRM-03 | Mock | tests/mock/quorum.test.js | Not started | - | Not run | |
-| QRM-04 | Mock | tests/mock/quorum.test.js | Not started | - | Not run | |
-| QRM-05 | Mock | tests/mock/quorum.test.js | Not started | - | Not run | |
-| QRM-06 | Mock | tests/mock/quorum.test.js | Not started | - | Not run | |
-| QRM-07 | Mock | tests/mock/quorum.test.js | Not started | - | Not run | |
-| QRM-08 | Mock | tests/mock/quorum.test.js | Not started | - | Not run | |
-| QRM-09 | Live | tests/live/quorum.test.js | Not started | - | Not run | Non-Det |
-| QRM-10 | Live | tests/live/quorum.test.js | Not started | - | Not run | Non-Det |
-| QRM-11 | Mock | tests/mock/quorum.test.js | Not started | - | Not run | |
-| QRM-12 | Mock | tests/mock/quorum.test.js | Not started | - | Not run | |
-| QRM-13 | Mock | tests/mock/quorum.test.js | Not started | - | Not run | |
-| QRM-14 | Mock | tests/mock/quorum.test.js | Not started | - | Not run | |
-| QRM-15 | Live | tests/live/quorum.test.js | Not started | - | Not run | Stub-based, standard gate |
+QRM-01..15: REMOVED — quorum.js deleted.
 
 ### 15.27 Webhooks
 
