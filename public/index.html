@@ -1093,7 +1093,7 @@ build/**</textarea>
                 if (cli === 'codex') {
                   return `<svg width="10" height="10" viewBox="0 0 10 10" title="codex" style="vertical-align:middle"><rect x="0" y="0" width="10" height="10" rx="2.5" fill="${color}"/><circle cx="5" cy="5" r="2.5" fill="var(--bg-primary)"/></svg>`;
                 }
-                return `<span style="font-size:10px;color:${color};line-height:1" title="${cli}">${icons[cli] || '?'}</span>`;
+                return `<span style="font-size:13px;color:${color};line-height:1" title="${cli}">${icons[cli] || '?'}</span>`;
               })()}
               <span>${timeAgo(session.timestamp)}</span>
               <span class="msg-count">${session.messageCount}</span>
@@ -1388,7 +1388,7 @@ build/**</textarea>
           const c = { claude: '#e8a55d', gemini: '#4285f4', codex: '#10a37f' }[cli] || '#8b949e';
           if (cli === 'codex') return `<svg width="10" height="10" viewBox="0 0 10 10" style="vertical-align:middle"><rect x="0" y="0" width="10" height="10" rx="2.5" fill="${c}"/><circle cx="5" cy="5" r="2.5" fill="var(--bg-secondary)"/></svg>`;
           const icons = { claude: '✳', gemini: '◆' };
-          return `<span style="font-size:10px;color:${c};line-height:1">${icons[cli] || '?'}</span>`;
+          return `<span style="font-size:13px;color:${c};line-height:1">${icons[cli] || '?'}</span>`;
         })();
         const saveBtn = tab.type === 'file'
           ? `<button class="tab-save" title="Save (Ctrl+S)" style="background:none;border:none;color:${tab.dirty ? 'var(--accent)' : 'var(--text-muted)'};cursor:pointer;font-size:12px;padding:2px 4px;border-radius:3px;margin-right:2px${tab.dirty ? ';font-weight:bold' : ''}">&#128190;</button>`
