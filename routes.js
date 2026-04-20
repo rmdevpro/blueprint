@@ -213,28 +213,68 @@ function registerCoreRoutes(
     }
   }
 
+  // Cache to avoid re-reading session files on every /api/state call
+  const _modelCache = new Map();
+
   function _getNonClaudeModel(session) {
     const cliType = session.cli_type || 'claude';
     if (cliType === 'claude') return '';
+    if (_modelCache.has(session.id)) return _modelCache.get(session.id);
+
     const fs = require('fs');
     const home = safe.HOME;
+    let model = '';
+
     if (cliType === 'gemini') {
+      // Gemini stores model in response messages: .messages[].model
       try {
-        const settings = JSON.parse(fs.readFileSync(join(home, '.gemini', 'settings.json'), 'utf-8'));
-        return settings.model?.name || process.env.GEMINI_MODEL || '';
-      } catch { return process.env.GEMINI_MODEL || ''; }
+        const geminiBase = join(home, '.gemini', 'tmp');
+        const projectDirs = fs.readdirSync(geminiBase, { withFileTypes: true });
+        for (const pDir of projectDirs) {
+          if (!pDir.isDirectory()) continue;
+          const chatsDir = join(geminiBase, pDir.name, 'chats');
+          if (!fs.existsSync(chatsDir)) continue;
+          const files = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json'));
+          for (const file of files) {
+            try {
+              const data = JSON.parse(fs.readFileSync(join(chatsDir, file), 'utf-8'));
+              const resp = (data.messages || []).find(m => m.type === 'gemini' && m.model);
+              if (resp?.model) { model = resp.model; break; }
+            } catch { /* skip */ }
+          }
+          if (model) break;
+        }
+      } catch { /* no gemini sessions */ }
     }
+
     if (cliType === 'codex') {
+      // Codex stores model in turn_context entries in rollout JSONL
       try {
-        const Database = require('better-sqlite3');
-        const stateDb = new Database(join(home, '.codex', 'state_5.sqlite'), { readonly: true });
-        // Our session IDs don't match Codex thread IDs — get the most recently used model
-        const row = stateDb.prepare('SELECT model FROM threads ORDER BY updated_at DESC LIMIT 1').get();
-        stateDb.close();
-        return row?.model || '';
-      } catch { return ''; }
+        const sessBase = join(home, '.codex', 'sessions');
+        const walkForModel = (dir) => {
+          const entries = fs.readdirSync(dir, { withFileTypes: true });
+          for (const e of entries) {
+            const full = join(dir, e.name);
+            if (e.isDirectory()) { const m = walkForModel(full); if (m) return m; }
+            else if (e.name.endsWith('.jsonl')) {
+              const content = fs.readFileSync(full, 'utf-8');
+              for (const line of content.split('\n')) {
+                if (!line.includes('turn_context')) continue;
+                try {
+                  const entry = JSON.parse(line);
+                  if (entry.type === 'turn_context' && entry.payload?.model) return entry.payload.model;
+                } catch { /* skip */ }
+              }
+            }
+          }
+          return '';
+        };
+        if (fs.existsSync(sessBase)) model = walkForModel(sessBase);
+      } catch { /* no codex sessions */ }
     }
-    return '';
+
+    if (model) _modelCache.set(session.id, model);
+    return model;
   }
 
   async function buildSessionList(dbSessions, sessDir) {
