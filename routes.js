@@ -228,7 +228,8 @@ function registerCoreRoutes(
       try {
         const Database = require('better-sqlite3');
         const stateDb = new Database(join(home, '.codex', 'state_5.sqlite'), { readonly: true });
-        const row = stateDb.prepare('SELECT model FROM threads WHERE id = ?').get(session.id);
+        // Our session IDs don't match Codex thread IDs — get the most recently used model
+        const row = stateDb.prepare('SELECT model FROM threads ORDER BY updated_at DESC LIMIT 1').get();
         stateDb.close();
         return row?.model || '';
       } catch { return ''; }
