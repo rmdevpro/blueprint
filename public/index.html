@@ -2935,21 +2935,35 @@ build/**</textarea>
       bar.classList.add('active');
 
       const tab = tabs.get(activeTabId);
+      const cliType = tab.cli_type || 'claude';
       const statusData = tab._statusData || {};
-      const model = statusData.model || 'unknown';
+
+      // Model: use statusData for Claude, session state for others
+      let model = statusData.model || 'unknown';
+      if (cliType !== 'claude' && model === 'unknown') {
+        // Try to get model from sidebar session data
+        const sessData = projectState.flatMap(p => p.sessions).find(s => s.id === tab.id);
+        if (sessData?.model) model = sessData.model;
+      }
+
       const inputTokens = statusData.input_tokens || 0;
       const maxTokens = statusData.max_tokens || 200000;
       const pct = maxTokens > 0 ? Math.min(100, (inputTokens / maxTokens) * 100) : 0;
 
       const modelShort = model.includes('opus') ? 'Opus' :
         model.includes('sonnet') ? 'Sonnet' :
-        model.includes('haiku') ? 'Haiku' : model.substring(0, 15);
+        model.includes('haiku') ? 'Haiku' :
+        model.includes('gemini') ? model.replace('gemini-', '').substring(0, 15) :
+        model.includes('gpt') ? model.substring(0, 10) :
+        model.substring(0, 15);
 
       const fillClass = pct < 60 ? 'context-fill-green' : pct < 85 ? 'context-fill-amber' : 'context-fill-red';
       const tokenStr = inputTokens > 1000 ? `${Math.round(inputTokens / 1000)}k` : inputTokens;
       const maxStr = maxTokens > 1000 ? `${Math.round(maxTokens / 1000)}k` : maxTokens;
 
-      const thinkingLevel = db_getSetting('thinking_level') || 'none';
+      // Only show thinking level for Claude sessions
+      const thinkingLevel = cliType === 'claude' ? (db_getSetting('thinking_level') || 'none') : 'none';
+
       bar.innerHTML = `
         <span class="status-item"><span class="label">Model:</span> <span class="value">${escHtml(modelShort)}</span></span>
         <span class="status-item"><span class="label">Mode:</span> <span class="value">bypass</span></span>
