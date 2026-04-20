@@ -79,7 +79,7 @@ npm install --prefix /data/.local @playwright/mcp
 npx playwright install chrome
 ```
 
-The npm package installs to `/data/.local/lib/node_modules/` and Chrome installs to `/data/.cache/ms-playwright/` — both on the persistent volume. After a container rebuild, they're still there.
+The npm package installs to `/data/.local/node_modules/` and Chrome installs to `/data/.cache/ms-playwright/` — both on the persistent volume. After a container rebuild, they're still there.
 
 ### System packages (apt)
 

@@ -91,10 +91,9 @@ node -e "
 # Persistent user-installed packages at /data/.local (survives container rebuilds)
 mkdir -p /data/.local/bin /data/.local/lib 2>/dev/null || true
 export PATH="/data/.local/bin:$PATH"
-export NODE_PATH="/data/.local/lib/node_modules:${NODE_PATH:-}"
-if [ -d /data/.local/lib/node_modules ]; then
-  echo "[entrypoint] Persistent packages: $(ls /data/.local/lib/node_modules 2>/dev/null | wc -w) installed"
-fi
+export NODE_PATH="/data/.local/node_modules:/data/.local/lib/node_modules:${NODE_PATH:-}"
+PERSISTENT_COUNT=$(ls /data/.local/node_modules 2>/dev/null | wc -w)
+[ "$PERSISTENT_COUNT" -gt 0 ] && echo "[entrypoint] Persistent packages: $PERSISTENT_COUNT installed"
 
 # Start Qdrant vector database in background
 QDRANT_STORAGE="$BP_DATA/qdrant"
