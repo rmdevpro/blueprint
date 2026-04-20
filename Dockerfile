@@ -1,13 +1,10 @@
 FROM node:22-slim
 
 RUN apt-get update && apt-get install -y \
-    git curl ca-certificates python3 make g++ tmux ssh openssh-client gosu jq sudo sqlite3 \
-    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
-    libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
-    libpango-1.0-0 libcairo2 libasound2 libxshmfence1 \
+    git curl ca-certificates python3 make g++ tmux ssh openssh-client jq \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Docker CLI (for building/deploying from within sessions)
+# Install Docker CLI (for remote Docker access via SSH)
 RUN curl -fsSL https://download.docker.com/linux/static/stable/$(uname -m)/docker-27.5.1.tgz \
     | tar xz --strip-components=1 -C /usr/local/bin docker/docker \
     && mkdir -p /usr/local/lib/docker/cli-plugins \
@@ -19,44 +16,37 @@ RUN curl -fsSL https://download.docker.com/linux/static/stable/$(uname -m)/docke
 RUN curl -fsSL https://github.com/qdrant/qdrant/releases/download/v1.17.1/qdrant-x86_64-unknown-linux-musl.tar.gz \
     | tar xz -C /usr/local/bin && chmod +x /usr/local/bin/qdrant
 
-# Install Claude CLI and Playwright MCP
-ARG NPM_REGISTRY=http://192.168.1.110:4873
-RUN npm config set registry ${NPM_REGISTRY}
-RUN npm install -g @anthropic-ai/claude-code @playwright/mcp
-RUN npx playwright install chrome
+# Install AI CLIs
+RUN npm install -g @anthropic-ai/claude-code @google/gemini-cli @openai/codex
+
+# Reuse the existing 'node' user (UID 1000) — rename to blueprint, home at /data
+RUN usermod -l blueprint -d /data -m node && \
+    groupmod -n blueprint node && \
+    mkdir -p /data/.claude /data/.blueprint /data/workspace && \
+    chown -R blueprint:blueprint /data
 
 # Copy and install app dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && chown -R blueprint:blueprint /app
 
 # Copy app source
-COPY . .
+COPY --chown=blueprint:blueprint . .
 
-# Create non-root user (Claude CLI refuses --dangerously-skip-permissions as root)
-RUN useradd -m -s /bin/bash blueprint && \
-    mkdir -p /data/.claude /data/.blueprint /data/workspace && \
-    chown -R blueprint:blueprint /data /app && \
-    echo 'blueprint ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/blueprint
-
-# Pre-create settings to skip bypass permissions prompt and onboarding
-# These get created in /data at runtime by entrypoint if not already present
-RUN mkdir -p /data/.claude && \
-    echo '{"skipDangerousModePermissionPrompt":true,"hasCompletedOnboarding":true,"theme":"dark","preferredTheme":"dark"}' > /data/.claude/settings.json && \
-    echo '{"skipDangerousModePermissionPrompt":true,"hasCompletedOnboarding":true,"theme":"dark","hasPickedTheme":true,"preferredTheme":"dark"}' > /data/.claude/settings.local.json && \
-    chown -R blueprint:blueprint /data
-
-# Entrypoint ensures runtime directories exist after volume mounts
-COPY entrypoint.sh /entrypoint.sh
+# Entrypoint sets up /data structure at runtime (volume may be empty on first run)
+COPY --chown=blueprint:blueprint entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+USER blueprint
 
 ENV HOME=/data
 ENV BLUEPRINT_DATA=/data/.blueprint
 ENV WORKSPACE=/data/workspace
+ENV CLAUDE_CONFIG_DIR=/data/.claude
+ENV PORT=7860
 
 WORKDIR /data/workspace
-EXPOSE 3000
+EXPOSE 7860
 
-# Entrypoint runs as root to handle docker socket permissions, then drops to blueprint via gosu
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node", "/app/server.js"]

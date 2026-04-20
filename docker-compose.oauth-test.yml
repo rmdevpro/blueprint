@@ -10,9 +10,9 @@ services:
       - /mnt/workspace
       - /mnt/storage
     environment:
-      - CLAUDE_HOME=/home/blueprint/.claude
-      - CLAUDE_CONFIG_DIR=/home/blueprint/.claude
-      - BLUEPRINT_DATA=/home/blueprint/.blueprint
-      - HOME=/home/blueprint
+      - HOME=/data
+      - CLAUDE_HOME=/data/.claude
+      - CLAUDE_CONFIG_DIR=/data/.claude
+      - BLUEPRINT_DATA=/data/.blueprint
       - MAX_TMUX_SESSIONS=5
     restart: "no"

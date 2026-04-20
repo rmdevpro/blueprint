@@ -10,16 +10,15 @@ services:
     ports:
       - '7867:3000'
     volumes:
-      - blueprint-test_workspace:/workspace
-      - blueprint-test_storage:/storage
+      - blueprint-test_data:/data
       - ./tests/fixtures/stub-claude.sh:/usr/local/bin/claude:ro
     environment:
       - PORT=3000
-      - WORKSPACE=/workspace
-      - CLAUDE_HOME=/storage/.claude
-      - CLAUDE_CONFIG_DIR=/storage/.claude
-      - BLUEPRINT_DATA=/storage
-      - HOME=/home/blueprint
+      - HOME=/data
+      - WORKSPACE=/data/workspace
+      - CLAUDE_HOME=/data/.claude
+      - CLAUDE_CONFIG_DIR=/data/.claude
+      - BLUEPRINT_DATA=/data/.blueprint
       - MAX_TMUX_SESSIONS=10
       - TMUX_CLEANUP_MINUTES=2
       - LOG_LEVEL=DEBUG
@@ -34,5 +33,4 @@ networks:
     driver: bridge
 
 volumes:
-  blueprint-test_workspace:
-  blueprint-test_storage:
+  blueprint-test_data:

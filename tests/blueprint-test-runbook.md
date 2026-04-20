@@ -19,7 +19,8 @@ Executed by an AI agent using Playwright MCP against the HF Space. Output is a p
 | 8. New Features | 31 | NF-01 through NF-38 (minus removed NF-31 to NF-37) |
 | 9. Settings & Vector Search | 14 | NF-39 through NF-52 |
 | 10. Multi-CLI & MCP | 16 | NF-53 through NF-68 |
-| **Total** | **~135** | |
+| 11. New Features v2 | 10 | NF-69 through NF-78 |
+| **Total** | **~145** | |
 
 ## Meta
 - **Target:** https://aristotle9-blueprint.hf.space (HF public Space with password auth)
@@ -1017,29 +1018,28 @@ These 3 tests validate that the app is functional. If any fail, stop and investi
 
 ---
 
-#### FEAT-19: File Browser - View File
+#### FEAT-19: File Browser - Open File in Tab Editor
 **Source:** BRW-09 (file browser)
 **Priority:** P1
+**UPDATED:** File viewer panel replaced by in-tab editors (CodeMirror for code, Toast UI for markdown).
 
 **Steps:**
 1. Open right panel, Files tab
-2. Click on a file in the file browser tree: `browser_click` on `#file-browser-tree a` (first file link)
-3. `browser_wait` 1000
-4. `browser_evaluate`: `document.querySelector('#file-viewer').style.display !== 'none'`
-5. `browser_evaluate`: `document.querySelector('#file-viewer-name')?.textContent`
-6. `browser_evaluate`: `document.querySelector('#file-viewer-content')?.value.length > 0`
+2. Double-click a file in the file browser tree (e.g., a .md or .js file)
+3. `browser_wait` 2000
+4. `browser_evaluate`: Check for new file tab: `document.querySelector('.tab .file-tab-icon') !== null`
+5. `browser_evaluate`: Check for editor: `document.querySelector('.cm-editor') !== null || document.querySelector('.toastui-editor-defaultUI') !== null`
+6. `browser_evaluate`: Check save button exists: `document.querySelector('.tab-save') !== null`
 7. `browser_screenshot`
 
 **Expected:**
-- Clicking a file opens `#file-viewer`
-- File name shown in `#file-viewer-name`
-- File content shown in `#file-viewer-content` textarea
+- Double-clicking a file opens a new tab with a file icon (📄)
+- CodeMirror editor (`.cm-editor`) visible for code files, Toast UI (`.toastui-editor-defaultUI`) for .md files
+- Save button (💾) visible on the tab, highlighted when content is modified
+- Ctrl+S saves the file
 
 **Verify:**
-- File viewer visible with content
-
-**Result:** ☒ PASS ☐ FAIL ☐ SKIP
-**Notes:** File viewer opened .gitignore (26 chars content). NOTE: `#file-browser-tree a` selector in runbook steps is wrong — tree uses ul/li, not anchor tags. Used `#file-browser-tree li` instead.
+- File tab with editor and save button visible
 
 ---
 
@@ -2592,6 +2592,125 @@ Ask CLI, Quorum, Guides, Skills, and Prompts tests removed — features deleted 
 ### NF-68: Only 3 MCP Tools
 **Action:** Fetch `/api/mcp/tools`.
 **Verify:** Exactly 3 tools: blueprint_files, blueprint_sessions, blueprint_tasks.
+
+---
+
+## Phase 11: New Features v2 (NF-69 through NF-78)
+
+### NF-69: File Editor Save Button
+**Action:** Open a file in the file browser (double-click). Verify the tab has a save button (💾).
+**Steps:**
+1. Open right panel → Files tab
+2. Double-click any file to open it in a tab
+3. `browser_evaluate`: `document.querySelector('.tab-save') !== null`
+4. Make a change in the editor
+5. `browser_evaluate`: Check save button is highlighted: `document.querySelector('.tab-save').style.color` should contain accent color
+6. Click the save button
+7. `browser_evaluate`: After save, button should return to muted color
+**Verify:** Save button exists, highlights on dirty, saves on click.
+
+---
+
+### NF-70: Markdown Editor (Toast UI)
+**Action:** Open a .md file. Verify Toast UI WYSIWYG editor loads.
+**Steps:**
+1. Double-click a .md file in the file browser
+2. `browser_evaluate`: `document.querySelector('.toastui-editor-defaultUI') !== null`
+3. `browser_evaluate`: Editor has content: `document.querySelector('.toastui-editor-defaultUI')?.offsetHeight > 100`
+4. `browser_screenshot`
+**Verify:** Toast UI editor renders for markdown files with WYSIWYG editing.
+
+---
+
+### NF-71: Code Editor (CodeMirror)
+**Action:** Open a .js or .json file. Verify CodeMirror editor loads.
+**Steps:**
+1. Double-click a code file in the file browser
+2. `browser_evaluate`: `document.querySelector('.cm-editor') !== null`
+3. `browser_evaluate`: Editor has content: `document.querySelector('.cm-content')?.textContent.length > 0`
+4. `browser_screenshot`
+**Verify:** CodeMirror editor renders for code files with syntax highlighting.
+
+---
+
+### NF-72: Task Panel Filesystem Tree
+**Action:** Open right panel → Tasks tab. Verify real filesystem folders are shown.
+**Steps:**
+1. Open right panel, click Tasks tab
+2. `browser_evaluate`: `document.querySelector('#task-tree').children.length > 0`
+3. `browser_evaluate`: Check for mount header: `document.querySelector('#task-tree div')?.textContent` contains '/data/workspace' or mount path
+4. Expand a folder by clicking it
+5. `browser_evaluate`: `document.querySelectorAll('.task-folder').length > 0`
+6. `browser_screenshot`
+**Verify:** Task tree shows real filesystem directories from /api/mounts, not just DB-derived folders.
+
+---
+
+### NF-73: Task Context Menu — Folder
+**Action:** Right-click a folder in the task panel.
+**Steps:**
+1. Right-click a folder label in the task tree
+2. `browser_evaluate`: Context menu appears with items: `document.querySelectorAll('.context-menu-item').length`
+3. `browser_evaluate`: Menu has "Add Task": `[...document.querySelectorAll('.context-menu-item')].some(i => i.textContent.includes('Add Task'))`
+4. `browser_evaluate`: Menu has "New Folder": `[...document.querySelectorAll('.context-menu-item')].some(i => i.textContent.includes('New Folder'))`
+5. Click away to dismiss
+**Verify:** Folder context menu shows "Add Task" and "New Folder".
+
+---
+
+### NF-74: Task Context Menu — Task
+**Action:** Right-click a task in the task panel.
+**Steps:**
+1. Create a task first (right-click folder → Add Task)
+2. Right-click the task node
+3. `browser_evaluate`: Menu items include Edit, Complete, Archive, Delete
+4. Click away to dismiss
+**Verify:** Task context menu shows Edit, Complete/Reopen, Archive, Delete.
+
+---
+
+### NF-75: Project Picker Multi-Root
+**Action:** Click + in header to add project. Verify picker shows mount roots.
+**Steps:**
+1. `browser_click` on header + button
+2. `browser_evaluate`: `document.querySelector('#jqft-tree')` exists or mount headers exist
+3. `browser_evaluate`: Check for mount header containing workspace path
+4. Close the picker
+**Verify:** Add Project picker shows filesystem roots from /api/mounts, not hardcoded path.
+
+---
+
+### NF-76: Empty Projects Visible in Sidebar
+**Action:** Create a project with no sessions. Verify it shows in sidebar.
+**Steps:**
+1. Add a new project (empty directory)
+2. Refresh sidebar
+3. `browser_evaluate`: Project group for the new project exists with count 0
+4. Verify the + button is visible on the empty project
+**Verify:** Empty projects show in Active and All filters with session count 0.
+
+---
+
+### NF-77: File Browser Context Menus
+**Action:** Right-click files and folders in the file browser panel.
+**Steps:**
+1. Open right panel → Files tab, expand a directory
+2. Right-click a folder
+3. `browser_evaluate`: Menu has New File, New Folder, Upload, Rename, Delete
+4. Dismiss, right-click a file
+5. `browser_evaluate`: Menu has Open, Rename, Delete
+**Verify:** Context menus appear with correct actions for files and folders.
+
+---
+
+### NF-78: CLI Type Dropdown — All Types
+**Action:** Create sessions of each CLI type via the + dropdown.
+**Steps:**
+1. Click + on a project → verify dropdown shows C Claude, G Gemini, X Codex, Terminal
+2. Create a Claude session → verify tab opens, CLI indicator shows C
+3. Create a Terminal session → verify tab opens with bash
+4. `browser_evaluate`: Check CLI type indicators in sidebar: `document.querySelectorAll('.session-item').length`
+**Verify:** All 4 session types can be created. CLI type indicator (C/G/X) shows correctly.
 
 ---
 

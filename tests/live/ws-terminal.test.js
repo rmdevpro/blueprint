@@ -15,8 +15,8 @@ test('WS-01: nonexistent session sends error and closes', async () => {
 
 test('WS-02/03: bidirectional terminal flow', async () => {
   await resetBaseline();
-  dockerExec('mkdir -p /home/blueprint/workspace/ws_proj');
-  await post('/api/projects', { path: '/home/blueprint/workspace/ws_proj', name: 'ws_proj' });
+  dockerExec('mkdir -p /data/workspace/ws_proj');
+  await post('/api/projects', { path: '/data/workspace/ws_proj', name: 'ws_proj' });
   const r = await post('/api/terminals', { project: 'ws_proj' });
   assert.equal(r.status, 200, `Terminal creation failed: ${JSON.stringify(r.data)}`);
   // Wait for tmux session to initialize

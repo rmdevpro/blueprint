@@ -16,7 +16,7 @@ function execFileAsync(cmd, args, options) {
   });
 }
 
-const HOME = process.env.HOME || '/home/blueprint';
+const HOME = process.env.HOME || '/data';
 const CLAUDE_HOME = process.env.CLAUDE_HOME || join(HOME, '.claude');
 const WORKSPACE = process.env.WORKSPACE || join(HOME, 'workspace');
 

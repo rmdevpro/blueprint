@@ -9,11 +9,11 @@ services:
     volumes:
       - blueprint_test_data:/data
     environment:
-      - WORKSPACE=/data/projects
+      - HOME=/data
+      - WORKSPACE=/data/workspace
       - CLAUDE_HOME=/data/.claude
       - CLAUDE_CONFIG_DIR=/data/.claude
-      - BLUEPRINT_DATA=/data/blueprint
-      - HOME=/home/blueprint
+      - BLUEPRINT_DATA=/data/.blueprint
       - MAX_TMUX_SESSIONS=50
     restart: unless-stopped
 

@@ -11,7 +11,7 @@ test('FS-01: /api/mounts returns array', async () => {
 });
 
 test('FS-02: /api/browse returns listing and hides dot dirs', async () => {
-  const r = await get('/api/browse?path=/home/blueprint/workspace');
+  const r = await get('/api/browse?path=/data/workspace');
   assert.equal(r.status, 200);
   assert.ok(Array.isArray(r.data.entries));
   for (const entry of r.data.entries) {

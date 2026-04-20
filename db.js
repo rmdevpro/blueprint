@@ -5,7 +5,7 @@ const { join } = require('path');
 const { mkdirSync } = require('fs');
 
 const DATA_DIR =
-  process.env.BLUEPRINT_DATA || join(process.env.HOME || '/home/blueprint', '.blueprint');
+  process.env.BLUEPRINT_DATA || join(process.env.HOME || '/data', '.blueprint');
 mkdirSync(DATA_DIR, { recursive: true });
 
 const db = new Database(join(DATA_DIR, 'blueprint.db'));

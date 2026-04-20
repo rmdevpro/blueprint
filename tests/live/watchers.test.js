@@ -6,12 +6,12 @@ const { dockerExec } = require('../helpers/reset-state');
 const { get } = require('../helpers/http-client');
 
 test('WAT-10: settings.json exists after startup', () => {
-  const r = dockerExec('test -f /home/blueprint/.claude/settings.json && echo exists || echo missing');
+  const r = dockerExec('test -f /data/.claude/settings.json && echo exists || echo missing');
   assert.equal(r, 'exists', 'settings.json should exist after startup');
 });
 
 test('WAT-08: Blueprint MCP server registered in settings.json with correct config', () => {
-  const raw = dockerExec('cat /home/blueprint/.claude/settings.json 2>/dev/null || echo "{}"');
+  const raw = dockerExec('cat /data/.claude/settings.json 2>/dev/null || echo "{}"');
   const cfg = JSON.parse(raw);
   if (cfg.mcpServers) {
     assert.ok(cfg.mcpServers.blueprint, 'Blueprint MCP server should be registered');
@@ -36,7 +36,7 @@ test('WAT-11: settings file watcher detects changes via WebSocket', async () => 
   // to simulate an external change that the watcher should detect
   const testKey = `test_watcher_${Date.now()}`;
   dockerExec(
-    `sqlite3 /home/blueprint/.blueprint/blueprint.db "INSERT OR REPLACE INTO settings (key, value) VALUES ('${testKey}', '\"watcher_test\"')"`,
+    `sqlite3 /data/.blueprint/blueprint.db "INSERT OR REPLACE INTO settings (key, value) VALUES ('${testKey}', '\"watcher_test\"')"`,
   );
 
   // Give the watcher time to detect the change
@@ -51,14 +51,14 @@ test('WAT-11: settings file watcher detects changes via WebSocket', async () => 
   );
 
   // Cleanup
-  dockerExec(`sqlite3 /home/blueprint/.blueprint/blueprint.db "DELETE FROM settings WHERE key='${testKey}'"`);
+  dockerExec(`sqlite3 /data/.blueprint/blueprint.db "DELETE FROM settings WHERE key='${testKey}'"`);
 });
 
 test('WAT-12: JSONL watcher monitors Claude sessions directories', async () => {
   // Verify that the JSONL watcher infrastructure works by checking that
   // the Claude projects directory exists (sessions are stored per-project)
   const claudeProjectsDir = dockerExec(
-    'ls -d /home/blueprint/.claude/projects 2>/dev/null || echo missing',
+    'ls -d /data/.claude/projects 2>/dev/null || echo missing',
   );
   assert.ok(
     claudeProjectsDir !== 'missing',
@@ -66,7 +66,7 @@ test('WAT-12: JSONL watcher monitors Claude sessions directories', async () => {
   );
   // Verify .jsonl files exist from stub-claude sessions
   const jsonlCount = parseInt(
-    dockerExec('find /home/blueprint/.claude/projects -name "*.jsonl" 2>/dev/null | wc -l').trim() || '0',
+    dockerExec('find /data/.claude/projects -name "*.jsonl" 2>/dev/null | wc -l').trim() || '0',
   );
   assert.ok(jsonlCount >= 0, `Found ${jsonlCount} JSONL files in sessions directories`);
 });

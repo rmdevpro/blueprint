@@ -3,7 +3,7 @@
 const { execSync } = require('child_process');
 
 const CONTAINER = process.env.TEST_CONTAINER || 'blueprint-test';
-const DB_PATH = process.env.TEST_DB_PATH || '/home/blueprint/.blueprint/blueprint.db';
+const DB_PATH = process.env.TEST_DB_PATH || '/data/.blueprint/blueprint.db';
 
 function query(sql) {
   try {

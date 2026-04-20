@@ -6,8 +6,8 @@ const { get, BASE_URL } = require('../helpers/http-client');
 const { resetBaseline, dockerExec } = require('../helpers/reset-state');
 
 test('FRS-01/ENT-03: data directories exist', () => {
-  const dbExists = dockerExec('test -f /home/blueprint/.blueprint/blueprint.db && echo yes || echo no');
-  assert.equal(dbExists, 'yes', '/home/blueprint/.blueprint/blueprint.db should exist');
+  const dbExists = dockerExec('test -f /data/.blueprint/blueprint.db && echo yes || echo no');
+  assert.equal(dbExists, 'yes', '/data/.blueprint/blueprint.db should exist');
 });
 
 test('ENT-02: process runs as blueprint user', () => {
@@ -15,7 +15,7 @@ test('ENT-02: process runs as blueprint user', () => {
 });
 
 test('ENT-09: onboarding flags set correctly', () => {
-  const raw = dockerExec('cat /home/blueprint/.claude/.claude.json 2>/dev/null || echo "null"');
+  const raw = dockerExec('cat /data/.claude/.claude.json 2>/dev/null || echo "null"');
   if (raw !== 'null') {
     const cfg = JSON.parse(raw);
     assert.equal(cfg.hasCompletedOnboarding, true, 'hasCompletedOnboarding should be true');
@@ -23,7 +23,7 @@ test('ENT-09: onboarding flags set correctly', () => {
 });
 
 test('ENT-10: blueprint home owned by blueprint', () => {
-  const owner = dockerExec('stat -c %U /home/blueprint/.blueprint');
+  const owner = dockerExec('stat -c %U /data/.blueprint');
   assert.equal(owner, 'blueprint');
 });
 
@@ -61,6 +61,6 @@ test('FRS-07: tmux kill-session actually removes a session', async () => {
 });
 
 test('ENT-05 / FRS-03: settings.json exists', () => {
-  const r = dockerExec('test -f /home/blueprint/.claude/settings.json && echo exists || echo missing');
+  const r = dockerExec('test -f /data/.claude/settings.json && echo exists || echo missing');
   assert.equal(r, 'exists');
 });

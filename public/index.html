@@ -944,11 +944,7 @@ build/**</textarea>
           }
         }
 
-        // Auto-expand all projects on first load (only if nothing persisted)
-        if (expandedProjects.size === 0 && projectState.length > 0) {
-          for (const p of projectState) expandedProjects.add(p.name);
-          localStorage.setItem('expandedProjects', JSON.stringify([...expandedProjects]));
-        }
+        // Start collapsed on first load — user expands what they need
 
         renderSidebar();
       } catch (err) {
@@ -1389,15 +1385,25 @@ build/**</textarea>
         const icon = tab.type === 'file'
           ? '<span class="file-tab-icon">&#128196;</span>'
           : `<span class="tab-status ${tab.status}"></span>`;
+        const saveBtn = tab.type === 'file'
+          ? `<button class="tab-save" title="Save (Ctrl+S)" style="background:none;border:none;color:${tab.dirty ? 'var(--accent)' : 'var(--text-muted)'};cursor:pointer;font-size:12px;padding:2px 4px;border-radius:3px;margin-right:2px${tab.dirty ? ';font-weight:bold' : ''}">&#128190;</button>`
+          : '';
         el.innerHTML = `
           ${icon}
           <span class="tab-name">${escHtml(tab.name)}</span>
+          ${saveBtn}
           <button class="tab-close" title="Close tab">&#10005;</button>
         `;
         el.addEventListener('click', (e) => {
-          if (e.target.closest('.tab-close')) return;
+          if (e.target.closest('.tab-close') || e.target.closest('.tab-save')) return;
           switchTab(id);
         });
+        if (tab.type === 'file') {
+          el.querySelector('.tab-save').addEventListener('click', (e) => {
+            e.stopPropagation();
+            saveFileTab(id);
+          });
+        }
         el.querySelector('.tab-close').addEventListener('click', (e) => {
           e.stopPropagation();
           closeTab(id);
@@ -1718,13 +1724,13 @@ build/**</textarea>
         loadFiles();
         return;
       }
+      if (activePanel === 'tasks') {
+        loadTaskTree();
+        return;
+      }
       const project = getCurrentProject();
       if (!project) return;
       currentPanelProject = project;
-
-      if (activePanel === 'tasks') {
-        loadTaskTree();
-      }
     }
 
 
@@ -1759,7 +1765,7 @@ build/**</textarea>
           const mountRes = await fetch('/api/mounts');
           mounts = await mountRes.json();
         } catch {}
-        if (mounts.length === 0) mounts = [{ path: window._workspace || '/home/blueprint/workspace' }];
+        if (mounts.length === 0) mounts = [{ path: window._workspace || '/data/workspace' }];
 
         const container = document.getElementById('task-tree');
         container.innerHTML = '';
@@ -3124,7 +3130,7 @@ build/**</textarea>
         const res = await fetch('/api/mounts');
         mounts = await res.json();
       } catch {}
-      if (mounts.length === 0) mounts = [{ path: window._workspace || '/home/blueprint/workspace' }];
+      if (mounts.length === 0) mounts = [{ path: window._workspace || '/data/workspace' }];
 
       const treeEl = document.getElementById('jqft-tree');
       function selectPath(path) {
@@ -3196,7 +3202,7 @@ build/**</textarea>
     }
 
     async function pickerNewFolder() {
-      const parentPath = document.getElementById('picker-path').value.trim() || (window._workspace || '/mnt/workspace');
+      const parentPath = document.getElementById('picker-path').value.trim() || (window._workspace || '/data/workspace');
       const name = prompt('New folder name:');
       if (!name) return;
       const newPath = parentPath.replace(/\/$/, '') + '/' + name;
@@ -3211,7 +3217,7 @@ build/**</textarea>
         // Refresh the tree and select the new folder
         $('#jqft-tree').html('');
         $('#jqft-tree').fileTree({
-          root: (window._workspace || '/mnt/workspace').replace(/\/?$/, '/'),
+          root: (window._workspace || '/data/workspace').replace(/\/?$/, '/'),
           script: '/api/jqueryfiletree',
           folderEvent: 'click',
           expandSpeed: 200,

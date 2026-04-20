@@ -1036,7 +1036,7 @@ function registerCoreRoutes(
 
   app.get('/api/claude-md/global', async (req, res) => {
     try {
-      const file = join(process.env.HOME || '/home/blueprint', '.claude', 'CLAUDE.md');
+      const file = join(process.env.HOME || '/data', '.claude', 'CLAUDE.md');
       const content = await readFile(file, 'utf-8');
       res.json({ content });
     } catch (err) {
@@ -1051,7 +1051,7 @@ function registerCoreRoutes(
 
   app.put('/api/claude-md/global', async (req, res) => {
     try {
-      const file = join(process.env.HOME || '/home/blueprint', '.claude', 'CLAUDE.md');
+      const file = join(process.env.HOME || '/data', '.claude', 'CLAUDE.md');
       await writeFile(file, req.body.content || '');
       res.json({ saved: true });
     } catch (err) {

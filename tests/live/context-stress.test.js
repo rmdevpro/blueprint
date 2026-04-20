@@ -27,8 +27,8 @@ test('CST: prime-test-session.js exists and has valid context-filling logic', ()
 
 test('CST: create session and verify token usage API returns structured data', async () => {
   await resetBaseline();
-  dockerExec('mkdir -p /home/blueprint/workspace/cst_proj');
-  await post('/api/projects', { path: '/home/blueprint/workspace/cst_proj', name: 'cst_proj' });
+  dockerExec('mkdir -p /data/workspace/cst_proj');
+  await post('/api/projects', { path: '/data/workspace/cst_proj', name: 'cst_proj' });
 
   const sessResult = await createSession('cst_proj', 'context stress test session');
   assert.ok(
@@ -65,8 +65,8 @@ test('CST: create session and verify token usage API returns structured data', a
 
 test('CST: multi-session stress — concurrent token queries do not crash', async () => {
   await resetBaseline();
-  dockerExec('mkdir -p /home/blueprint/workspace/cst_stress_proj');
-  await post('/api/projects', { path: '/home/blueprint/workspace/cst_stress_proj', name: 'cst_stress_proj' });
+  dockerExec('mkdir -p /data/workspace/cst_stress_proj');
+  await post('/api/projects', { path: '/data/workspace/cst_stress_proj', name: 'cst_stress_proj' });
 
   // Create multiple sessions sequentially with retry (stub CLI may cause tmux name
   // collisions when sessions are created within the same truncated-timestamp window).
@@ -109,8 +109,8 @@ test('CST: multi-session stress — concurrent token queries do not crash', asyn
 
 test('CST-GRAY: session creation produces filesystem artifacts in container', async () => {
   await resetBaseline();
-  dockerExec('mkdir -p /home/blueprint/workspace/cst_fs_proj');
-  await post('/api/projects', { path: '/home/blueprint/workspace/cst_fs_proj', name: 'cst_fs_proj' });
+  dockerExec('mkdir -p /data/workspace/cst_fs_proj');
+  await post('/api/projects', { path: '/data/workspace/cst_fs_proj', name: 'cst_fs_proj' });
 
   const sess = await createSession('cst_fs_proj', 'filesystem artifact test');
   assert.ok(
@@ -120,11 +120,11 @@ test('CST-GRAY: session creation produces filesystem artifacts in container', as
   assert.ok(sess.data.id, 'Session must return an ID');
 
   // Gray-box: verify the DB exists in the container
-  const storageDir = dockerExec('ls /home/blueprint/.blueprint/blueprint.db 2>/dev/null || echo MISSING');
-  assert.ok(storageDir !== 'MISSING', '/home/blueprint/.blueprint/blueprint.db must exist in the container');
+  const storageDir = dockerExec('ls /data/.blueprint/blueprint.db 2>/dev/null || echo MISSING');
+  assert.ok(storageDir !== 'MISSING', '/data/.blueprint/blueprint.db must exist in the container');
 
   // Verify the project directory was created
-  const projExists = dockerExec('test -d /home/blueprint/workspace/cst_fs_proj && echo YES || echo NO');
+  const projExists = dockerExec('test -d /data/workspace/cst_fs_proj && echo YES || echo NO');
   assert.equal(projExists, 'YES', 'Project workspace directory must exist in the container');
 
   // Verify DB has both the project and session records — use project FK for sessions
@@ -139,8 +139,8 @@ test('CST-GRAY: session creation produces filesystem artifacts in container', as
 
 test('CST-GRAY: token usage response has all required fields for monitoring', async () => {
   await resetBaseline();
-  dockerExec('mkdir -p /home/blueprint/workspace/cst_token_proj');
-  await post('/api/projects', { path: '/home/blueprint/workspace/cst_token_proj', name: 'cst_token_proj' });
+  dockerExec('mkdir -p /data/workspace/cst_token_proj');
+  await post('/api/projects', { path: '/data/workspace/cst_token_proj', name: 'cst_token_proj' });
 
   const sess = await createSession('cst_token_proj', 'token field test');
   assert.ok(sess.data.id, 'Session must return an ID');
@@ -170,9 +170,9 @@ test('CST-GRAY: token usage response has all required fields for monitoring', as
 
 test('CST-GRAY: concurrent session creation does not corrupt DB with duplicate IDs', async () => {
   await resetBaseline();
-  dockerExec('mkdir -p /home/blueprint/workspace/cst_concurrent_proj');
+  dockerExec('mkdir -p /data/workspace/cst_concurrent_proj');
   await post('/api/projects', {
-    path: '/home/blueprint/workspace/cst_concurrent_proj',
+    path: '/data/workspace/cst_concurrent_proj',
     name: 'cst_concurrent_proj',
   });
 
