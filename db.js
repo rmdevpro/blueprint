@@ -266,8 +266,11 @@ module.exports = {
   getSessionByPrefix(prefix) {
     return stmts.getSessionByPrefix.get(prefix + '%');
   },
-  upsertSession(id, projectId, name, cliType = 'claude') {
-    stmts.upsertSession.run(id, projectId, name, cliType);
+  upsertSession(id, projectId, name, cliType) {
+    // If no cliType provided, check existing session to preserve its type
+    const existing = stmts.getSession.get(id);
+    const resolvedType = cliType || existing?.cli_type || 'claude';
+    stmts.upsertSession.run(id, projectId, name, resolvedType);
     return stmts.getSession.get(id);
   },
   renameSession(id, name) {
