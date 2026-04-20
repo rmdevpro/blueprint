@@ -2,6 +2,7 @@ FROM node:22-slim
 
 RUN apt-get update && apt-get install -y \
     git curl ca-certificates python3 make g++ tmux ssh openssh-client jq \
+    ffmpeg zip unzip rsync sqlite3 tree \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Docker CLI (for remote Docker access via SSH)
