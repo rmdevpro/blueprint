@@ -372,14 +372,69 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
     assert.ok(state.workspace, 'server responding');
   });
 
-  // ── #101: Qdrant Search ────────────────────────────────────
+  // ── #112-118: Qdrant Collections ───────────────────────────
 
-  it('QDRANT-01: semantic search returns results when documents are indexed', async () => {
+  it('QDRANT-01: documents collection has points and search works', async () => {
+    const status = await apiGet('/api/qdrant/status');
+    assert.ok(status.collections?.documents?.points > 0, `documents has ${status.collections?.documents?.points} points`);
     const result = await apiPost('/api/mcp/call', {
       tool: 'blueprint_files', args: { action: 'search_documents', query: 'deployment' },
     });
-    // May return empty if no HF token / embeddings not configured — that's OK
-    assert.ok(Array.isArray(result.result) || result.error, 'search returns array or error');
+    assert.ok(Array.isArray(result.result) && result.result.length > 0, 'search returns results');
+    assert.ok(result.result[0].score > 0, 'results have scores');
+    assert.ok(result.result[0].file_path, 'results have file paths');
+  });
+
+  it('QDRANT-02: code collection has points and search works', async () => {
+    const status = await apiGet('/api/qdrant/status');
+    if (!status.collections?.code || status.collections.code.points === 0) {
+      // Code collection may be disabled — skip gracefully
+      return;
+    }
+    const result = await apiPost('/api/mcp/call', {
+      tool: 'blueprint_files', args: { action: 'search_code', query: 'express server' },
+    });
+    assert.ok(Array.isArray(result.result), 'search returns array');
+  });
+
+  it('QDRANT-03: claude_sessions collection has points and search works', async () => {
+    const status = await apiGet('/api/qdrant/status');
+    assert.ok(status.collections?.claude?.points > 0, `claude has ${status.collections?.claude?.points} points`);
+    const result = await apiPost('/api/mcp/call', {
+      tool: 'blueprint_sessions', args: { action: 'search_semantic', query: 'session test', cli: 'claude' },
+    });
+    assert.ok(Array.isArray(result.result) && result.result.length > 0, 'search returns results');
+    assert.ok(result.result[0].collection === 'claude_sessions', 'results from claude collection');
+  });
+
+  it('QDRANT-04: gemini_sessions collection has points and search works', async () => {
+    const status = await apiGet('/api/qdrant/status');
+    if (!status.collections?.gemini || status.collections.gemini.points === 0) return;
+    const result = await apiPost('/api/mcp/call', {
+      tool: 'blueprint_sessions', args: { action: 'search_semantic', query: 'Dockerfile', cli: 'gemini' },
+    });
+    assert.ok(Array.isArray(result.result), 'search returns array');
+    if (result.result.length > 0) assert.ok(result.result[0].collection === 'gemini_sessions', 'results from gemini collection');
+  });
+
+  it('QDRANT-05: codex_sessions collection has points and search works', async () => {
+    const status = await apiGet('/api/qdrant/status');
+    if (!status.collections?.codex || status.collections.codex.points === 0) return;
+    const result = await apiPost('/api/mcp/call', {
+      tool: 'blueprint_sessions', args: { action: 'search_semantic', query: 'fibonacci', cli: 'codex' },
+    });
+    assert.ok(Array.isArray(result.result), 'search returns array');
+    if (result.result.length > 0) assert.ok(result.result[0].collection === 'codex_sessions', 'results from codex collection');
+  });
+
+  it('QDRANT-06: qdrant status endpoint returns all 5 collections', async () => {
+    const status = await apiGet('/api/qdrant/status');
+    assert.ok(status.available, 'qdrant available');
+    assert.ok(status.collections.documents, 'documents collection exists');
+    assert.ok(status.collections.code !== undefined, 'code collection exists');
+    assert.ok(status.collections.claude, 'claude collection exists');
+    assert.ok(status.collections.gemini, 'gemini collection exists');
+    assert.ok(status.collections.codex, 'codex collection exists');
   });
 
   // ── #102: System Prompts ───────────────────────────────────
