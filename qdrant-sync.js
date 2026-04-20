@@ -350,12 +350,17 @@ function parseGeminiSession(content) {
   const turns = [];
   try {
     const data = JSON.parse(content);
-    const messages = Array.isArray(data) ? data : (data.messages || data.parts || []);
+    const messages = data.messages || (Array.isArray(data) ? data : []);
     for (const msg of messages) {
-      const role = msg.role || 'unknown';
+      const role = msg.type === 'gemini' ? 'assistant' : (msg.type || msg.role || 'unknown');
       let text = '';
       if (typeof msg.content === 'string') {
         text = msg.content;
+      } else if (Array.isArray(msg.content)) {
+        text = msg.content
+          .filter(p => typeof p === 'string' || p.text)
+          .map(p => typeof p === 'string' ? p : p.text)
+          .join('\n');
       } else if (msg.parts) {
         text = msg.parts
           .filter(p => typeof p === 'string' || p.text)
@@ -363,24 +368,10 @@ function parseGeminiSession(content) {
           .join('\n');
       }
       if (text.length > 10) {
-        turns.push({ role, content: text.substring(0, 2000) });
+        turns.push({ role, content: text.substring(0, 2000), timestamp: msg.timestamp });
       }
     }
-  } catch {
-    // Try JSONL fallback
-    for (const line of content.split('\n')) {
-      if (!line.trim()) continue;
-      try {
-        const entry = JSON.parse(line);
-        if (entry.role && (entry.content || entry.parts)) {
-          const text = entry.content || (entry.parts || []).map(p => p.text || '').join('\n');
-          if (text.length > 10) {
-            turns.push({ role: entry.role, content: text.substring(0, 2000) });
-          }
-        }
-      } catch { /* skip */ }
-    }
-  }
+  } catch { /* invalid JSON */ }
   return turns;
 }
 
@@ -393,18 +384,22 @@ function parseCodexSession(content) {
     if (!line.trim()) continue;
     try {
       const entry = JSON.parse(line);
-      const role = entry.role || entry.type || 'unknown';
-      let text = '';
-      if (typeof entry.content === 'string') {
-        text = entry.content;
-      } else if (Array.isArray(entry.content)) {
-        text = entry.content
-          .filter(b => b.type === 'text')
-          .map(b => b.text)
-          .join('\n');
-      }
-      if (text.length > 10) {
-        turns.push({ role, content: text.substring(0, 2000) });
+      // Codex JSONL uses { type: "response_item", payload: { role, content } }
+      if (entry.type === 'response_item' && entry.payload) {
+        const p = entry.payload;
+        const role = p.role || 'unknown';
+        let text = '';
+        if (typeof p.content === 'string') {
+          text = p.content;
+        } else if (Array.isArray(p.content)) {
+          text = p.content
+            .filter(b => b.type === 'output_text' || b.type === 'input_text' || b.type === 'text')
+            .map(b => b.text || '')
+            .join('\n');
+        }
+        if (text.length > 10) {
+          turns.push({ role, content: text.substring(0, 2000), timestamp: entry.timestamp });
+        }
       }
     } catch { /* skip */ }
   }
@@ -598,14 +593,14 @@ async function scanGeminiSessions() {
 
   let total = 0;
   try {
-    const hashDirs = await readdir(geminiBase, { withFileTypes: true });
-    for (const hDir of hashDirs) {
-      if (!hDir.isDirectory()) continue;
-      const chatsDir = join(geminiBase, hDir.name, 'chats');
+    const projectDirs = await readdir(geminiBase, { withFileTypes: true });
+    for (const pDir of projectDirs) {
+      if (!pDir.isDirectory()) continue;
+      const chatsDir = join(geminiBase, pDir.name, 'chats');
       if (!existsSync(chatsDir)) continue;
       const files = await readdir(chatsDir);
       for (const file of files) {
-        if (!file.endsWith('.json') && !file.endsWith('.jsonl')) continue;
+        if (!file.endsWith('.json')) continue;
         try {
           total += await syncSessionFile(
             join(chatsDir, file),
