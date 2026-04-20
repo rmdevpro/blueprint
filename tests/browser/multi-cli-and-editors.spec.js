@@ -416,4 +416,166 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
       assert.ok(content.includes(purpose), `${file} contains HHH purpose`);
     }
   });
+
+  // ── #93: Task Panel UX ─────────────────────────────────
+
+  it('TASKUX-01: task tree uses 11px font and 18px line-height matching file browser', async () => {
+    await page.evaluate(() => switchPanel('tasks'));
+    await page.waitForSelector('#task-tree', { timeout: 5000 });
+    await new Promise(r => setTimeout(r, 1000));
+    // Expand mount
+    await page.evaluate(() => { document.querySelector('#task-tree .mount-arrow')?.parentElement?.click(); });
+    await new Promise(r => setTimeout(r, 1000));
+    const style = await page.evaluate(() => {
+      const f = document.querySelector('.task-folder-label');
+      if (!f) return null;
+      const s = getComputedStyle(f);
+      return { fontSize: s.fontSize, lineHeight: s.lineHeight, hasEmoji: f.textContent.includes('📁') };
+    });
+    assert.ok(style, 'folder label found');
+    assert.equal(style.fontSize, '11px');
+    assert.equal(style.lineHeight, '18px');
+    assert.equal(style.hasEmoji, false, 'no emoji icons');
+  });
+
+  it('TASKUX-02: checkbox complete updates inline without losing expand state', async () => {
+    // Create a task
+    await apiPost('/api/mcp/call', {
+      tool: 'blueprint_tasks', args: { action: 'add', folder_path: '/data/workspace/bp-seed', title: 'inline-test' },
+    });
+    await page.evaluate(() => { switchPanel('tasks'); expandedTaskFolders.add('/data/workspace'); expandedTaskFolders.add('/data/workspace/bp-seed'); loadTaskTree(); });
+    await new Promise(r => setTimeout(r, 2000));
+    const before = await page.evaluate(() => {
+      const node = document.querySelector('.task-node');
+      if (!node) return null;
+      node.querySelector('input[type=checkbox]').click();
+      return { found: true };
+    });
+    assert.ok(before, 'task node found');
+    await new Promise(r => setTimeout(r, 1000));
+    const after = await page.evaluate(() => ({
+      isDone: document.querySelector('.task-node')?.classList.contains('done'),
+      foldersExpanded: Array.from(document.querySelectorAll('.task-folder-label')).some(f => f.querySelector('.folder-arrow')?.style.transform.includes('90'))
+    }));
+    assert.equal(after.isDone, true, 'task marked done inline');
+    assert.equal(after.foldersExpanded, true, 'folders still expanded');
+  });
+
+  it('TASKUX-03: task filter buttons show correct tasks per filter', async () => {
+    // Create tasks in different states
+    const t1 = await apiPost('/api/mcp/call', { tool: 'blueprint_tasks', args: { action: 'add', folder_path: '/data/workspace/bp-seed', title: 'filter-todo' } });
+    const t2 = await apiPost('/api/mcp/call', { tool: 'blueprint_tasks', args: { action: 'add', folder_path: '/data/workspace/bp-seed', title: 'filter-done' } });
+    await apiPost('/api/mcp/call', { tool: 'blueprint_tasks', args: { action: 'complete', task_id: String(t2.result.id) } });
+    await page.evaluate(() => { expandedTaskFolders.add('/data/workspace'); expandedTaskFolders.add('/data/workspace/bp-seed'); });
+
+    // Active filter
+    await page.evaluate(() => setTaskFilter('todo'));
+    await new Promise(r => setTimeout(r, 1500));
+    const active = await page.evaluate(() => Array.from(document.querySelectorAll('.task-node .task-label')).map(l => l.textContent));
+    assert.ok(active.includes('filter-todo'), 'active shows todo task');
+    assert.ok(!active.includes('filter-done'), 'active hides done task');
+
+    // Done filter
+    await page.evaluate(() => setTaskFilter('done'));
+    await new Promise(r => setTimeout(r, 1500));
+    const done = await page.evaluate(() => Array.from(document.querySelectorAll('.task-node .task-label')).map(l => l.textContent));
+    assert.ok(done.includes('filter-done'), 'done shows completed task');
+
+    // Restore
+    await page.evaluate(() => setTaskFilter('todo'));
+  });
+
+  // ── #94: Editor Enhancements ───────────────────────────
+
+  it('EDITUX-01: save button flashes green "Saved" on successful save', async () => {
+    await apiPost('/api/mcp/call', { tool: 'blueprint_files', args: { action: 'create', path: 'bp-seed/save-flash-test.txt', content: 'hello' } });
+    await page.evaluate(() => openFileTab('/data/workspace/bp-seed/save-flash-test.txt'));
+    await new Promise(r => setTimeout(r, 2000));
+    const result = await page.evaluate(() => {
+      const tabId = Array.from(tabs.keys()).find(k => k.startsWith('file-'));
+      const tab = tabs.get(tabId);
+      tab.editor.dispatch({ changes: { from: 0, insert: 'x' } });
+      const pane = document.getElementById(`pane-${tabId}`);
+      const saveBtn = pane.querySelector('.editor-save-btn');
+      saveBtn.click();
+      return new Promise(resolve => setTimeout(() => resolve({ text: saveBtn.textContent, bg: saveBtn.style.background }), 500));
+    });
+    assert.equal(result.text, 'Saved');
+    assert.ok(result.bg.includes('35, 134, 54') || result.bg.includes('238636'), 'green background');
+  });
+
+  it('EDITUX-02: dirty tab has italic name and yellow top border', async () => {
+    await page.evaluate(() => openFileTab('/data/workspace/bp-seed/save-flash-test.txt'));
+    await new Promise(r => setTimeout(r, 2000));
+    await page.evaluate(() => {
+      const tabId = Array.from(tabs.keys()).find(k => k.startsWith('file-'));
+      tabs.get(tabId).editor.dispatch({ changes: { from: 0, insert: 'z' } });
+    });
+    await new Promise(r => setTimeout(r, 500));
+    const style = await page.evaluate(() => {
+      const tabId = Array.from(tabs.keys()).find(k => k.startsWith('file-'));
+      const tabEl = document.querySelector(`[data-tab-id="${tabId}"]`);
+      const nameEl = tabEl.querySelector('.tab-name');
+      return {
+        hasDirtyClass: tabEl.classList.contains('tab-dirty'),
+        borderTop: getComputedStyle(tabEl).borderTop,
+        fontStyle: getComputedStyle(nameEl).fontStyle
+      };
+    });
+    assert.equal(style.hasDirtyClass, true);
+    assert.ok(style.borderTop.includes('solid'), 'has top border');
+    assert.equal(style.fontStyle, 'italic');
+  });
+
+  // ── #102: System Prompt UI ─────────────────────────────
+
+  it('PROMPTUI-01: project config modal has Claude/Gemini/Codex prompt buttons', async () => {
+    await page.evaluate(() => openProjectConfig('bp-seed'));
+    await new Promise(r => setTimeout(r, 1000));
+    const buttons = await page.evaluate(() => {
+      const modal = document.querySelector('[id^="proj-config-"]');
+      if (!modal) return [];
+      return Array.from(modal.querySelectorAll('button')).map(b => b.textContent.trim()).filter(t => t.includes('Claude') || t.includes('Gemini') || t.includes('Codex'));
+    });
+    assert.ok(buttons.some(b => b.includes('Claude')), 'Claude button');
+    assert.ok(buttons.some(b => b.includes('Gemini')), 'Gemini button');
+    assert.ok(buttons.some(b => b.includes('Codex')), 'Codex button');
+    await page.evaluate(() => document.querySelector('[id^="proj-config-"]')?.remove());
+  });
+
+  it('PROMPTUI-02: clicking Gemini button creates GEMINI.md from template and opens editor', async () => {
+    await page.evaluate(() => openProjectConfig('bp-seed'));
+    await new Promise(r => setTimeout(r, 1000));
+    await page.evaluate(() => {
+      const btns = document.querySelectorAll('[id^="proj-config-"] button');
+      for (const b of btns) { if (b.textContent.includes('Gemini')) { b.click(); break; } }
+    });
+    await new Promise(r => setTimeout(r, 2000));
+    const tab = await page.evaluate(() => {
+      for (const [, t] of tabs) {
+        if (t.type === 'file' && t.filePath?.includes('GEMINI.md')) return { name: t.name, path: t.filePath, hasEditor: !!t.editor };
+      }
+      return null;
+    });
+    assert.ok(tab, 'GEMINI.md tab opened');
+    assert.ok(tab.path.includes('bp-seed'), 'path is in project');
+    assert.ok(tab.hasEditor, 'editor loaded');
+  });
+
+  it('PROMPTUI-03: settings System Prompts tab shows 3 CLI buttons and template', async () => {
+    await page.evaluate(() => {
+      document.getElementById('settings-modal').classList.add('visible');
+      switchSettingsTab('prompts');
+    });
+    await new Promise(r => setTimeout(r, 500));
+    const result = await page.evaluate(() => {
+      const tab = document.getElementById('settings-prompts');
+      const buttons = Array.from(tab.querySelectorAll('button')).map(b => b.textContent.trim());
+      const hasTemplate = !!tab.querySelector('#setting-project-template');
+      return { buttons: buttons.filter(b => b.includes('Claude') || b.includes('Gemini') || b.includes('Codex')), hasTemplate };
+    });
+    assert.equal(result.buttons.length, 3, '3 CLI buttons');
+    assert.ok(result.hasTemplate, 'template textarea exists');
+    await page.evaluate(() => document.getElementById('settings-modal').classList.remove('visible'));
+  });
 });
