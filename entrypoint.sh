@@ -18,10 +18,18 @@ if [ -d /app/config/docs ]; then
   echo "[entrypoint] Synced docs from config/docs (new files only)"
 fi
 
-# Seed default CLAUDE.md if not present
+# Seed default system prompts if not present
 if [ -f /app/config/CLAUDE.md ] && [ ! -f "$CLAUDE/CLAUDE.md" ]; then
   cp /app/config/CLAUDE.md "$CLAUDE/CLAUDE.md"
   echo "[entrypoint] Seeded global CLAUDE.md"
+fi
+if [ -f /app/config/GEMINI.md ] && [ ! -f "$CLAUDE/GEMINI.md" ]; then
+  cp /app/config/GEMINI.md "$CLAUDE/GEMINI.md"
+  echo "[entrypoint] Seeded global GEMINI.md"
+fi
+if [ -f /app/config/AGENTS.md ] && [ ! -f "$CLAUDE/AGENTS.md" ]; then
+  cp /app/config/AGENTS.md "$CLAUDE/AGENTS.md"
+  echo "[entrypoint] Seeded global AGENTS.md"
 fi
 
 # Ensure .claude.json exists for workspace trust
