@@ -223,6 +223,7 @@ function registerCoreRoutes(
         name: s.name || fileMeta?.name || 'Untitled Session',
         timestamp: fileMeta?.timestamp || s.updated_at,
         messageCount: fileMeta?.messageCount || 0,
+        model: s.model_override || '',
         tmux: tmuxName(s.id),
         active: await safe.tmuxExists(tmuxName(s.id)),
         state: s.state || (s.archived ? 'archived' : 'active'),

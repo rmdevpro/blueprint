@@ -1102,13 +1102,13 @@ build/**</textarea>
             <div class="session-meta">
               ${(() => {
                 const cli = session.cli_type || 'claude';
-                const colors = { claude: '#e8a55d', gemini: '#4285f4', codex: '#10a37f' };
-                const labels = { claude: 'C', gemini: 'G', codex: 'X' };
-                const color = session.active ? (colors[cli] || '#8b949e') : '#484f58';
-                return `<span style="font-weight:bold;font-size:10px;color:${color}" title="${cli}">${labels[cli] || '?'}</span>`;
+                const color = session.active ? ({ claude: '#e8a55d', gemini: '#4285f4', codex: '#10a37f' }[cli] || '#8b949e') : '#484f58';
+                const icons = { claude: '✳', gemini: '◆', codex: '●' };
+                return `<span style="font-size:10px;color:${color};line-height:1" title="${cli}">${icons[cli] || '?'}</span>`;
               })()}
               <span>${timeAgo(session.timestamp)}</span>
               <span class="msg-count">${session.messageCount}</span>
+              <span style="font-size:9px;color:var(--text-muted);margin-left:2px">${escHtml(session.model || '')}</span>
             </div>
           `;
           item.addEventListener('click', (e) => {
