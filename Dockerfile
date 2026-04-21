@@ -53,7 +53,7 @@ ENV WORKSPACE=/data/workspace
 ENV CLAUDE_CONFIG_DIR=/data/.claude
 ENV PORT=7860
 
-WORKDIR /data/workspace
+WORKDIR /data
 EXPOSE 7860
 
 ENTRYPOINT ["/entrypoint.sh"]
