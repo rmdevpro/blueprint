@@ -851,8 +851,9 @@ function registerCoreRoutes(
           resumeArgs = ['--resume', sessionId];
         }
         if (cliType === 'gemini') {
-          const cliSessId = session?.cli_session_id;
-          resumeArgs = cliSessId ? ['--resume', cliSessId] : ['--resume'];
+          // Gemini doesn't support resume-by-ID reliably — launch fresh
+          // It will pick up project context from its own state files
+          resumeArgs = [];
         }
         if (cliType === 'codex') {
           const cliSessId = session?.cli_session_id;
@@ -1421,8 +1422,8 @@ function registerCoreRoutes(
       let restartArgs = [];
       if (cliType === 'claude' && !sessionId.startsWith('new_')) restartArgs = ['--resume', sessionId];
       if (cliType === 'gemini') {
-        const cliSessId = session.cli_session_id;
-        restartArgs = cliSessId ? ['--resume', cliSessId] : ['--resume'];
+        // Gemini doesn't support resume-by-ID reliably — launch fresh
+        restartArgs = [];
       }
       if (cliType === 'codex') {
         const cliSessId = session.cli_session_id;
