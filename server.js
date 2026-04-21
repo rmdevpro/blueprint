@@ -267,6 +267,20 @@ if (require.main === module) {
         tmux.startPeriodicScan();
         watchers.startSettingsWatcher();
 
+        // Load API keys from DB settings into process env for CLI sessions
+        try {
+          const geminiKey = db.getSetting('gemini_api_key', '');
+          if (geminiKey) {
+            try { process.env.GEMINI_API_KEY = JSON.parse(geminiKey); } catch { process.env.GEMINI_API_KEY = geminiKey; }
+          }
+          const codexKey = db.getSetting('codex_api_key', '');
+          if (codexKey) {
+            try { process.env.OPENAI_API_KEY = JSON.parse(codexKey); } catch { process.env.OPENAI_API_KEY = codexKey; }
+          }
+        } catch (err) {
+          logger.warn('Failed to load API keys from settings', { module: 'server', err: err.message });
+        }
+
         watchers.registerMcpServer().catch((err) =>
           logger.error('Post-startup MCP registration failed (Claude)', {
             module: 'server',

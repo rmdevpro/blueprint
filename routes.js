@@ -1130,6 +1130,14 @@ function registerCoreRoutes(
     if (!key) return res.status(400).json({ error: 'key required' });
     db.setSetting(key, JSON.stringify(value));
 
+    // Update process env when API keys change so new CLI sessions get them
+    if (key === 'gemini_api_key') {
+      process.env.GEMINI_API_KEY = value || '';
+    }
+    if (key === 'codex_api_key') {
+      process.env.OPENAI_API_KEY = value || '';
+    }
+
     if (key === 'keepalive_mode') {
       const idleMins = db.getSetting('keepalive_idle_minutes', '30');
       keepalive.setMode(value, parseInt(idleMins, 10));
@@ -1177,6 +1185,7 @@ function registerCoreRoutes(
     const geminiCredFile = join(home, '.gemini', 'gemini-credentials.json');
     const hasGemini = fs.existsSync(geminiCredFile) ||
       !!process.env.GOOGLE_API_KEY ||
+      !!process.env.GEMINI_API_KEY ||
       !!db.getSetting('gemini_api_key', '');
 
     // Codex: check auth.json for OPENAI_API_KEY

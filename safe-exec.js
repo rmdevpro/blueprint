@@ -107,11 +107,11 @@ function tmuxCreateCLI(sessionName, cwd, cliType, args = []) {
       break;
     case 'gemini':
       binary = 'gemini';
-      // Gemini CLI manages its own credentials in ~/.gemini/gemini-credentials.json
+      if (process.env.GEMINI_API_KEY) envParts.push(`export GEMINI_API_KEY=${shellEscape(process.env.GEMINI_API_KEY)}`);
       break;
     case 'codex':
       binary = 'codex';
-      // Codex CLI manages its own credentials in ~/.codex/auth.json
+      if (process.env.OPENAI_API_KEY) envParts.push(`export OPENAI_API_KEY=${shellEscape(process.env.OPENAI_API_KEY)}`);
       break;
     case 'bash':
       binary = 'bash';

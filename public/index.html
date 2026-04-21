@@ -586,9 +586,18 @@
       </div>
 
       <div class="settings-group">
-        <h3>CLI Authentication</h3>
-        <p style="font-size:11px;color:var(--text-muted);margin:0 0 4px">Each CLI manages its own credentials. Create a session and authenticate in the terminal — credentials persist on the /data volume.</p>
-        <p style="font-size:11px;color:var(--text-muted);margin:0">Claude: <code>/login</code> &nbsp; Gemini: API key prompt on first use &nbsp; Codex: API key prompt on first use</p>
+        <h3>API Keys</h3>
+        <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px">API keys for Gemini and Codex. Claude uses OAuth (<code>/login</code> in a session). Keys are passed to CLI sessions automatically.</p>
+        <div class="setting-row">
+          <label>Gemini API Key</label>
+          <input id="setting-gemini-key" type="password" placeholder="Enter key..." style="flex:1;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace"
+            onchange="saveSetting('gemini_api_key', this.value)">
+        </div>
+        <div class="setting-row">
+          <label>OpenAI / Codex API Key</label>
+          <input id="setting-codex-key" type="password" placeholder="Enter key..." style="flex:1;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace"
+            onchange="saveSetting('codex_api_key', this.value)">
+        </div>
       </div>
 
       <div class="settings-group">
@@ -915,6 +924,12 @@ build/**</textarea>
 
     async function loadState() {
       try {
+        // Check CLI credentials availability
+        try {
+          const credRes = await fetch('/api/cli-credentials');
+          window._cliCreds = await credRes.json();
+        } catch { window._cliCreds = { gemini: false, openai: false }; }
+
         const res = await fetch('/api/state');
         const data = await res.json();
         projectState = data.projects;
@@ -1014,8 +1029,8 @@ build/**</textarea>
             <button class="term-btn new-btn" title="New session">+</button>
             <div class="new-session-menu" style="display:none;position:absolute;top:100%;right:0;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:4px 0;z-index:100;min-width:120px;box-shadow:0 4px 12px rgba(0,0,0,0.3)">
               <div class="context-menu-item" data-cli="claude" style="padding:4px 12px;font-size:12px;cursor:pointer;color:var(--text-primary)"><span style="color:#e8a55d;font-weight:bold">C</span> Claude</div>
-              <div class="context-menu-item" data-cli="gemini" style="padding:4px 12px;font-size:12px;cursor:pointer;color:var(--text-primary)"><span style="color:#4285f4;font-weight:bold">G</span> Gemini</div>
-              <div class="context-menu-item" data-cli="codex" style="padding:4px 12px;font-size:12px;cursor:pointer;color:var(--text-primary)"><span style="color:#10a37f;font-weight:bold">X</span> Codex</div>
+              <div class="context-menu-item" data-cli="gemini" style="padding:4px 12px;font-size:12px;cursor:pointer;color:${window._cliCreds?.gemini === false ? 'var(--text-muted)' : 'var(--text-primary)'}">${window._cliCreds?.gemini === false ? '<span style="color:var(--text-muted)">G</span> Gemini (no API key)' : '<span style="color:#4285f4;font-weight:bold">G</span> Gemini'}</div>
+              <div class="context-menu-item" data-cli="codex" style="padding:4px 12px;font-size:12px;cursor:pointer;color:${window._cliCreds?.openai === false ? 'var(--text-muted)' : 'var(--text-primary)'}">${window._cliCreds?.openai === false ? '<span style="color:var(--text-muted)">X</span> Codex (no API key)' : '<span style="color:#10a37f;font-weight:bold">X</span> Codex'}</div>
               <div class="context-menu-divider" style="border-top:1px solid var(--border);margin:4px 0"></div>
               <div class="context-menu-item" data-cli="terminal" style="padding:4px 12px;font-size:12px;cursor:pointer;color:var(--text-primary)">&#9002; Terminal</div>
             </div>
@@ -1039,6 +1054,14 @@ build/**</textarea>
             e.stopPropagation();
             newMenu.style.display = 'none';
             const cli = item.dataset.cli;
+            if (cli === 'gemini' && !window._cliCreds?.gemini) {
+              alert('Gemini API key not configured. Go to Settings to add it.');
+              return;
+            }
+            if (cli === 'codex' && !window._cliCreds?.openai) {
+              alert('OpenAI API key not configured. Go to Settings to add it.');
+              return;
+            }
             if (cli === 'terminal') {
               openTerminal(project.name);
             } else {
@@ -3455,7 +3478,8 @@ build/**</textarea>
         if (s.theme) document.getElementById('setting-theme').value = s.theme;
         if (s.font_size) document.getElementById('setting-font-size').value = s.font_size;
         if (s.font_family) document.getElementById('setting-font-family').value = s.font_family;
-        // API key fields removed — CLIs manage their own credentials
+        if (s.gemini_api_key) document.getElementById('setting-gemini-key').value = s.gemini_api_key;
+        if (s.codex_api_key) document.getElementById('setting-codex-key').value = s.codex_api_key;
       } catch {}
       // Global CLAUDE.md now viewed via file tab (read-only) — no textarea to load
       loadMcpServers();
