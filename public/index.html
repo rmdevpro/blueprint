@@ -602,10 +602,18 @@
 
       <div class="settings-group">
         <h3>OAuth Detection</h3>
-        <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px">Detects OAuth URLs in CLI output and shows a clickable modal. Disable if OAuth flows are causing problems.</p>
+        <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px">Detects OAuth URLs in CLI output and shows a clickable modal. Disable per-CLI if OAuth flows are causing problems.</p>
         <div class="setting-row">
-          <label>Enable OAuth URL detection</label>
-          <input type="checkbox" id="setting-oauth-detection" onchange="oauthDetectionEnabled = this.checked; saveSetting('oauth_detection_enabled', this.checked)">
+          <label><span style="color:#e8a55d">C</span> Claude</label>
+          <input type="checkbox" id="setting-oauth-claude" checked onchange="oauthDetection.claude = this.checked; saveSetting('oauth_detection', oauthDetection)">
+        </div>
+        <div class="setting-row">
+          <label><span style="color:#4285f4">G</span> Gemini</label>
+          <input type="checkbox" id="setting-oauth-gemini" onchange="oauthDetection.gemini = this.checked; saveSetting('oauth_detection', oauthDetection)">
+        </div>
+        <div class="setting-row">
+          <label><span style="color:#10a37f">X</span> Codex</label>
+          <input type="checkbox" id="setting-oauth-codex" onchange="oauthDetection.codex = this.checked; saveSetting('oauth_detection', oauthDetection)">
         </div>
       </div>
       </div>
@@ -2804,17 +2812,21 @@ build/**</textarea>
     window.ptyOutputBuffer = ptyOutputBuffer; // expose for test instrumentation
 
     const OAUTH_URL_PATTERNS = [
-      { start: 'https://claude.com/cai/oauth/authorize?', endMarker: 'Paste' },
-      { start: 'https://accounts.google.com/o/oauth2/', endMarker: 'Enter the authorization code' },
-      { start: 'https://auth0.openai.com/', endMarker: 'code' },
+      { start: 'https://claude.com/cai/oauth/authorize?', endMarker: 'Paste', cli: 'claude' },
+      { start: 'https://accounts.google.com/o/oauth2/', endMarker: 'Enter the authorization code', cli: 'gemini' },
+      { start: 'https://auth0.openai.com/', endMarker: 'code', cli: 'codex' },
     ];
     const AUTH_ERROR_PATTERN = /OAuth token has expired|authentication_error|Not logged in/;
 
-    let oauthDetectionEnabled = false; // Off by default — OAuth flows are unreliable
+    // Per-CLI OAuth detection: Claude on by default, Gemini/Codex off
+    let oauthDetection = { claude: true, gemini: false, codex: false };
 
     function checkForAuthIssue(tabId, data) {
-      if (!oauthDetectionEnabled) return;
       if (authModalVisible) return;
+      // Check which CLI this tab belongs to
+      const tab = tabs.get(tabId);
+      const cliType = tab?.cli_type || 'claude';
+      if (!oauthDetection[cliType]) return;
 
       // Buffer recent output per tab for URL detection
       const buf = (ptyOutputBuffer.get(tabId) || '') + data;
@@ -3520,8 +3532,12 @@ build/**</textarea>
         document.getElementById('setting-thinking').value = s.thinking_level || 'none';
         document.getElementById('setting-keepalive-mode').value = s.keepalive_mode || 'always';
         document.getElementById('setting-idle-minutes').value = s.keepalive_idle_minutes || 30;
-        oauthDetectionEnabled = s.oauth_detection_enabled === true;
-        document.getElementById('setting-oauth-detection').checked = oauthDetectionEnabled;
+        if (s.oauth_detection) {
+          oauthDetection = { claude: true, gemini: false, codex: false, ...s.oauth_detection };
+        }
+        document.getElementById('setting-oauth-claude').checked = oauthDetection.claude;
+        document.getElementById('setting-oauth-gemini').checked = oauthDetection.gemini;
+        document.getElementById('setting-oauth-codex').checked = oauthDetection.codex;
         document.getElementById('setting-project-template').value = s.default_project_claude_md || '';
         if (s.theme) document.getElementById('setting-theme').value = s.theme;
         if (s.font_size) document.getElementById('setting-font-size').value = s.font_size;

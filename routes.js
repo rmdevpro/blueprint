@@ -1110,7 +1110,7 @@ function registerCoreRoutes(
       thinking_level: 'none',
       keepalive_mode: 'always',
       keepalive_idle_minutes: 30,
-      oauth_detection_enabled: false,
+      oauth_detection: { claude: true, gemini: false, codex: false },
       vector_embedding_provider: 'huggingface',
       vector_custom_url: '',
       vector_custom_key: '',
