@@ -201,8 +201,7 @@
     #task-filter-bar .task-filter { font-size:11px; padding:2px 8px; }
     .panel-home-btn { margin-left:auto; font-size:11px; color:var(--text-muted); background:none; border:1px solid var(--border); border-radius:4px; padding:1px 8px; cursor:pointer; }
     .panel-home-btn:hover { color:var(--text-primary); border-color:var(--text-muted); }
-    #task-filter-bar { position:sticky; top:0; z-index:2; background:var(--bg-secondary); padding-bottom:4px; }
-    #panel-files > div:first-child { position:sticky; top:0; z-index:2; background:var(--bg-secondary); padding-bottom:4px; }
+    #panel-header { display:flex; align-items:center; gap:4px; }
 
     #task-tree { overflow-y:auto; background:var(--bg-primary); border:1px solid var(--border); border-radius:6px; padding:4px; flex:1; min-height:0; }
     #task-tree ul { list-style:none; padding-left:20px; margin:0; }
@@ -521,6 +520,10 @@
     <div id="panel-header">
       <button class="panel-tab active" data-panel="files" onclick="switchPanel('files')">Files</button>
       <button class="panel-tab" data-panel="tasks" onclick="switchPanel('tasks')">Tasks</button>
+      <span style="flex:1"></span>
+      <button class="panel-home-btn" id="panel-home-files" onclick="autoNavigateFileTree()" title="Navigate to active session's directory">&#8962;</button>
+      <button class="panel-home-btn" id="panel-refresh-files" onclick="refreshFileTree()" title="Refresh file tree">&#8635;</button>
+      <button class="panel-home-btn" id="panel-home-tasks" onclick="autoNavigateTaskTree()" title="Navigate to active session's directory" style="display:none">&#8962;</button>
     </div>
     <div id="panel-content">
       <div id="panel-tasks" class="panel-section" style="display:none">
@@ -529,16 +532,11 @@
           <button class="filter-btn task-filter" data-task-filter="all" onclick="setTaskFilter('all')">All</button>
           <button class="filter-btn task-filter" data-task-filter="done" onclick="setTaskFilter('done')">Done</button>
           <button class="filter-btn task-filter" data-task-filter="archived" onclick="setTaskFilter('archived')">Archive</button>
-          <button class="panel-home-btn" onclick="autoNavigateTaskTree()" title="Navigate to active session's directory">&#8962; Home</button>
         </div>
         <div id="task-tree"></div>
       </div>
       <div id="panel-files" class="panel-section">
-        <div style="display:flex;align-items:center;margin-bottom:4px">
-          <input id="file-upload-input" type="file" multiple style="display:none" onchange="fileBrowserUpload(this.files)">
-          <button class="panel-home-btn" onclick="autoNavigateFileTree()" title="Navigate to active session's directory">&#8962; Home</button>
-          <button class="panel-home-btn" onclick="refreshFileTree()" title="Refresh file tree">&#8635;</button>
-        </div>
+        <input id="file-upload-input" type="file" multiple style="display:none" onchange="fileBrowserUpload(this.files)">
         <div id="file-browser-tree" style="overflow-y:auto;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:4px;flex:1;min-height:0"></div>
       </div>
     </div>
@@ -1827,6 +1825,10 @@ build/**</textarea>
       document.querySelectorAll('.panel-tab').forEach(b => b.classList.toggle('active', b.dataset.panel === panel));
       document.getElementById('panel-tasks').style.display = panel === 'tasks' ? '' : 'none';
       document.getElementById('panel-files').style.display = panel === 'files' ? '' : 'none';
+      // Show/hide header buttons based on active panel
+      document.getElementById('panel-home-files').style.display = panel === 'files' ? '' : 'none';
+      document.getElementById('panel-refresh-files').style.display = panel === 'files' ? '' : 'none';
+      document.getElementById('panel-home-tasks').style.display = panel === 'tasks' ? '' : 'none';
       loadPanelData();
     }
 
