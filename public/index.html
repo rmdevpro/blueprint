@@ -990,10 +990,20 @@ build/**</textarea>
       container.innerHTML = '';
 
       for (const project of projectState) {
-        // Show project if it has any sessions matching the current filter.
-        // Hidden projects (project-level state, not session state) are excluded from 'all' view.
+        // Filter projects by their own state AND by session states
         const projState = project.state || 'active';
+        // Skip projects that don't match the current filter
+        if (sessionFilter === 'active' && projState !== 'active') continue;
+        if (sessionFilter === 'archived' && projState !== 'archived') {
+          // In archived view, also show active projects that have archived sessions
+          const hasArchivedSessions = project.sessions.some(s => (s.state || (s.archived ? 'archived' : 'active')) === 'archived');
+          if (!hasArchivedSessions) continue;
+        }
         if (sessionFilter === 'all' && projState === 'hidden') continue;
+        if (sessionFilter === 'hidden' && projState !== 'hidden') {
+          const hasHiddenSessions = project.sessions.some(s => (s.state || 'active') === 'hidden');
+          if (!hasHiddenSessions) continue;
+        }
         const hasMatchingSessions = project.sessions.some(s => {
           const state = s.state || (s.archived ? 'archived' : 'active');
           if (sessionFilter === 'active') return state === 'active';
@@ -1002,9 +1012,6 @@ build/**</textarea>
           if (sessionFilter === 'hidden') return state === 'hidden';
           return true;
         });
-        // Always show projects in 'active' and 'all' views (even with 0 sessions)
-        // Only skip projects in 'archived'/'hidden' views if they have no matching sessions
-        if (!hasMatchingSessions && sessionFilter !== 'active' && sessionFilter !== 'all') continue;
 
         const group = document.createElement('div');
         group.className = 'project-group';
