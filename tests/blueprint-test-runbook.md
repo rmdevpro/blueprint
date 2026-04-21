@@ -3470,6 +3470,130 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 
 ---
 
+### REG-VOICE-01: Mic Button Removed
+**Issue:** Deepgram voice feature removed
+
+**Steps:**
+1. `browser_evaluate`: `document.getElementById('mic-btn') === null`
+
+**Expected:** No mic button in status bar.
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-OAUTH-01: Per-CLI OAuth Detection Settings
+**Issue:** OAuth detection configurable per CLI
+
+**Steps:**
+1. Open Settings modal
+2. `browser_evaluate`: Verify 3 checkboxes exist: `setting-oauth-claude`, `setting-oauth-gemini`, `setting-oauth-codex`
+3. Verify defaults: Claude checked, Gemini unchecked, Codex unchecked
+4. Toggle Gemini on, save, reload, verify persisted
+5. Toggle back off
+
+**Expected:**
+- Claude on by default
+- Gemini off by default
+- Codex off by default
+- Changes persist across page reload
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-MCP-01: MCP Registration for All 3 CLIs
+**Issue:** #135 — MCP tools not registered for Gemini/Codex
+
+**Steps:**
+1. `browser_evaluate`: `fetch('/api/file?path=/data/.gemini/settings.json').then(r=>r.text())` — check contains "blueprint"
+2. `browser_evaluate`: `fetch('/api/file?path=/data/.codex/config.toml').then(r=>r.text())` — check contains "blueprint"
+3. `browser_evaluate`: `fetch('/api/file?path=/data/.claude/settings.json').then(r=>r.text())` — check contains "blueprint"
+
+**Expected (ALL 3 CLIs):**
+- Claude: settings.json has blueprint MCP server
+- Gemini: settings.json has blueprint MCP server
+- Codex: config.toml has blueprint MCP server
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-HIDDEN-01: Hidden Session Flag
+**Issue:** #149 — Sub-sessions not auto-hiding
+
+**Steps:**
+1. Create session with hidden flag: `POST /api/sessions {project, cli_type:'claude', prompt:'hidden test', hidden:true}`
+2. Refresh sidebar
+3. Verify session does NOT appear in Active filter
+4. Switch filter to Hidden — verify session appears
+
+**Expected:**
+- Hidden sessions not visible in Active filter
+- Hidden sessions visible in Hidden filter
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-REFRESH-01: File Tree Refresh Button
+**Issue:** File tree needs refresh capability
+
+**Steps:**
+1. Open right panel → Files tab
+2. Verify refresh button (↻) exists next to Home button
+3. Create a file via API: `PUT /api/file?path=/data/workspace/test-refresh.txt`
+4. Click refresh button
+5. Expand workspace mount
+6. Verify new file appears in tree
+
+**Expected:**
+- Refresh button exists and is sticky (doesn't scroll away)
+- After clicking refresh, new files appear in tree
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-REFRESH-02: File Tree Poll-on-Focus
+**Issue:** File tree refreshes when panel is activated
+
+**Steps:**
+1. Open Files panel, note contents
+2. Switch to Tasks panel
+3. Create a file via API
+4. Switch back to Files panel
+5. Verify new file appears without clicking refresh
+
+**Expected:**
+- Switching to Files panel triggers automatic refresh
+- New files appear without manual action
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-FRESH-01: Fresh Install Works
+**Issue:** Fresh install with empty volume
+
+**Steps:**
+1. Wipe persistent volume completely
+2. Start container with empty volume
+3. `curl /health` — should return ok
+4. Navigate to UI — sidebar renders, empty state shown
+5. Create a project and session — works without errors
+6. All 3 CLI types can be created and connected
+
+**Expected:**
+- Health endpoint returns ok
+- No database errors (session_meta model column exists)
+- Workspace directory created with correct permissions (not root)
+- Entrypoint seeds docs, CLAUDE.md, GEMINI.md, AGENTS.md
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely Cause | Action |
