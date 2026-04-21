@@ -537,6 +537,7 @@
         <div style="display:flex;align-items:center;margin-bottom:4px">
           <input id="file-upload-input" type="file" multiple style="display:none" onchange="fileBrowserUpload(this.files)">
           <button class="panel-home-btn" onclick="autoNavigateFileTree()" title="Navigate to active session's directory">&#8962; Home</button>
+          <button class="panel-home-btn" onclick="refreshFileTree()" title="Refresh file tree">&#8635;</button>
         </div>
         <div id="file-browser-tree" style="overflow-y:auto;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;padding:4px;flex:1;min-height:0"></div>
       </div>
@@ -1806,7 +1807,12 @@ build/**</textarea>
 
     async function loadPanelData() {
       if (activePanel === 'files') {
-        loadFiles();
+        // First load initializes; subsequent panel switches refresh the tree
+        if (fileBrowserInitialized) {
+          refreshFileTree();
+        } else {
+          loadFiles();
+        }
         return;
       }
       if (activePanel === 'tasks') {
@@ -2478,6 +2484,11 @@ build/**</textarea>
 
     // File Browser
     let fileBrowserInitialized = false;
+
+    function refreshFileTree() {
+      fileBrowserInitialized = false;
+      loadFiles();
+    }
     function autoNavigateFileTree() {
       // Navigate file tree to active session's CWD
       const projPath = _getActiveProjectPath();
