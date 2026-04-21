@@ -21,7 +21,7 @@ const createSessionResolver = require('./session-resolver');
 const createWatchers = require('./watchers');
 const createWsTerminal = require('./ws-terminal');
 const registerCoreRoutes = require('./routes');
-const { handleVoiceConnection } = require('./voice');
+// Voice input (Deepgram) removed — feature disabled
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
@@ -99,7 +99,6 @@ const terminal = createWsTerminal({
 const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ noServer: true });
-const voiceWss = new WebSocketServer({ noServer: true });
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -218,13 +217,6 @@ function handleUpgrade(req, socket, head) {
     if (!match || !sessionTokens.has(match[1])) { socket.destroy(); return; }
   }
   const url = new URL(req.url, `http://${req.headers.host}`);
-
-  if (url.pathname === '/ws/voice') {
-    voiceWss.handleUpgrade(req, socket, head, (ws) => {
-      handleVoiceConnection(ws);
-    });
-    return;
-  }
 
   const match = url.pathname.match(/^\/ws\/(.+)$/);
   if (!match) {

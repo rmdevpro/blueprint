@@ -3038,7 +3038,6 @@ build/**</textarea>
           <span class="value">${pct.toFixed(0)}%</span>
         </span>
         <span class="status-item" style="margin-left:auto">
-          <button id="mic-btn" onclick="toggleVoice()" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);cursor:pointer;font-size:14px;padding:2px 6px;margin-right:8px" title="Voice input (Deepgram)">&#127908;</button>
           <span class="value">${tab.status}</span>
         </span>
       `;
@@ -3070,103 +3069,6 @@ build/**</textarea>
       pollTokenUsage();
     };
 
-
-    // ── Voice Input ──────────────────────────────────────────────────────────
-
-    let voiceWs = null;
-    let voiceStream = null;
-    let voiceRecorder = null;
-    let voiceActive = false;
-
-    async function toggleVoice() {
-      if (voiceActive) {
-        stopVoice();
-      } else {
-        await startVoice();
-      }
-    }
-
-    async function startVoice() {
-      if (!activeTabId || !tabs.has(activeTabId)) return;
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert('Microphone requires HTTPS. Access Blueprint via HTTPS or localhost to use voice input.');
-        return;
-      }
-      try {
-        voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      } catch (err) {
-        alert('Microphone access denied: ' + err.message);
-        return;
-      }
-
-      voiceActive = true;
-      updateMicButton();
-
-      const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProto}//${window.location.host}/ws/voice`;
-      voiceWs = new WebSocket(wsUrl);
-
-      voiceWs.onopen = () => {
-        // Start recording and streaming audio
-        voiceRecorder = new MediaRecorder(voiceStream, { mimeType: 'audio/webm;codecs=opus' });
-        voiceRecorder.ondataavailable = (e) => {
-          if (e.data.size > 0 && voiceWs.readyState === WebSocket.OPEN) {
-            voiceWs.send(e.data);
-          }
-        };
-        voiceRecorder.start(250); // send chunks every 250ms
-      };
-
-      voiceWs.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.type === 'transcript' && msg.speech_final && msg.text) {
-            // Send transcribed text to the active terminal
-            const tab = tabs.get(activeTabId);
-            if (tab && tab.ws && tab.ws.readyState === WebSocket.OPEN) {
-              tab.ws.send(msg.text);
-            }
-          }
-          if (msg.type === 'error') {
-            alert('Voice: ' + msg.message);
-            stopVoice();
-          }
-        } catch {}
-      };
-
-      voiceWs.onclose = () => {
-        stopVoice();
-      };
-
-      voiceWs.onerror = () => {
-        stopVoice();
-      };
-    }
-
-    function stopVoice() {
-      voiceActive = false;
-      if (voiceRecorder && voiceRecorder.state !== 'inactive') voiceRecorder.stop();
-      if (voiceStream) voiceStream.getTracks().forEach(t => t.stop());
-      if (voiceWs && voiceWs.readyState === WebSocket.OPEN) voiceWs.close();
-      voiceRecorder = null;
-      voiceStream = null;
-      voiceWs = null;
-      updateMicButton();
-    }
-
-    function updateMicButton() {
-      const btn = document.getElementById('mic-btn');
-      if (!btn) return;
-      if (voiceActive) {
-        btn.style.color = '#ff4444';
-        btn.style.borderColor = '#ff4444';
-        btn.title = 'Stop voice input';
-      } else {
-        btn.style.color = 'var(--text-muted)';
-        btn.style.borderColor = 'var(--border)';
-        btn.title = 'Voice input (Deepgram)';
-      }
-    }
 
     async function saveProjectTemplate() {
       await saveSetting('default_project_claude_md', document.getElementById('setting-project-template').value);
