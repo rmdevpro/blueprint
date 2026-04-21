@@ -857,7 +857,8 @@ function registerCoreRoutes(
         }
         if (cliType === 'codex') {
           const cliSessId = session?.cli_session_id;
-          resumeArgs = cliSessId ? ['resume', cliSessId] : ['resume', '--last'];
+          // Only resume if we have a valid session ID; otherwise launch fresh
+          resumeArgs = cliSessId ? ['resume', cliSessId] : [];
         }
         safe.tmuxCreateCLI(tmux, projectPath, cliType, resumeArgs);
         // Wait for CLI to start — resume with JSONL loading takes longer than fresh start
@@ -1427,7 +1428,7 @@ function registerCoreRoutes(
       }
       if (cliType === 'codex') {
         const cliSessId = session.cli_session_id;
-        restartArgs = cliSessId ? ['resume', cliSessId] : ['resume', '--last'];
+        restartArgs = cliSessId ? ['resume', cliSessId] : [];
       }
       safe.tmuxCreateCLI(tmux, cwd, cliType, restartArgs);
       res.json({ ok: true, sessionId, tmux });
