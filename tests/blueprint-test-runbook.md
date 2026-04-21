@@ -3058,138 +3058,120 @@ Tests for all fixes applied in the huggingface-space branch. Every test uses Pla
 
 ---
 
-### REG-126-01: Gemini Session Resume by Exact ID
+### REG-126-01: Session Resume by Exact ID — All 3 CLIs
 **Issue:** #126 — Gemini/Codex sessions show 0 messages and resume wrong conversation
-**Action:** Create a Gemini session, send a message, close the tab, reopen it.
+**Action:** For EACH CLI type (Claude, Gemini, Codex): create a session, send a message, close the tab, reopen it, verify it resumes.
 
-**Steps:**
-1. Create Gemini session: `browser_evaluate`: `fetch('/api/sessions', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({project:'PROJECT_NAME', cli_type:'gemini', prompt:'test resume gemini'})}).then(r=>r.json())`
+**Steps (repeat for Claude, Gemini, Codex):**
+1. Create session: `fetch('/api/sessions', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({project:'PROJECT_NAME', cli_type:'CLI_TYPE', prompt:'test resume CLI_TYPE'})}).then(r=>r.json())`
 2. `browser_wait` 5000
 3. Refresh sidebar: `browser_evaluate`: `loadState()`
 4. `browser_wait` 2000
-5. Click the Gemini session in sidebar to open tab
-6. `browser_wait` 3000
-7. `browser_evaluate`: `activeTabId && tabs.get(activeTabId)?.ws?.readyState` — should be 1
-8. `browser_screenshot` — capture Gemini session open
-9. Note the session ID: `browser_evaluate`: `activeTabId`
-10. Close the tab: click `.tab.active .tab-close`
-11. `browser_wait` 1000
-12. Click the same session again in sidebar to reopen
-13. `browser_wait` 5000
-14. `browser_evaluate`: `activeTabId && tabs.get(activeTabId)?.ws?.readyState` — should be 1
-15. `browser_screenshot` — capture resumed session
+5. Click the session in sidebar to open tab
+6. `browser_wait` 5000
+7. Send a message: `tabs.get(activeTabId).ws.send('hello from CLI_TYPE\r')`
+8. `browser_wait` 5000
+9. `browser_evaluate`: `activeTabId && tabs.get(activeTabId)?.ws?.readyState` — should be 1
+10. `browser_screenshot` — capture session with message
+11. Close the tab: click `.tab.active .tab-close`
+12. `browser_wait` 1000
+13. Click the same session again in sidebar to reopen
+14. `browser_wait` 5000
+15. `browser_evaluate`: `activeTabId && tabs.get(activeTabId)?.ws?.readyState` — should be 1
+16. Read terminal buffer — verify previous content or resume output is present
+17. `browser_screenshot` — capture resumed session
 
-**Expected:**
-- Gemini session opens with WebSocket connected
+**Expected (for ALL 3 CLIs):**
+- Session opens with WebSocket connected
+- Message is sent and received
 - After closing and reopening, session resumes (not a new blank session)
 - Terminal shows previous content or resume output
 
-**Result:** ☐ PASS ☐ FAIL ☐ SKIP
-
----
-
-### REG-126-02: Codex Session Resume by Exact ID
-**Issue:** #126
-**Action:** Same as REG-126-01 but with Codex.
-
-**Steps:**
-1. Create Codex session: `fetch('/api/sessions', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({project:'PROJECT_NAME', cli_type:'codex', prompt:'test resume codex'})}).then(r=>r.json())`
-2. `browser_wait` 5000
-3. Refresh sidebar, click Codex session to open tab
-4. `browser_wait` 3000
-5. Verify WebSocket connected
-6. `browser_screenshot`
-7. Close tab, reopen from sidebar
-8. `browser_wait` 5000
-9. Verify WebSocket connected again
-10. `browser_screenshot`
-
-**Expected:** Same as REG-126-01 but for Codex.
+**Failure Criteria:** All 3 CLI types must successfully resume. Failure for any one CLI is a test failure.
 
 **Result:** ☐ PASS ☐ FAIL ☐ SKIP
 
 ---
 
-### REG-126-03: Message Count Shows for Non-Claude Sessions
+### REG-126-02: Message Count Shows for All CLI Types
 **Issue:** #126
-**Action:** Check sidebar shows non-zero message count for Gemini/Codex sessions with history.
+**Action:** Check sidebar shows message count for Claude, Gemini, AND Codex sessions with history.
 
 **Steps:**
-1. `browser_evaluate`: `fetch('/api/state').then(r=>r.json()).then(d => d.projects.flatMap(p => p.sessions).filter(s => s.cli_type !== 'claude').map(s => ({id:s.id.substring(0,8), cli:s.cli_type, msgs:s.messageCount})))`
-2. `browser_screenshot` — sidebar showing non-Claude sessions with message counts
+1. `browser_evaluate`: `fetch('/api/state').then(r=>r.json()).then(d => d.projects.flatMap(p => p.sessions).map(s => ({id:s.id.substring(0,8), cli:s.cli_type, msgs:s.messageCount})))`
+2. `browser_screenshot` — sidebar showing sessions with message counts
+3. Verify at least one session of EACH CLI type (Claude, Gemini, Codex) has messageCount > 0
 
 **Expected:**
-- Non-Claude sessions with history show messageCount > 0
-- Sidebar badges display the count
+- Claude sessions with history show messageCount > 0
+- Gemini sessions with history show messageCount > 0
+- Codex sessions with history show messageCount > 0
+- Sidebar badges display the counts for all CLI types
 
 **Result:** ☐ PASS ☐ FAIL ☐ SKIP
 
 ---
 
-### REG-145-01: Status Bar Shows Correct Model for Gemini
+### REG-145-01: Status Bar Shows Correct Model — All 3 CLIs
 **Issue:** #145 — Wrong model shown for non-Claude sessions
 
-**Steps:**
-1. Click a Gemini session in sidebar to open it
+**Steps (repeat for Claude, Gemini, Codex):**
+1. Click a CLI_TYPE session tab
 2. `browser_wait` 3000
-3. `browser_evaluate`: `document.querySelector('#status-bar')?.innerHTML`
-4. `browser_evaluate`: Check model display: `document.querySelector('.status-item .value')?.textContent`
-5. `browser_screenshot` — status bar with Gemini model
+3. `browser_evaluate`: Read all status bar items (Model, Mode, Context)
+4. `browser_screenshot` — capture status bar for this CLI type
 
-**Expected:**
-- Status bar shows the Gemini model name (e.g., "gemini-3-flash-preview")
-- Does NOT show "claude-sonnet" or wrong model
+**Expected (for ALL 3 CLIs):**
+- Claude: Model shows "Sonnet", "Opus", or another Claude model name
+- Gemini: Model shows a Gemini model name (e.g., "3-flash-preview")
+- Codex: Model shows a GPT model name (e.g., "gpt-5.4")
+- No CLI shows the wrong model (e.g., Gemini must NOT show "Sonnet")
 
 **Result:** ☐ PASS ☐ FAIL ☐ SKIP
 
 ---
 
-### REG-145-02: Status Bar Shows Correct Model for Codex
-**Issue:** #145
-
-**Steps:**
-1. Click a Codex session in sidebar to open it
-2. `browser_wait` 3000
-3. `browser_evaluate`: `document.querySelector('#status-bar')?.innerHTML`
-4. `browser_screenshot` — status bar with Codex model
-
-**Expected:**
-- Status bar shows Codex/GPT model name (e.g., "gpt-5.4")
-- Does NOT show Claude model
-
-**Result:** ☐ PASS ☐ FAIL ☐ SKIP
-
----
-
-### REG-145-03: Status Bar Hides Thinking for Non-Claude
+### REG-145-02: Status Bar Hides Thinking for Non-Claude — Gemini AND Codex
 **Issue:** #119, #145
 
 **Steps:**
 1. Open a Gemini session tab
 2. `browser_wait` 3000
-3. `browser_evaluate`: Check if "Thinking" status item is hidden: `document.querySelector('#status-bar')?.textContent?.includes('Thinking')`
+3. `browser_evaluate`: Check if "Thinking" is in status bar text
 4. `browser_screenshot`
+5. Open a Codex session tab
+6. `browser_wait` 3000
+7. `browser_evaluate`: Check if "Thinking" is in status bar text
+8. `browser_screenshot`
+9. Open a Claude session tab
+10. `browser_wait` 3000
+11. `browser_evaluate`: Check if "Thinking" is in status bar text (may or may not be present — Claude is allowed to show it)
 
 **Expected:**
-- "Thinking" label is NOT shown for Gemini/Codex sessions (only for Claude)
+- Gemini: "Thinking" is NOT shown
+- Codex: "Thinking" is NOT shown
+- Claude: "Thinking" may or may not be shown (it's a Claude-only feature)
 
 **Result:** ☐ PASS ☐ FAIL ☐ SKIP
 
 ---
 
-### REG-146-01: Restart Dialog Shows Correct CLI Name
+### REG-146-01: Restart Dialog Shows Correct CLI Name — All 3 CLIs
 **Issue:** #146 — Restart dialog says "Claude" for all CLIs
 
-**Steps:**
-1. Open a Gemini session tab
-2. `browser_evaluate`: `document.querySelector('.tab.active .tab-name')?.textContent` — note session name
-3. Right-click or find restart button for the session
-4. `browser_evaluate`: Check restart dialog text does NOT say "Claude session will be preserved" for a Gemini session
-5. `browser_screenshot`
+**Steps (repeat for Claude, Gemini, Codex):**
+1. Find a CLI_TYPE session in sidebar
+2. `browser_hover` on the session item
+3. `browser_click` on the restart button (&#8635;)
+4. Capture the confirm dialog text (intercept via `page.on('dialog')`)
+5. Verify the dialog says the correct CLI name
+6. Dismiss the dialog (cancel — do not actually restart)
+7. `browser_screenshot`
 
-**Expected:**
-- Restart dialog says "Gemini session will be preserved" for Gemini
-- Says "Codex session will be preserved" for Codex
+**Expected (for ALL 3 CLIs):**
+- Claude: Dialog says "Claude session will be preserved"
+- Gemini: Dialog says "Gemini session will be preserved"
+- Codex: Dialog says "Codex session will be preserved"
 
 **Result:** ☐ PASS ☐ FAIL ☐ SKIP
 
@@ -3236,22 +3218,98 @@ After all 5 rounds:
 
 ---
 
-### REG-148-04: Dead Session Auto-Resume on Tab Switch
+### REG-148-04: Dead Session Auto-Resume — All 3 CLIs
 **Issue:** #148
 
-**Steps:**
-1. Open a session tab, note its tmux name
-2. Kill the tmux session via API: `fetch('/api/sessions/SESSION_ID/restart', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({project:'PROJECT_NAME'})})`
+**Steps (repeat for Claude, Gemini, Codex):**
+1. Open a CLI_TYPE session tab, note its tmux name
+2. Kill the tmux session server-side (via docker exec or restart API)
 3. `browser_wait` 5000
-4. Click the tab for the killed session
-5. `browser_wait` 3000
-6. `browser_evaluate`: `tabs.get(activeTabId)?.ws?.readyState` — should be 1 (reconnected)
+4. Switch to a different tab, then switch back to the killed session's tab
+5. `browser_wait` 5000
+6. Read terminal buffer — should show "Session disconnected. Attempting to resume (1/3)..."
+7. `browser_wait` 5000
+8. `browser_evaluate`: `tabs.get(activeTabId)?.ws?.readyState` — should be 1 (reconnected) or show "could not be resumed after 3 attempts"
+9. `browser_screenshot`
+
+**Expected (for ALL 3 CLIs):**
+- Dead session shows "Session disconnected. Attempting to resume..."
+- Resume attempts are numbered (1/3, 2/3, 3/3)
+- If CLI can restart: session auto-resumes, WebSocket reconnects
+- If CLI cannot restart: stops after 3 attempts with "Click the session in the sidebar to retry"
+- No infinite reconnect loop
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-TAB-01: Tab Bar CLI Icons — All 3 CLIs
+**Issue:** Parity verification for tab bar icons
+
+**Steps:**
+1. Open one Claude, one Gemini, one Codex session tab
+2. For each tab in the tab bar, read:
+   - `browser_evaluate`: The icon/logo element inside each `.tab` element
+   - Claude tab should have ✳ icon (orange #e8a55d)
+   - Gemini tab should have ◆ icon (blue #4285f4)
+   - Codex tab should have SVG square icon (green #10a37f)
+3. Verify tab name text is present next to each icon
+4. Verify close button (✕) is present on each tab
+5. `browser_screenshot` — tab bar showing all 3 CLI icons side by side
+
+**Expected (for ALL 3 CLIs):**
+- Each tab shows the correct CLI icon with correct color
+- No tab shows the wrong CLI's icon
+- Tab name and close button present on all tabs
+- Active tab has `.active` class, others do not
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-TAB-02: Rename Session Propagates to Tab — All 3 CLIs
+**Issue:** Parity verification for session rename
+
+**Steps (repeat for Claude, Gemini, Codex):**
+1. Open a CLI_TYPE session tab
+2. Note the current tab name: `browser_evaluate`: `document.querySelector('.tab.active .tab-name')?.textContent`
+3. Rename the session via the sidebar config dialog:
+   - `browser_hover` on the session item in sidebar
+   - `browser_click` on the rename/config button (✎)
+   - Clear the name field and type a new name: `renamed-CLI_TYPE-test`
+   - Click Save
+4. `browser_wait` 2000
+5. Verify the tab name updated: `browser_evaluate`: `document.querySelector('.tab.active .tab-name')?.textContent`
+6. Verify the sidebar session name updated
 7. `browser_screenshot`
 
-**Expected:**
-- Dead session shows "Session disconnected. Attempting to resume..."
-- Session auto-resumes
-- Terminal reconnects
+**Expected (for ALL 3 CLIs):**
+- Tab name updates to the new name immediately after rename
+- Sidebar session name updates to match
+- No stale name shown in either location
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-SIDEBAR-01: Session Item Display — All 3 CLIs
+**Issue:** Parity verification for sidebar session items
+
+**Steps (repeat for Claude, Gemini, Codex — verify at least one session of each type exists):**
+1. `browser_evaluate`: For each CLI type, find a session item in the sidebar and read:
+   - CLI icon/logo (✳ for Claude, ◆ for Gemini, SVG square for Codex)
+   - Session name text
+   - Message count badge
+   - Timestamp (e.g., "4h ago")
+   - Model name (e.g., "claude-opus-4-6", "gemini-3-flash-preview", "gpt-5.4")
+2. `browser_screenshot` — sidebar showing all 3 CLI types with metadata
+
+**Expected (for ALL 3 CLIs):**
+- Claude: ✳ icon (orange), model shows a Claude model, message count > 0, timestamp present
+- Gemini: ◆ icon (blue), model shows a Gemini model, message count > 0, timestamp present
+- Codex: SVG square icon (green), model shows a GPT model, message count > 0, timestamp present
+- Active sessions have bright icon color, inactive have dimmed color
+- No CLI type shows another CLI's icon or model
 
 **Result:** ☐ PASS ☐ FAIL ☐ SKIP
 
@@ -3286,19 +3344,44 @@ After all 5 rounds:
 
 ---
 
-### REG-119-01: Status Bar Model for All CLI Types
-**Issue:** #119 — Status bar model display
+### REG-119-01: Status Bar Context Updates After Chat — All 3 CLIs
+**Issue:** #119 — Status bar model/context display
+**Note:** Static model check is covered by REG-145-01. This test verifies the bar REACTS to changes.
 
-**Steps:**
-1. Open Claude session → `browser_evaluate`: status bar model value
-2. Open Gemini session → `browser_evaluate`: status bar model value
-3. Open Codex session → `browser_evaluate`: status bar model value
-4. `browser_screenshot` for each
+**Steps (repeat for Claude, Gemini, Codex):**
+1. Click CLI_TYPE session tab
+2. `browser_wait` 2000
+3. Read status bar context value (e.g., "17k / 200k 9%") — save as BEFORE
+4. Send a chat message: `tabs.get(activeTabId).ws.send('tell me a short joke\r')`
+5. `browser_wait` 10000 (wait for response)
+6. Read status bar context value again — save as AFTER
+7. `browser_screenshot`
 
-**Expected:**
-- Claude shows claude model (e.g., "claude-sonnet-4-6")
-- Gemini shows gemini model (e.g., "gemini-3-flash-preview")
-- Codex shows GPT model (e.g., "gpt-5.4")
+**Expected (for ALL 3 CLIs):**
+- Context value AFTER is greater than or equal to BEFORE (tokens increased)
+- Context percentage updated
+- For Claude: may show Thinking indicator during response
+
+**Failure Criteria:** If any CLI's context bar does not update after a chat message, the test fails.
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-119-02: Status Bar Mode Display — All 3 CLIs
+**Issue:** #119
+
+**Steps (repeat for Claude, Gemini, Codex):**
+1. Click CLI_TYPE session tab
+2. `browser_wait` 2000
+3. Read Mode value from status bar
+4. `browser_screenshot`
+
+**Expected (for ALL 3 CLIs):**
+- Claude: Shows mode (e.g., "bypass", "plan", "normal")
+- Gemini: Shows mode value (e.g., "bypass")
+- Codex: Shows mode value (e.g., "bypass")
+- Mode field is present and not empty for all 3
 
 **Result:** ☐ PASS ☐ FAIL ☐ SKIP
 
@@ -3343,20 +3426,23 @@ After all 5 rounds:
 
 ---
 
-### REG-138-03: Summary for Non-Claude Sessions
+### REG-138-03: Summary Generation — All 3 CLIs
 **Issue:** #138
 
-**Steps:**
-1. Find a Gemini session with messages
+**Steps (repeat for Claude, Gemini, Codex):**
+1. Find a CLI_TYPE session with messages in the sidebar
 2. `browser_hover` on that session item
-3. `browser_click` on summary button
-4. `browser_wait` 5000
+3. `browser_click` on the summary button (ⓘ)
+4. `browser_wait` 10000 (summary generation may take time)
 5. `browser_evaluate`: `document.querySelector('#summary-content')?.textContent`
 6. `browser_screenshot`
+7. Close the summary overlay
 
-**Expected:**
-- Summary generates without error for Gemini sessions
-- Returns either actual summary or "Empty session." (not a crash)
+**Expected (for ALL 3 CLIs):**
+- Summary generates without error
+- Returns either actual summary text (length > 10) or "Empty session."
+- No crash, no 500 error
+- Summary overlay opens and can be closed
 
 **Result:** ☐ PASS ☐ FAIL ☐ SKIP
 
