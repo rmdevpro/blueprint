@@ -201,6 +201,8 @@
     #task-filter-bar .task-filter { font-size:11px; padding:2px 8px; }
     .panel-home-btn { margin-left:auto; font-size:11px; color:var(--text-muted); background:none; border:1px solid var(--border); border-radius:4px; padding:1px 8px; cursor:pointer; }
     .panel-home-btn:hover { color:var(--text-primary); border-color:var(--text-muted); }
+    #task-filter-bar { position:sticky; top:0; z-index:2; background:var(--bg-secondary); padding-bottom:4px; }
+    #panel-files > div:first-child { position:sticky; top:0; z-index:2; background:var(--bg-secondary); padding-bottom:4px; }
 
     #task-tree { overflow-y:auto; background:var(--bg-primary); border:1px solid var(--border); border-radius:6px; padding:4px; flex:1; min-height:0; }
     #task-tree ul { list-style:none; padding-left:20px; margin:0; }
@@ -2244,6 +2246,7 @@ build/**</textarea>
       const dataExts = ['json','yaml','yml','toml','xml'];
       const webExts = ['css','scss','html','htm'];
       const mdExts = ['md','markdown','mdx'];
+      const textExts = ['txt','log','env','cfg','conf','ini','csv','tsv','gitignore','dockerignore','editorconfig','eslintrc','prettierrc'];
       const imageExts = ['png','jpg','jpeg','gif','svg','webp','ico','bmp'];
       const pdfExts = ['pdf'];
       if (mdExts.includes(ext)) return 'markdown';
@@ -2252,7 +2255,12 @@ build/**</textarea>
       if (codeExts.includes(ext)) return 'code';
       if (dataExts.includes(ext)) return 'data';
       if (webExts.includes(ext)) return 'web';
-      return 'text';
+      if (textExts.includes(ext)) return 'text';
+      // Files without a known extension — check if name suggests text
+      const name = path.split('/').pop();
+      if (['Makefile','Dockerfile','Vagrantfile','Gemfile','Rakefile','LICENSE','README','CLAUDE','GEMINI','AGENTS','CHANGELOG'].some(n => name.startsWith(n))) return 'text';
+      // Unknown type — open in browser tab instead of internal editor
+      return 'browser';
     }
 
     function getCMLanguage(path) {
@@ -2277,6 +2285,11 @@ build/**</textarea>
       }
 
       const editorType = getEditorType(filePath);
+      if (editorType === 'browser') {
+        // Unknown file type — open in browser tab
+        window.open('/api/file-raw?path=' + encodeURIComponent(filePath), '_blank');
+        return;
+      }
       const tabId = 'file-' + Date.now();
       const fileName = filePath.split('/').pop();
 
