@@ -118,7 +118,8 @@ db.exec(`
     file_size INTEGER NOT NULL,
     name TEXT,
     timestamp TEXT,
-    message_count INTEGER DEFAULT 0
+    message_count INTEGER DEFAULT 0,
+    model TEXT DEFAULT ''
   );
 
   CREATE TABLE IF NOT EXISTS tasks (
