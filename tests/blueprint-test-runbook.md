@@ -3052,6 +3052,378 @@ Quick pass/fail checklist for all 139 UI elements. Execute with `browser_evaluat
 
 ---
 
+## Phase 13: Regression Tests for Session Fixes (Issues #119-#150)
+
+Tests for all fixes applied in the huggingface-space branch. Every test uses Playwright MCP with full UI interaction. No curl-only testing.
+
+---
+
+### REG-126-01: Gemini Session Resume by Exact ID
+**Issue:** #126 — Gemini/Codex sessions show 0 messages and resume wrong conversation
+**Action:** Create a Gemini session, send a message, close the tab, reopen it.
+
+**Steps:**
+1. Create Gemini session: `browser_evaluate`: `fetch('/api/sessions', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({project:'PROJECT_NAME', cli_type:'gemini', prompt:'test resume gemini'})}).then(r=>r.json())`
+2. `browser_wait` 5000
+3. Refresh sidebar: `browser_evaluate`: `loadState()`
+4. `browser_wait` 2000
+5. Click the Gemini session in sidebar to open tab
+6. `browser_wait` 3000
+7. `browser_evaluate`: `activeTabId && tabs.get(activeTabId)?.ws?.readyState` — should be 1
+8. `browser_screenshot` — capture Gemini session open
+9. Note the session ID: `browser_evaluate`: `activeTabId`
+10. Close the tab: click `.tab.active .tab-close`
+11. `browser_wait` 1000
+12. Click the same session again in sidebar to reopen
+13. `browser_wait` 5000
+14. `browser_evaluate`: `activeTabId && tabs.get(activeTabId)?.ws?.readyState` — should be 1
+15. `browser_screenshot` — capture resumed session
+
+**Expected:**
+- Gemini session opens with WebSocket connected
+- After closing and reopening, session resumes (not a new blank session)
+- Terminal shows previous content or resume output
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-126-02: Codex Session Resume by Exact ID
+**Issue:** #126
+**Action:** Same as REG-126-01 but with Codex.
+
+**Steps:**
+1. Create Codex session: `fetch('/api/sessions', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({project:'PROJECT_NAME', cli_type:'codex', prompt:'test resume codex'})}).then(r=>r.json())`
+2. `browser_wait` 5000
+3. Refresh sidebar, click Codex session to open tab
+4. `browser_wait` 3000
+5. Verify WebSocket connected
+6. `browser_screenshot`
+7. Close tab, reopen from sidebar
+8. `browser_wait` 5000
+9. Verify WebSocket connected again
+10. `browser_screenshot`
+
+**Expected:** Same as REG-126-01 but for Codex.
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-126-03: Message Count Shows for Non-Claude Sessions
+**Issue:** #126
+**Action:** Check sidebar shows non-zero message count for Gemini/Codex sessions with history.
+
+**Steps:**
+1. `browser_evaluate`: `fetch('/api/state').then(r=>r.json()).then(d => d.projects.flatMap(p => p.sessions).filter(s => s.cli_type !== 'claude').map(s => ({id:s.id.substring(0,8), cli:s.cli_type, msgs:s.messageCount})))`
+2. `browser_screenshot` — sidebar showing non-Claude sessions with message counts
+
+**Expected:**
+- Non-Claude sessions with history show messageCount > 0
+- Sidebar badges display the count
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-145-01: Status Bar Shows Correct Model for Gemini
+**Issue:** #145 — Wrong model shown for non-Claude sessions
+
+**Steps:**
+1. Click a Gemini session in sidebar to open it
+2. `browser_wait` 3000
+3. `browser_evaluate`: `document.querySelector('#status-bar')?.innerHTML`
+4. `browser_evaluate`: Check model display: `document.querySelector('.status-item .value')?.textContent`
+5. `browser_screenshot` — status bar with Gemini model
+
+**Expected:**
+- Status bar shows the Gemini model name (e.g., "gemini-3-flash-preview")
+- Does NOT show "claude-sonnet" or wrong model
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-145-02: Status Bar Shows Correct Model for Codex
+**Issue:** #145
+
+**Steps:**
+1. Click a Codex session in sidebar to open it
+2. `browser_wait` 3000
+3. `browser_evaluate`: `document.querySelector('#status-bar')?.innerHTML`
+4. `browser_screenshot` — status bar with Codex model
+
+**Expected:**
+- Status bar shows Codex/GPT model name (e.g., "gpt-5.4")
+- Does NOT show Claude model
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-145-03: Status Bar Hides Thinking for Non-Claude
+**Issue:** #119, #145
+
+**Steps:**
+1. Open a Gemini session tab
+2. `browser_wait` 3000
+3. `browser_evaluate`: Check if "Thinking" status item is hidden: `document.querySelector('#status-bar')?.textContent?.includes('Thinking')`
+4. `browser_screenshot`
+
+**Expected:**
+- "Thinking" label is NOT shown for Gemini/Codex sessions (only for Claude)
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-146-01: Restart Dialog Shows Correct CLI Name
+**Issue:** #146 — Restart dialog says "Claude" for all CLIs
+
+**Steps:**
+1. Open a Gemini session tab
+2. `browser_evaluate`: `document.querySelector('.tab.active .tab-name')?.textContent` — note session name
+3. Right-click or find restart button for the session
+4. `browser_evaluate`: Check restart dialog text does NOT say "Claude session will be preserved" for a Gemini session
+5. `browser_screenshot`
+
+**Expected:**
+- Restart dialog says "Gemini session will be preserved" for Gemini
+- Says "Codex session will be preserved" for Codex
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-148-01: Tab Switching Between Claude and Gemini
+**Issue:** #148 — Tab switching blank screen
+
+**Steps:**
+1. Open a Claude session tab from sidebar
+2. `browser_wait` 3000
+3. `browser_evaluate`: `activeTabId` — save as TAB1
+4. `browser_evaluate`: `tabs.get(activeTabId)?.ws?.readyState` — should be 1
+5. Open a Gemini session tab from sidebar
+6. `browser_wait` 3000
+7. `browser_evaluate`: `activeTabId` — save as TAB2 (should differ from TAB1)
+8. `browser_evaluate`: `tabs.get(activeTabId)?.ws?.readyState` — should be 1
+9. Click TAB1: `browser_click` on `.tab:first-child`
+10. `browser_wait` 1000
+11. `browser_evaluate`: `activeTabId` — should be TAB1
+12. `browser_evaluate`: `document.querySelector('.terminal-pane.active canvas') !== null` — terminal visible
+13. `browser_screenshot` — capture Claude tab active
+14. Click TAB2: `browser_click` on `.tab:nth-child(2)`
+15. `browser_wait` 1000
+16. `browser_evaluate`: `activeTabId` — should be TAB2
+17. `browser_evaluate`: `document.querySelector('.terminal-pane.active canvas') !== null` — terminal visible
+18. `browser_screenshot` — capture Gemini tab active
+
+**Expected:**
+- Switching between Claude and Gemini tabs works
+- Terminal pane shows content for each (not blank)
+- Canvas element is visible in the active pane
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-148-02: Tab Switching Between Gemini and Codex
+**Issue:** #148
+
+**Steps:**
+1. Open a Gemini session tab
+2. `browser_wait` 3000
+3. Open a Codex session tab
+4. `browser_wait` 3000
+5. Rapidly switch between them 5 times:
+   ```
+   browser_click .tab:nth-child(1)
+   browser_wait 500
+   browser_click .tab:nth-child(2)
+   browser_wait 500
+   browser_click .tab:nth-child(1)
+   browser_wait 500
+   browser_click .tab:nth-child(2)
+   browser_wait 500
+   browser_click .tab:nth-child(1)
+   ```
+6. `browser_wait` 1000
+7. `browser_evaluate`: `document.querySelectorAll('.tab.active').length === 1` — exactly 1 active
+8. `browser_evaluate`: `document.querySelector('.terminal-pane.active canvas') !== null` — terminal visible
+9. `browser_screenshot`
+
+**Expected:**
+- Rapid switching between non-Claude tabs works without blank screens
+- Exactly 1 tab active at end
+- Terminal canvas visible
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-148-03: Tab Switching Three CLI Types
+**Issue:** #148
+
+**Steps:**
+1. Open one Claude, one Gemini, one Codex session tab (3 tabs total)
+2. `browser_wait` 3000
+3. `browser_evaluate`: `document.querySelectorAll('.tab').length >= 3`
+4. Click each tab in sequence: Claude → Gemini → Codex → Claude → Codex → Gemini
+5. After each click, wait 500ms then verify:
+   - `document.querySelectorAll('.tab.active').length === 1`
+   - `document.querySelector('.terminal-pane.active') !== null`
+6. `browser_screenshot` after final click
+
+**Expected:**
+- All three CLI types can be switched between freely
+- No blank screens, no errors
+- Terminal pane always shows content for active tab
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-148-04: Dead Session Auto-Resume on Tab Switch
+**Issue:** #148
+
+**Steps:**
+1. Open a session tab, note its tmux name
+2. Kill the tmux session via API: `fetch('/api/sessions/SESSION_ID/restart', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({project:'PROJECT_NAME'})})`
+3. `browser_wait` 5000
+4. Click the tab for the killed session
+5. `browser_wait` 3000
+6. `browser_evaluate`: `tabs.get(activeTabId)?.ws?.readyState` — should be 1 (reconnected)
+7. `browser_screenshot`
+
+**Expected:**
+- Dead session shows "Session disconnected. Attempting to resume..."
+- Session auto-resumes
+- Terminal reconnects
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-127-01: Favicon Present
+**Issue:** #127 — Favicon not showing
+
+**Steps:**
+1. `browser_evaluate`: `document.querySelector('link[rel="icon"]')?.href || document.querySelector('link[rel="shortcut icon"]')?.href`
+2. `browser_evaluate`: `fetch(document.querySelector('link[rel="icon"]')?.href || '/favicon.ico').then(r=>r.status)`
+
+**Expected:**
+- Favicon link element exists in DOM
+- Favicon URL returns 200
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-129-01: Sidebar Refresh Rate
+**Issue:** #129 — Sidebar refresh too slow (30s → 10s)
+
+**Steps:**
+1. `browser_evaluate`: `typeof REFRESH_MS !== 'undefined' ? REFRESH_MS : 'not found'`
+2. If not a global, check via source: `browser_evaluate`: `document.querySelector('script')?.textContent?.match(/REFRESH_MS\s*=\s*(\d+)/)?.[1]`
+
+**Expected:**
+- REFRESH_MS is 10000 (10 seconds), not 30000
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-119-01: Status Bar Model for All CLI Types
+**Issue:** #119 — Status bar model display
+
+**Steps:**
+1. Open Claude session → `browser_evaluate`: status bar model value
+2. Open Gemini session → `browser_evaluate`: status bar model value
+3. Open Codex session → `browser_evaluate`: status bar model value
+4. `browser_screenshot` for each
+
+**Expected:**
+- Claude shows claude model (e.g., "claude-sonnet-4-6")
+- Gemini shows gemini model (e.g., "gemini-3-flash-preview")
+- Codex shows GPT model (e.g., "gpt-5.4")
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-138-01: Search Returns Non-Claude Sessions
+**Issue:** #138 — searchSessions Claude-only
+
+**Steps:**
+1. `browser_type` into `#session-search`: a term that appears in Gemini/Codex session names
+2. `browser_wait` 1000
+3. `browser_evaluate`: `document.querySelectorAll('.session-item').length`
+4. `browser_evaluate`: Check if any results have non-Claude type indicators
+5. `browser_screenshot`
+6. Clear search
+
+**Expected:**
+- Search results include Gemini and Codex sessions matching the query
+- CLI type indicators (G/X) visible in results
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-138-02: Token Usage for Non-Claude Sessions
+**Issue:** #138
+
+**Steps:**
+1. Open a Gemini session tab
+2. `browser_wait` 3000
+3. `browser_evaluate`: `fetch('/api/sessions/' + activeTabId + '/tokens?project=PROJECT_NAME').then(r=>r.json())`
+4. Open a Codex session tab
+5. `browser_wait` 3000
+6. `browser_evaluate`: `fetch('/api/sessions/' + activeTabId + '/tokens?project=PROJECT_NAME').then(r=>r.json())`
+
+**Expected:**
+- Gemini returns `max_tokens: 1000000` (not 200000)
+- Codex returns `max_tokens: 200000`
+- Neither returns an error
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-138-03: Summary for Non-Claude Sessions
+**Issue:** #138
+
+**Steps:**
+1. Find a Gemini session with messages
+2. `browser_hover` on that session item
+3. `browser_click` on summary button
+4. `browser_wait` 5000
+5. `browser_evaluate`: `document.querySelector('#summary-content')?.textContent`
+6. `browser_screenshot`
+
+**Expected:**
+- Summary generates without error for Gemini sessions
+- Returns either actual summary or "Empty session." (not a crash)
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### REG-150-01: Docker Compose Ships Generic Paths
+**Issue:** #150
+
+**Steps:**
+1. Read docker-compose.yml: `browser_evaluate`: `fetch('/api/file?path=/app/docker-compose.yml').then(r=>r.text()).catch(()=>'not found')`
+2. Verify it does NOT contain site-specific mount paths
+
+**Expected:**
+- docker-compose.yml has generic paths like `/path/to/your/data:/data`
+- Does NOT have `/mnt/workspace/blueprint:/data`
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely Cause | Action |
