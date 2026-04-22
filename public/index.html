@@ -1365,7 +1365,8 @@ build/**</textarea>
       if (tab && tab.type === 'file') {
         if (tab.editor && tab.editor.focus) tab.editor.focus();
       } else if (tab && tab.fitAddon) {
-        setTimeout(() => { const t = tabs.get(tabId); if (t?.fitAddon) t.fitAddon.fit(); }, 10);
+        setTimeout(() => { const t = tabs.get(tabId); if (t?.fitAddon) t.fitAddon.fit(); }, 50);
+        setTimeout(() => { const t = tabs.get(tabId); if (t?.fitAddon) t.fitAddon.fit(); }, 300);
         tab.term.focus();
       }
 
