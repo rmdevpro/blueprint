@@ -3,3 +3,11 @@ node_modules/
 .playwright-mcp/
 *.png
 docker-compose.override.yml
+
+# Local junk that shouldn't be tracked.
+# AGENTS.md / CLAUDE.md / GEMINI.md are intentionally NOT here — those are
+# managed by the CLIs themselves; defer to the tool's default behavior.
+.mcp.json
+hello.py
+test-runbook.txt
+agentic-workbench
