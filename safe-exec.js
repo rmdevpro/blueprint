@@ -258,7 +258,12 @@ function curlFetchAsync(url) {
 }
 
 function findSessionsDir(projectPath) {
-  const encoded = projectPath.replace(/\//g, '-');
+  // Claude Code's projects-subdir encoding replaces BOTH '/' AND '_' with '-'.
+  // Replacing only '/' produces a path that doesn't exist for any project whose
+  // path contains an underscore (e.g. /data/workspace/repos/agentic_workbench
+  // → -data-workspace-repos-agentic-workbench, with hyphen, not underscore).
+  // Watchers / session-meta lookups would silently miss the JSONL otherwise.
+  const encoded = projectPath.replace(/[\/_]/g, '-');
   return join(CLAUDE_HOME, 'projects', encoded);
 }
 
