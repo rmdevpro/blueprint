@@ -28,8 +28,7 @@ const registerCoreRoutes = require('./routes');
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const CLAUDE_HOME = safe.CLAUDE_HOME;
 const WORKSPACE = safe.WORKSPACE;
-const MAX_TMUX_SESSIONS = parseInt(process.env.MAX_TMUX_SESSIONS || '10', 10);
-const TMUX_CLEANUP_DELAY = parseInt(process.env.TMUX_CLEANUP_MINUTES || '30', 10) * 60 * 1000;
+// Tmux lifecycle thresholds now live in config/defaults.json under "tmux.*".
 
 // ── Global error handlers ───────────────────────────────────────────────────
 
@@ -52,7 +51,7 @@ process.on('unhandledRejection', (reason) => {
 
 const keepalive = createKeepalive({ safe, config, logger });
 
-const tmux = createTmuxLifecycle({ safe, MAX_TMUX_SESSIONS, TMUX_CLEANUP_DELAY, logger });
+const tmux = createTmuxLifecycle({ safe, config, logger });
 
 const resolver = createSessionResolver({
   db,

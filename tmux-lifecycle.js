@@ -6,8 +6,7 @@ const crypto = require('crypto');
 
 module.exports = function createTmuxLifecycle({
   safe,
-  MAX_TMUX_SESSIONS,
-  TMUX_CLEANUP_DELAY,
+  config,
   logger,
 }) {
   // Track which sessions have an active browser tab (WebSocket connection)
@@ -15,9 +14,13 @@ module.exports = function createTmuxLifecycle({
   let _onSessionKilled = null;
   let _scanInterval = null;
 
-  const IDLE_WITH_TAB_MS = 8 * 60 * 60 * 1000;     // 8 hours if tab open
-  const IDLE_WITHOUT_TAB_MS = 2 * 60 * 60 * 1000;   // 2 hours if tab closed
-  const SCAN_INTERVAL_MS = 60 * 1000;                // check every 60 seconds
+  // All tmux lifecycle knobs come from config/defaults.json ("tmux.*"). No
+  // hardcoded fallbacks here — if the key is missing, config.get() supplies
+  // the documented default.
+  const IDLE_WITH_TAB_MS = config.get('tmux.idleWithTabDays', 99999) * 24 * 60 * 60 * 1000;
+  const IDLE_WITHOUT_TAB_MS = config.get('tmux.idleWithoutTabDays', 4) * 24 * 60 * 60 * 1000;
+  const SCAN_INTERVAL_MS = config.get('tmux.scanIntervalSeconds', 60) * 1000;
+  const MAX_TMUX_SESSIONS = config.get('tmux.maxSessions', 10);
 
   function tmuxName(sessionId) {
     // Deterministic suffix from session ID to prevent collisions while remaining predictable

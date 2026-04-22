@@ -15,7 +15,10 @@
     "fallbackIntervalMin": 30
   },
   "tmux": {
-    "maxSessions": 50,
+    "maxSessions": 10,
+    "idleWithTabDays": 99999,
+    "idleWithoutTabDays": 4,
+    "scanIntervalSeconds": 60,
     "windowWidth": 200,
     "windowHeight": 50
   }
