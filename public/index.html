@@ -1500,12 +1500,22 @@ build/**</textarea>
         renderTabs();
         updateStatusBar();
 
-        // Send initial size
+        // Send initial size — fit multiple times as layout settles
         tab.fitAddon.fit();
         const dims = tab.fitAddon.proposeDimensions();
         if (dims) {
           ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
         }
+        // Refit after layout fully settles (fixes tiny terminal on reopen)
+        setTimeout(() => {
+          if (tabs.has(tabId)) {
+            tab.fitAddon.fit();
+            const d = tab.fitAddon.proposeDimensions();
+            if (d && tab.ws?.readyState === WebSocket.OPEN) {
+              tab.ws.send(JSON.stringify({ type: 'resize', cols: d.cols, rows: d.rows }));
+            }
+          }
+        }, 500);
 
         // Wire terminal input
         if (tab.dataDisposable) tab.dataDisposable.dispose();
