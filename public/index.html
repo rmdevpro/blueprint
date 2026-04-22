@@ -1850,7 +1850,12 @@ build/**</textarea>
 
     async function loadPanelData() {
       if (activePanel === 'files') {
-        loadFiles();
+        // First load initializes; subsequent panel switches refresh the tree
+        if (fileBrowserInitialized) {
+          refreshFileTree();
+        } else {
+          loadFiles();
+        }
         return;
       }
       if (activePanel === 'tasks') {
