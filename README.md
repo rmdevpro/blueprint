@@ -84,6 +84,10 @@ All tunables are externalized in `.env` (see `.env.example` for complete list) a
 
 `config.js` loads `defaults.json` synchronously at startup (fail-fast on corrupt JSON per ERQ-001 §6.4) and caches in memory. A `fs.watchFile` listener asynchronously updates the cache on file changes. Prompt templates are similarly cached and watched. `config.get()` and `config.getPrompt()` never perform blocking I/O during request processing.
 
+### Logo Variant (dev/prod safety affordance)
+
+Six logos ship in `public/`: the canonical `logo-blue.png`/`logo-white.png` plus warning variants `dev-blue.png`/`dev-white.png` (green, "Dev") and `pro-blue.png`/`pro-white.png` (red, "Pro"). Which pair renders is driven by the DB-backed `logo_variant` setting (values: `default`, `development`, `production`) and resolved inside `applyTheme()` in `public/index.html`. There is intentionally no UI — swap it per deployment via `PUT /api/settings` or by editing the settings row directly.
+
 ## Input Validation
 
 All API endpoints validate inputs:

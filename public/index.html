@@ -65,7 +65,7 @@
       justify-content: space-between;
     }
 
-    .sidebar-logo { height: 28px; width: auto; }
+    .sidebar-logo { height: 48px; width: auto; }
     .logo-light { display: none; }
     .logo-dark { display: block; }
 
@@ -472,8 +472,8 @@
 
   <div id="sidebar">
     <div id="sidebar-header">
-      <img src="/logo-white.png" alt="Blueprint" class="sidebar-logo logo-dark" height="28">
-      <img src="/logo-blue.png" alt="Blueprint" class="sidebar-logo logo-light" height="28">
+      <img src="/logo-white.png" alt="Blueprint" class="sidebar-logo logo-dark" height="48">
+      <img src="/logo-blue.png" alt="Blueprint" class="sidebar-logo logo-light" height="48">
       <div style="display:flex;gap:4px">
         <button onclick="addProject()" title="Add Project">+</button>
         <button onclick="loadState()" title="Refresh">&#x21bb;</button>
@@ -3329,10 +3329,18 @@ build/**</textarea>
         tab.term.options.theme = config.term;
       }
 
-      // Toggle sidebar logo for theme
+      // Toggle sidebar logo for theme + apply variant (default / development / production)
       const isDark = theme === 'dark' || theme === 'blueprint-dark';
-      document.querySelectorAll('.logo-dark').forEach(el => el.style.display = isDark ? 'block' : 'none');
-      document.querySelectorAll('.logo-light').forEach(el => el.style.display = isDark ? 'none' : 'block');
+      const variant = db_getSetting('logo_variant') || 'default';
+      const prefix = variant === 'development' ? 'dev' : variant === 'production' ? 'pro' : 'logo';
+      document.querySelectorAll('.logo-dark').forEach(el => {
+        el.src = `/${prefix}-white.png`;
+        el.style.display = isDark ? 'block' : 'none';
+      });
+      document.querySelectorAll('.logo-light').forEach(el => {
+        el.src = `/${prefix}-blue.png`;
+        el.style.display = isDark ? 'none' : 'block';
+      });
     }
 
     function applyFontSize(size) {
