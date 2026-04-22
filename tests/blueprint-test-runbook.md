@@ -23,7 +23,7 @@ Executed by an AI agent using Playwright MCP against the HF Space. Output is a p
 | **Total** | **~145** | |
 
 ## Meta
-- **Target:** https://aristotle9-blueprint.hf.space (HF public Space with password auth)
+- **Target:** https://aristotle9-agentic-workbench.hf.space (HF public Space with password auth)
 - **Login:** username `testuser`, password `testpass123` via gate login form
 - **Tool:** Playwright MCP (local, NOT Malory)
 - **Branch:** huggingface-space
@@ -139,7 +139,7 @@ When a test fails:
 
 Before starting, verify all of the following:
 
-1. **HF Space running:** `browser_navigate` to `https://aristotle9-blueprint.hf.space` loads the gate page
+1. **HF Space running:** `browser_navigate` to `https://aristotle9-agentic-workbench.hf.space` loads the gate page
 2. **Login:** Fill username `testuser`, password `testpass123`, click Sign In
 3. **API reachable:** `browser_evaluate` with `fetch('/health').then(r=>r.json())` returns `{status:'ok'}`
 4. **Baseline state:** Create a test project if none exists. Do NOT delete sessions (AD-004: deleteSession is permanently disabled). Instead, create fresh test sessions with unique names and archive them after.
@@ -182,7 +182,7 @@ These 3 tests validate that the app is functional. If any fail, stop and investi
 **Priority:** P0
 
 **Steps:**
-1. `browser_navigate` to `https://aristotle9-blueprint.hf.space` (login first if gate page shown)
+1. `browser_navigate` to `https://aristotle9-agentic-workbench.hf.space` (login first if gate page shown)
 2. `browser_screenshot` to capture initial load
 3. `browser_evaluate`: `document.title`
 4. `browser_evaluate`: `document.querySelector('#sidebar') !== null`
@@ -2069,7 +2069,7 @@ For each test below, use the standardized terminal I/O pattern:
 **Priority:** P0
 
 **Steps:**
-1. **Fresh start:** `browser_navigate` to `https://aristotle9-blueprint.hf.space`
+1. **Fresh start:** `browser_navigate` to `https://aristotle9-agentic-workbench.hf.space`
 2. **Verify projects load:** `browser_evaluate`: `document.querySelectorAll('.project-group').length > 0` -- assert true
 3. **Get project name:** `browser_evaluate`: `fetch('/api/state').then(r=>r.json()).then(d=>d.projects[0].name)` -- save as PROJECT_NAME
 4. **Create new session:**
@@ -3052,7 +3052,7 @@ Quick pass/fail checklist for all 139 UI elements. Execute with `browser_evaluat
 - **Timeouts:** CLI tests with Claude responses: 15-30s. UI-only tests: 1-3s.
 - **Flaky tests:** Retry once with doubled waits before marking FAIL.
 - **Screenshots:** Minimum: SMOKE-01, every FAIL, E2E-01 key steps.
-- **API Base:** `fetch()` in `browser_evaluate` uses relative paths. Direct HTTP uses `https://aristotle9-blueprint.hf.space/api/`.
+- **API Base:** `fetch()` in `browser_evaluate` uses relative paths. Direct HTTP uses `https://aristotle9-agentic-workbench.hf.space/api/`.
 
 ---
 

@@ -1,7 +1,7 @@
 # Gate C Browser Acceptance Test Results v2
 
 **Date:** 2026-04-19  
-**Target:** https://aristotle9-blueprint.hf.space  
+**Target:** https://aristotle9-agentic-workbench.hf.space  
 **Tool:** Playwright MCP  
 **Branch:** huggingface-space  
 **Tester:** Claude Code (automated)  

@@ -6,7 +6,7 @@
 **Application:** Blueprint -- Agentic Workbench managing Claude/Gemini/Codex CLI sessions in tmux/Docker
 **Scope:** UI/Browser testing (Gate C). Comprehensive coverage of every DOM element, every user interaction, every JS function, every terminal-mediated CLI function category.
 **Tool:** Playwright (Chromium), headless
-**Base URL:** `https://aristotle9-blueprint.hf.space` (HF Space with password auth)
+**Base URL:** `https://aristotle9-agentic-workbench.hf.space` (HF Space with password auth)
 **Container user:** `blueprint` (UID 1000)
 **Workspace:** `/home/blueprint/workspace`
 **Synthesized from:** Claude, Gemini, Grok, GPT independent UI test plans
@@ -81,7 +81,7 @@ Inherited from existing test plan. Gate C does not run until Gates A (mock/unit)
 ### 1.3 Environment Readiness
 
 - Fresh test container rebuilt from scratch (§4)
-- App reachable at `https://aristotle9-blueprint.hf.space`
+- App reachable at `https://aristotle9-agentic-workbench.hf.space`
 - `/health` returns healthy (or known auth-degraded state)
 - Seed project(s) and sessions available
 - Claude CLI and tmux available in container
@@ -164,7 +164,7 @@ Tests run against the `blueprint-test` container on port 7867. Separate Docker C
 - Timeout: 60s per test, 30s for element waits
 - Screenshots: on
 - Trace: retained on failure
-- Base URL: `https://aristotle9-blueprint.hf.space`
+- Base URL: `https://aristotle9-agentic-workbench.hf.space`
 - Per-project timeout configuration: stress suite uses 5x timeout multiplier
 
 ### 3.3 Test Fixtures
