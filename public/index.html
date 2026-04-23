@@ -941,6 +941,19 @@ build/**</textarea>
         orphanPanes: [...document.querySelectorAll('#terminal-area .terminal-pane')]
           .filter(p => ![...tabs.values()].some(t => t.paneEl === p))
           .map(p => p.id),
+        // Orphan xterm/canvas elements — a canvas that's not inside any
+        // known paneEl is a zombie renderer from a closed tab that still
+        // ticks (cursorBlink etc.), surfacing as "dots" or ghost content
+        // over other UI panels.
+        orphanCanvases: [...document.querySelectorAll('.xterm, canvas')]
+          .filter(c => !c.closest('.terminal-pane'))
+          .map(c => ({
+            tag: c.tagName, cls: c.className,
+            parentId: c.parentElement?.id || c.parentElement?.className || '?',
+            rect: c.getBoundingClientRect && c.getBoundingClientRect().width > 0
+              ? `${Math.round(c.getBoundingClientRect().width)}x${Math.round(c.getBoundingClientRect().height)}`
+              : 'zero',
+          })),
       };
       // eslint-disable-next-line no-console
       console.log('[tab-dbg]', event, extra || {}, snapshot);
