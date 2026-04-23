@@ -903,6 +903,39 @@ build/**</textarea>
     let _settingsCache = {};
     function db_getSetting(key) { return _settingsCache[key] || null; }
 
+    // ── Tab-switch debug instrumentation (issue #161) ──────────────────
+    // Gated on: localStorage.DEBUG_TAB_SWITCHING === '1'  OR  URL ?debug=tabs
+    // Off by default so normal use stays quiet. Turn on in the browser console
+    // with: localStorage.DEBUG_TAB_SWITCHING='1'  then reload.
+    window.DEBUG_TAB_SWITCHING = (
+      localStorage.getItem('DEBUG_TAB_SWITCHING') === '1' ||
+      new URLSearchParams(location.search).get('debug') === 'tabs'
+    );
+    function tabDbg(event, extra) {
+      if (!window.DEBUG_TAB_SWITCHING) return;
+      const snapshot = {
+        activeTabId,
+        tabCount: tabs.size,
+        tabs: [...tabs.entries()].map(([id, t]) => ({
+          id,
+          type: t.type,
+          cli: t.cli_type || null,
+          paneEl: t.paneEl?.id || null,
+          paneActive: t.paneEl?.classList.contains('active') || false,
+          paneInDom: t.paneEl ? document.body.contains(t.paneEl) : false,
+          tmux: t.tmux || null,
+          wsState: t.ws ? ['CONNECTING','OPEN','CLOSING','CLOSED'][t.ws.readyState] : 'NONE',
+          status: t.status || null,
+        })),
+        panesInDom: [...document.querySelectorAll('#terminal-area .terminal-pane')].map(p => ({
+          id: p.id,
+          active: p.classList.contains('active'),
+        })),
+      };
+      // eslint-disable-next-line no-console
+      console.log('[tab-dbg]', event, extra || {}, snapshot);
+    }
+
     function setFilter(filter) {
       sessionFilter = filter;
       renderSidebar();
@@ -1353,11 +1386,22 @@ build/**</textarea>
     }
 
     function switchTab(tabId) {
+      const prevActive = activeTabId;
+      tabDbg('switchTab:enter', { fromTabId: prevActive, toTabId: tabId, targetExists: tabs.has(tabId) });
       activeTabId = tabId;
 
       // Hide all panes, show active
       for (const [id, tab] of tabs) {
-        tab.paneEl.classList.toggle('active', id === tabId);
+        const shouldBeActive = id === tabId;
+        if (!tab.paneEl) {
+          tabDbg('switchTab:missing-paneEl', { id, shouldBeActive });
+          continue;
+        }
+        const wasActive = tab.paneEl.classList.contains('active');
+        tab.paneEl.classList.toggle('active', shouldBeActive);
+        if (wasActive !== shouldBeActive) {
+          tabDbg('switchTab:pane-toggle', { id, paneElId: tab.paneEl.id, wasActive, isActive: shouldBeActive });
+        }
       }
 
       // Fit the active terminal
@@ -1372,12 +1416,14 @@ build/**</textarea>
 
       renderTabs();
       renderSidebar();
+      tabDbg('switchTab:exit', { fromTabId: prevActive, toTabId: tabId });
       // Home button is manual — no auto-trigger on tab switch
     }
 
     function closeTab(tabId) {
       const tab = tabs.get(tabId);
       if (!tab) return;
+      tabDbg('closeTab:enter', { tabId });
 
       if (tab.type === 'file') {
         if (tab.dirty && !confirm(`${tab.name} has unsaved changes. Close anyway?`)) return;
@@ -1494,6 +1540,7 @@ build/**</textarea>
 
       tab.status = 'connecting';
       renderTabs();
+      tabDbg('connectTab:opening', { tabId, tmux: tab.tmux });
 
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const ws = new WebSocket(`${proto}//${location.host}/ws/${tab.tmux}`);
@@ -1501,6 +1548,7 @@ build/**</textarea>
       tab.ws = ws;
 
       ws.onopen = () => {
+        tabDbg('ws:open', { tabId, tmux: tab.tmux });
         tab.status = 'connected';
         tab.reconnectDelay = 1000;
         tab._resumeAttempts = 0;
@@ -1613,7 +1661,8 @@ build/**</textarea>
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
+        tabDbg('ws:close', { tabId, tmux: tab.tmux, code: ev.code, reason: ev.reason, wasClean: ev.wasClean, noReconnect: !!tab.noReconnect });
         tab.status = 'disconnected';
         if (tab.heartbeat) { clearInterval(tab.heartbeat); tab.heartbeat = null; }
         renderTabs();
@@ -1627,7 +1676,7 @@ build/**</textarea>
         }
       };
 
-      ws.onerror = () => { tab.status = 'disconnected'; renderTabs(); };
+      ws.onerror = (ev) => { tabDbg('ws:error', { tabId, tmux: tab.tmux }); tab.status = 'disconnected'; renderTabs(); };
     }
 
     // ── Rename / Delete ──────────────────────────────

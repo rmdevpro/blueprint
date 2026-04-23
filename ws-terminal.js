@@ -23,10 +23,17 @@ module.exports = function createWsTerminal({
   const pingIntervalMs = config ? config.get('ws.pingIntervalMs', 30000) : 30000;
   const ptySpawn = spawnPty || ptyDefault.spawn;
 
+  function dbgTab(event, extra) {
+    if (!(config && config.get('debug.tabSwitching', false))) return;
+    logger.info(`[tab-dbg] ${event}`, { module: 'ws-terminal', ...extra, mapSize: sessionWsClients.size, mapKeys: [...sessionWsClients.keys()] });
+  }
+
   async function handleTerminalConnection(ws, tmuxSession) {
     tmuxSession = safe.sanitizeTmuxName(tmuxSession);
+    dbgTab('connect:enter', { tmuxSession });
 
     if (!(await tmuxExists(tmuxSession))) {
+      dbgTab('connect:no-tmux-session', { tmuxSession });
       ws.send(JSON.stringify({ type: 'error', message: `No tmux session: ${tmuxSession}` }));
       ws.close();
       return;
@@ -66,7 +73,9 @@ module.exports = function createWsTerminal({
       browsers: browserCount,
     });
 
+    const prevWs = sessionWsClients.get(tmuxSession);
     sessionWsClients.set(tmuxSession, ws);
+    dbgTab('connect:registered', { tmuxSession, overwritingPrevWs: !!prevWs, ptyPid: ptyProcess.pid });
     startJsonlWatcher(tmuxSession);
 
     let isPaused = false;
@@ -167,7 +176,8 @@ module.exports = function createWsTerminal({
       if (ws.readyState === ws.OPEN) ws.ping();
     }, pingIntervalMs);
 
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
+      dbgTab('ws:close', { tmuxSession, code, reason: reason?.toString?.() });
       clearInterval(pingInterval);
       if (checkBufferInterval) clearInterval(checkBufferInterval);
       const remaining = decrementBrowserCount();
@@ -178,7 +188,9 @@ module.exports = function createWsTerminal({
         browsers: remaining,
       });
       if (ptyProcess) ptyProcess.kill();
+      const stillMapped = sessionWsClients.get(tmuxSession) === ws;
       sessionWsClients.delete(tmuxSession);
+      dbgTab('ws:close:cleaned', { tmuxSession, stillMapped });
       stopJsonlWatcher(tmuxSession);
       scheduleTmuxCleanup(tmuxSession);
     });

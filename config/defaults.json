@@ -21,5 +21,8 @@
     "scanIntervalSeconds": 60,
     "windowWidth": 200,
     "windowHeight": 50
+  },
+  "debug": {
+    "tabSwitching": false
   }
 }
