@@ -1,13 +1,13 @@
 services:
-  blueprint:
+  workbench:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: blueprint
+    container_name: workbench
     ports:
       - "7860:7860"
-    volumes:
-      - /path/to/your/data:/data
-      # Optional: mount shared storage for the file browser
-      # - /path/to/shared/storage:/mnt/storage
     restart: unless-stopped
+    # Volumes are intentionally omitted. Per Admin/INF-003, each host
+    # supplies its own /data backing via docker-compose.override.yml in
+    # /srv/.admin/workbench/. Keeps the base manifest portable across
+    # hosts and HF Spaces.
