@@ -3336,13 +3336,13 @@ build/**</textarea>
       // Toggle sidebar logo for theme + apply variant (default / development / production)
       const isDark = theme === 'dark' || theme === 'blueprint-dark';
       const variant = db_getSetting('logo_variant') || 'default';
-      const prefix = variant === 'development' ? 'dev' : variant === 'production' ? 'pro' : 'logo';
+      const prefix = variant === 'development' ? 'dev' : variant === 'production' ? 'prod' : 'logo';
       document.querySelectorAll('.logo-dark').forEach(el => {
-        el.src = `/${prefix}-white.png`;
+        el.src = `/${prefix}-dark.png`;
         el.style.display = isDark ? 'block' : 'none';
       });
       document.querySelectorAll('.logo-light').forEach(el => {
-        el.src = `/${prefix}-blue.png`;
+        el.src = `/${prefix}-light.png`;
         el.style.display = isDark ? 'none' : 'block';
       });
     }

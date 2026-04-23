@@ -86,7 +86,7 @@ All tunables are externalized in `.env` (see `.env.example` for complete list) a
 
 ### Logo Variant (dev/prod safety affordance)
 
-Six logos ship in `public/`: the canonical `logo-blue.png`/`logo-white.png` plus warning variants `dev-blue.png`/`dev-white.png` (green, "Dev") and `pro-blue.png`/`pro-white.png` (red, "Pro"). Which pair renders is driven by the DB-backed `logo_variant` setting (values: `default`, `development`, `production`) and resolved inside `applyTheme()` in `public/index.html`. There is intentionally no UI — swap it per deployment via `PUT /api/settings` or by editing the settings row directly.
+Six logos ship in `public/`, each in a `-light.png` (for light themes) and `-dark.png` (for dark themes) pair: canonical `logo-light.png`/`logo-dark.png`, plus warning variants `dev-light.png`/`dev-dark.png` (green, "Dev") and `prod-light.png`/`prod-dark.png` (red, "Prod"). Which pair renders is driven by the DB-backed `logo_variant` setting (values: `default`, `development`, `production`) and resolved inside `applyTheme()` in `public/index.html`. There is intentionally no UI — swap it per deployment via `PUT /api/settings` or by editing the settings row directly.
 
 ## Input Validation
 
