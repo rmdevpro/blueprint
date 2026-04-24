@@ -147,23 +147,37 @@ Refresh the browser. Done. (Same DB write with `'\"development\"'` to flip the o
 
 ### B. Swap which host serves prod (cutover)
 
-Genuine cutover where a different host takes over the prod role. Steps are
-ordered so that incoming-prod is fully stopped + wiped + re-seeded before
-its container starts. Don't rely on `rsync --delete` alone — the excludes
-(`*.wal`, `*.shm`, `qdrant/.lock`) leave incoming-prod's pre-existing copies
-of those in place, and a stale `qdrant/.lock` will prevent Qdrant from
-starting cleanly. Explicit wipe avoids the footgun.
+Genuine cutover where a different host takes over the prod role.
 
-1. **Pre-flight on the incoming-prod host**: confirm its image is current (`docker image inspect irina:5000/workbench:latest`) and the container has been built/deployed with the code you intend to ship.
-2. **Stop the incoming-prod container** so it releases file locks and SQLite handles before the wipe:
+**Operating principle**: outgoing-prod (the host currently serving prod) is
+**never stopped** during the swap — it stays live the whole time so the user's
+work isn't interrupted. The only stop in the procedure is on **incoming-prod**,
+and only because we're wiping and replacing its `/data` (SQLite handles must be
+released before that's safe). Future code-update restarts of outgoing-prod are
+a separate concern, not part of the swap.
+
+**Pre-cutover on outgoing-prod**: finalize work in flight, close all
+workbench tabs/sessions on outgoing-prod **except the one you're using to
+drive the swap**. The driving session writes nothing meaningful, so the
+SQLite DB and CLI state files stay quiescent during the rsync.
+
+**Why we explicitly wipe before rsync**: don't rely on `rsync --delete` alone —
+the excludes (`*.wal`, `*.shm`, `qdrant/.lock`) leave incoming-prod's
+pre-existing copies of those in place. A stale `qdrant/.lock` from
+incoming-prod's prior dev role will prevent Qdrant from starting. Explicit
+wipe avoids the footgun.
+
+1. **Pre-flight on incoming-prod**: confirm its image is current (`docker image inspect irina:5000/workbench:latest`) and the container has been built/deployed with the code you intend to ship.
+2. **Quiesce outgoing-prod** (UI-side, no container action): finalize work, close every workbench tab except the one driving the swap.
+3. **Stop the incoming-prod container** (only this one, briefly — releases file locks and SQLite handles before the wipe):
    ```bash
    ssh <user>@<incoming-prod> "cd /srv/.admin/workbench && docker compose stop workbench"
    ```
-3. **Wipe incoming-prod's `/srv/workbench/`** entirely so no residual dev state survives the cutover (stale qdrant lock, leftover test sessions in DB, orphaned CLI session JSONLs, etc.):
+4. **Wipe incoming-prod's `/srv/workbench/`** entirely so no residual dev state survives the cutover (stale qdrant lock, leftover test sessions in DB, orphaned CLI session JSONLs, etc.):
    ```bash
    ssh <user>@<incoming-prod> "sudo rm -rf /srv/workbench/* /srv/workbench/.[!.]* /srv/workbench/..?* 2>/dev/null"
    ```
-4. **Rsync from outgoing-prod**:
+5. **Rsync from outgoing-prod** (which stays running — the WAL/SHM excludes mean we copy the last-checkpointed state, which SQLite recovers from cleanly on first open):
    ```bash
    ssh <user>@<incoming-prod> "rsync -aHAX --delete \\
      --exclude='.blueprint/qdrant/.lock' \\
@@ -171,27 +185,27 @@ starting cleanly. Explicit wipe avoids the footgun.
      blueprint@<outgoing-prod>:/srv/workbench/ /srv/workbench/ && \\
      sudo chown -R 1000:2001 /srv/workbench"
    ```
-   (`--delete` is now redundant given the prior wipe but harmless; keep it as belt-and-suspenders.)
-5. **Flip logos** in both DBs while the incoming-prod container is still stopped (writes go straight to the SQLite file with no live process holding it):
+   (`--delete` is redundant after the wipe but harmless; keep it as belt-and-suspenders.)
+6. **Flip incoming-prod's logo to `production`** while its container is still stopped (writes go straight to the SQLite file with no live process holding it):
    ```bash
-   # Incoming prod → production:
    ssh <user>@<incoming-prod> "sqlite3 /srv/workbench/.blueprint/blueprint.db \\
      \"INSERT OR REPLACE INTO settings(key, value) VALUES ('logo_variant', '\\\"production\\\"');\""
-   # Outgoing prod → development:
-   ssh blueprint@<outgoing-prod> "sqlite3 /srv/workbench/.blueprint/blueprint.db \\
-     \"INSERT OR REPLACE INTO settings(key, value) VALUES ('logo_variant', '\\\"development\\\"');\""
    ```
-6. **Start incoming-prod container** with the seeded data:
+7. **Start incoming-prod container** with the seeded data:
    ```bash
    ssh <user>@<incoming-prod> "cd /srv/.admin/workbench && docker compose up -d workbench"
    ```
-7. **Stop outgoing-prod container** (or update DNS / reverse-proxy / wherever the prod URL points) so traffic naturally lands on the new prod:
+8. **Verify on incoming-prod**: open it in a browser, confirm red Prod logo, sidebar populates with outgoing-prod's projects/sessions, click into one, send a trivial prompt, get a real reply.
+9. **Move your browser to incoming-prod and start working there.** Until step 10 fires, both hosts are showing the Prod logo; the URL you load determines which one you're using.
+10. **Demote outgoing-prod to `development`** (live DB write, no container stop — outgoing-prod stays running as the new dev host):
    ```bash
-   ssh blueprint@<outgoing-prod> "cd /srv/.admin/workbench && docker compose stop workbench"
+   ssh blueprint@<outgoing-prod> "sqlite3 /srv/workbench/.blueprint/blueprint.db \\
+     \"INSERT OR REPLACE INTO settings(key, value) VALUES ('logo_variant', '\\\"development\\\"');\""
    ```
-8. **Verify on incoming-prod**: red Prod logo renders, sidebar populates with outgoing-prod's projects/sessions, click into one, send a trivial prompt, get a real reply.
 
-If anything in steps 6–8 fails, outgoing-prod's container is still safely stopped (not destroyed); you can flip the logos back and `docker compose up -d` outgoing-prod to roll back.
+Rollback before step 10: incoming-prod is just a host with the Prod logo that nobody's using; outgoing-prod is unchanged and serving prod normally. Re-flip incoming-prod's logo back to `development` and you're back to the pre-cutover state with no data loss.
+
+Rollback after step 10: both writes are fully reversible — flip the logos back the other way, no data loss either side.
 
 Both A and B are seconds-to-minutes, not hours, when nothing else is changing — they're DB writes plus the rsync. If a cutover is taking longer than that, something else is going on (code change, data path change, schema change) and you're doing more than a swap.
 
