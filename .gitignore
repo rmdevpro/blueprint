@@ -1,7 +1,9 @@
 node_modules/
 .test-data/
 .playwright-mcp/
-*.png
+# Test/debug screenshots — only block at repo root (where Playwright/Hymie default-saves).
+# Legitimate PNGs in public/, docs/, etc. are NOT filtered.
+/*.png
 docker-compose.override.yml
 
 # Local junk that shouldn't be tracked.
