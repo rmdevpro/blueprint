@@ -3119,16 +3119,25 @@ build/**</textarea>
       const code = document.getElementById('auth-code-input').value.trim();
       if (!code) return;
 
-      // Send the code then Enter as separate messages
+      // #169: Claude CLI uses Ink (React for terminals), which distinguishes
+      // typed keystrokes from paste events via bracketed-paste mode. Sending
+      // raw chars via WS made Ink treat them as individual keypresses, which
+      // its /login input handler didn't accept — the CLI dangled at "Paste
+      // code here >" until the user manually pasted.
+      // Fix: wrap the code in xterm's bracketed-paste sequences (CSI 200~ /
+      // CSI 201~) so Claude/Ink sees a proper paste event, then send Enter.
+      const BP_START = '\x1b[200~';
+      const BP_END = '\x1b[201~';
+      const sendCodeAsPaste = (sock) => {
+        sock.send(BP_START + code + BP_END);
+        setTimeout(() => sock.send('\r'), 500);
+      };
+
       if (authTriggerTabId && tabs.has(authTriggerTabId)) {
         const tab = tabs.get(authTriggerTabId);
-        if (tab.ws && tab.ws.readyState === WebSocket.OPEN) {
-          tab.ws.send(code);
-          setTimeout(() => tab.ws.send('\r'), 500);
-        }
+        if (tab.ws && tab.ws.readyState === WebSocket.OPEN) sendCodeAsPaste(tab.ws);
       } else if (window._loginWs && window._loginWs.readyState === WebSocket.OPEN) {
-        window._loginWs.send(code);
-        setTimeout(() => window._loginWs.send('\r'), 500);
+        sendCodeAsPaste(window._loginWs);
       }
 
       // Dismiss modal after a short delay to let the CLI process

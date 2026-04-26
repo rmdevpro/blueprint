@@ -3972,6 +3972,42 @@ Should print the input unchanged — author lines / non-URL `@` patterns are NOT
 
 ---
 
+### HOTFIX-169: Auth modal Submit advances the CLI's /login prompt
+**Issue:** #169 — modal Submit closed the modal but CLI dangled at "Paste code here >"
+**Fix:** `public/index.html:submitAuthCode` — wrap the code in xterm's bracketed-paste sequences (\\x1b[200~ … \\x1b[201~) before sending via WS. Claude CLI uses Ink (React for terminals), which distinguishes typed keystrokes from paste events. Without bracketed-paste wrapping, Ink treated the code chars as individual keypresses and the /login input handler ignored them.
+
+**Surface:** UI/visual + backend. Requires headed browser (Hymie) + a real Claude OAuth flow. Auth state is wiped on every HF rebuild (no persistent storage), so this is the canonical per-deploy auth setup test.
+
+**Setup:** HF test Space rebuilt with the fix. Gate creds + API keys ready (`/mnt/storage/credentials/api-keys/`). Hymie Firefox session.
+
+**Steps (real user):**
+1. Open `https://aristotle9-agentic-workbench-test.hf.space/` in Hymie Firefox.
+2. Log in with `aristotle9` / `Vault2011$`.
+3. Settings → API Keys: paste Gemini key + OpenAI key. Close Settings.
+4. Create a project (sidebar `+` → pick `/data/workspace/docs`).
+5. Project header `+` → CLAUDE → enter "say hello" → Start Session.
+6. In the Claude tab, type `/login` + Enter.
+7. Menu appears. Press Enter (option 1: Claude account with subscription).
+8. **Modal appears** ("Authentication Required") + CLI shows "Paste code here >".
+9. Click "Authenticate with Claude" in modal → OAuth tab opens.
+10. Authorize on `claude.ai` → land on `platform.claude.com/oauth/code/callback` with the code → click "Copy Code".
+11. Switch back to test Space tab.
+12. Paste code in modal's "Paste authorization code here" input.
+13. Click Submit.
+14. **Verify**: CLI should advance from "Paste code here >" to "Login successful" + show "Welcome back …" greeting AUTOMATICALLY. No manual paste/Enter in CLI required.
+15. **Verify**: workbench-top "Not authenticated" warning disappears.
+
+**Expected:**
+- Modal Submit alone is sufficient — CLI advances without further user action.
+- Login succeeds; subsequent Claude messages work.
+- Auth persists for the container's lifetime.
+
+**Failure signature (pre-fix):** Modal closes, CLI sits at `Paste code here if prompted >` indefinitely until user manually pastes via Ctrl+Shift+V + Enter in the terminal pane.
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
 ### HOTFIX-194: Right file panel stays bounded to viewport, scrollbars stay reachable
 **Issue:** #194 — file tree grows past viewport bottom; horizontal scrollbar lands below the fold
 **Fix:** `public/index.html` — flex-column chain on `#panel-content` + `.panel-section` with `min-height: 0` so `#file-browser-tree` is bounded to its flex parent's height instead of taking natural height.
