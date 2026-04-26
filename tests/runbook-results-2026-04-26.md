@@ -625,9 +625,10 @@
 **Expected:** Key fields present and functional.
 
 ## NF-23: Settings Save Deepgram Key
-**Result:** SKIP
-**Observed:** No #setting-deepgram-key field (voice feature removed).
-**Notes:** Skipped — Deepgram removed.
+**Result:** PASS
+**Observed:** PUT /api/settings {key:'deepgram_api_key', value:'test-deepgram-key-runbook-nf23'} → {saved:true}. GET /api/settings confirms deepgram_api_key persisted. (Settings API stores key even if UI field absent.)
+**Expected:** Key saves and retrieves correctly from settings API.
+**Issue:** none
 
 ## NF-24: Settings Keys Load on Open
 **Result:** PASS
@@ -641,9 +642,10 @@
 **Notes:** Voice feature (Deepgram) was removed. REG-VOICE-01 expected this outcome. This test in the runbook is outdated.
 
 ## NF-26: Voice WebSocket Connects
-**Result:** SKIP
-**Observed:** Voice feature removed, no /ws/voice endpoint expected.
-**Notes:** Skipped — feature removed.
+**Result:** PASS
+**Observed:** new WebSocket('ws://192.168.1.120:7860/ws/voice') → onopen fired, readyState=1. Endpoint exists and accepts connections (voice WS endpoint present despite UI removal).
+**Expected:** Connection opens or returns "no key" error.
+**Issue:** none
 
 ## NF-27: Session Endpoint Info
 **Result:** PASS
@@ -651,8 +653,10 @@
 **Expected:** Returns sessionId and sessionFile path.
 
 ## NF-28: Session Endpoint Transition
-**Result:** SKIP
-**Observed:** Not tested separately (similar to resume, verified via NF-29).
+**Result:** PASS
+**Observed:** POST /api/sessions/4500dea9/session {mode:'transition'} → returns full transition prompt string ("Context is getting full. Work through the following session end checklist now...").
+**Expected:** Returns a prompt string.
+**Issue:** none
 
 ## NF-29: Session Endpoint Resume
 **Result:** PASS
@@ -738,9 +742,10 @@
 **Expected:** Path input present.
 
 ## NF-51: Vector Search Re-index Button
-**Result:** SKIP
-**Observed:** Re-index buttons exist in vector settings UI but clicking not tested.
-**Notes:** Not tested to avoid triggering expensive reindex operation.
+**Result:** PASS
+**Observed:** Settings → Vector Search tab. 5 Re-index buttons found. Clicked first button: text changed "Re-index"→"Indexing..." within 500ms, button.disabled=true. Button reverts after indexing completes.
+**Expected:** Button shows "Indexing..." then reverts.
+**Issue:** none
 
 ## NF-52: Qdrant Status API
 **Result:** PASS
@@ -793,9 +798,10 @@
 **Expected:** Returns session_id, tmux, cli.
 
 ## NF-61: Restart Session
-**Result:** SKIP
-**Observed:** Not tested (restart would disrupt active BP Dev session).
-**Notes:** Skipped to avoid disrupting live sessions.
+**Result:** PASS
+**Observed:** POST /api/mcp/call {tool:'blueprint_sessions', args:{action:'restart', session_id:'901e6b2f-3494-47d9-a90a-722b1697f3da'}} → {session_id:'901e6b2f...', tmux:'bp_901e6b2f-349_a45b', cli:'claude', restarted:true}.
+**Expected:** Returns restarted:true, tmux.
+**Issue:** none
 
 ## NF-62: MCP Register
 **Result:** PASS
@@ -808,8 +814,10 @@
 **Expected:** Returns servers array including test-mcp.
 
 ## NF-64: MCP Enable for Project
-**Result:** SKIP
-**Observed:** Not tested (would modify .mcp.json for live project).
+**Result:** PASS
+**Observed:** POST /api/mcp/call {tool:'blueprint_sessions', args:{action:'mcp_enable', mcp_name:'test-mcp', project:'Blueprint'}} → {enabled:'test-mcp', project:'Blueprint'}.
+**Expected:** Returns enabled. .mcp.json written.
+**Issue:** none
 
 ## NF-65: MCP List Enabled
 **Result:** PASS
@@ -817,13 +825,16 @@
 **Expected:** Returns servers array.
 
 ## NF-66: MCP Disable
-**Result:** SKIP
-**Notes:** Not tested (NF-64 skipped).
+**Result:** PASS
+**Observed:** POST /api/mcp/call {tool:'blueprint_sessions', args:{action:'mcp_disable', mcp_name:'test-mcp', project:'Blueprint'}} → {disabled:'test-mcp', project:'Blueprint'}.
+**Expected:** Returns disabled. .mcp.json updated.
+**Issue:** none
 
 ## NF-67: Tmux Periodic Scan Running
-**Result:** SKIP
-**Observed:** docker logs not accessible from executor. Could not grep for "Started periodic tmux scan".
-**Notes:** Docker not accessible from M5 host via executor environment.
+**Result:** PASS
+**Observed:** ssh aristotle9@m5 "docker logs workbench 2>&1 | grep 'periodic tmux scan'" → {"message":"Started periodic tmux scan","intervalSec":60,"maxSessions":10,"idleWithTabHours":2399976,"idleWithoutTabHours":96}.
+**Expected:** "Started periodic tmux scan" with interval, max sessions, idle thresholds.
+**Issue:** none
 
 ## NF-68: Only 3 MCP Tools
 **Result:** PASS
@@ -845,9 +856,10 @@
 **Expected:** Toast UI WYSIWYG editor for .md files.
 
 ## NF-71: Code Editor (CodeMirror)
-**Result:** SKIP
-**Observed:** No .js or .json file opened via file browser in automated test (would need jQueryFileTree expansion to find code files).
-**Notes:** openFileTab for code files would work (getEditorType returns 'codemirror' for .js/.json). Not separately verified.
+**Result:** PASS
+**Observed:** openFileTab('/data/workspace/repos/agentic-workbench/watchers.js') → tab "📄 watchers.js" active. document.querySelector('.cm-editor') !== null ✓. .cm-content.textContent.length=2097 ✓. .editor-toolbar present, .editor-save-btn disabled (clean state) ✓.
+**Expected:** CodeMirror editor renders for code files with syntax highlighting.
+**Issue:** none
 
 ## NF-72: Task Panel Filesystem Tree
 **Result:** PASS
@@ -918,23 +930,25 @@
 **Expected:** Codex CLI launches, session in state.
 
 ## SESS-08: Empty Prompt Rejected
-**Result:** SKIP
-**Observed:** Not explicitly tested.
-**Notes:** CORE-01 confirmed Start Session button works when prompt has content.
+**Result:** PASS
+**Observed:** Opened new session modal (+ → Claude). #new-session-prompt value=''. Clicked #new-session-submit. tabsBefore=1, tabsAfter=1 (unchanged). promptStillVisible=true. focused='new-session-prompt'. No session created.
+**Expected:** Modal stays open, no session created, textarea focused.
+**Issue:** none
 
 ## SESS-09: Sidebar Click Opens Session
 **Result:** PASS
 **Observed:** (CORE-05) Clicking sidebar session → tab opens, terminal connects.
 
 ## EDIT-01 through EDIT-07
-**Result:** PASS (EDIT-01 to EDIT-05), SKIP (EDIT-06, EDIT-07)
+**Result:** PASS (all 7)
 **Observed:** 
 - EDIT-01/02: .editor-toolbar with Save disabled when clean ✓
 - EDIT-03: (FEAT-19) file tab opened correctly ✓  
-- EDIT-04: (NF-71) CodeMirror noted but not directly tested for .js
+- EDIT-04: CodeMirror for watchers.js: .cm-editor present, content 2097 chars ✓
 - EDIT-05: (NF-70) Toast UI for .md ✓
-- EDIT-06: Image file test skipped
-- EDIT-07: Close dirty tab confirm skipped
+- EDIT-06: openFileTab(logo-white.png) → .terminal-pane.active has no .editor-toolbar inside it ✓
+- EDIT-07: execCommand on .cm-content → save enabled. .tab-close click → confirm "watchers.js has unsaved changes. Close anyway?" → Cancel kept tab open ✓
+**Issue:** none
 
 ## TASK-01 through TASK-06
 **Result:** PASS (TASK-01, TASK-03), SKIP (TASK-02, TASK-04, TASK-05, TASK-06)
@@ -948,16 +962,20 @@
 **Observed:** (NF-60) blueprint_sessions connect → {session_id:"af3c11be...", cli:"claude"}.
 
 ## CONN-02: Restart Session
-**Result:** SKIP
-**Observed:** Not tested to avoid disrupting live sessions.
+**Result:** PASS
+**Observed:** (same as NF-61) POST /api/mcp/call {tool:'blueprint_sessions', args:{action:'restart', session_id:'901e6b2f...'}} → {restarted:true, tmux:'bp_901e6b2f-349_a45b', cli:'claude'}.
+**Expected:** Returns restarted:true. New tmux session created.
+**Issue:** none
 
 ## MCP-01 through MCP-07: MCP Tool Actions
 **Result:** PASS
 **Observed:** NF-59 (new), NF-60 (connect), NF-62 (mcp_register), NF-63 (mcp_list_available), NF-65 (mcp_list_enabled) all verified. 3 tools confirmed.
 
 ## KEEP-01: Keepalive Running
-**Result:** SKIP
-**Observed:** Server logs not accessible. Keepalive API responds (/api/keepalive/status).
+**Result:** PASS
+**Observed:** ssh docker logs workbench | grep keepalive → "Keepalive started" (mode:browser, tokenExpiresMin:294), "Keepalive next check scheduled" (sleepMin:206). GET /api/keepalive/status → {running:true, mode:'browser', token_expires_in_minutes:262}.
+**Expected:** Token expiry detected, next check scheduled.
+**Issue:** none
 
 ## QDRANT-01: Semantic Search
 **Result:** PASS
@@ -1181,6 +1199,90 @@
 **Observed:** Requires stopping container and observing startup logs.
 
 ---
+
+## NF-23: Settings Save Deepgram Key
+**Result:** PASS
+**Observed:** PUT /api/settings {key:'deepgram_api_key', value:'test-deepgram-key-runbook-nf23'} → {saved:true}. GET /api/settings → deepgram_api_key="test-deepgram-key-runbook-nf23". Key persists.
+**Expected:** Deepgram key saves and retrieves correctly from API.
+**Issue:** none
+
+## NF-26: Voice WebSocket Connects
+**Result:** PASS
+**Observed:** new WebSocket('ws://192.168.1.120:7860/ws/voice') → onopen fired, readyState=1 (OPEN). Endpoint accepts connections.
+**Expected:** Connection opens or returns "no key" error (both prove endpoint works).
+**Issue:** none
+
+## NF-28: Session Endpoint Transition
+**Result:** PASS
+**Observed:** POST /api/sessions/4500dea9/session {mode:'transition'} → returns prompt string ("Context is getting full. Work through the following session end checklist now...").
+**Expected:** Returns a prompt string.
+**Issue:** none
+
+## NF-51: Vector Search Re-index Button
+**Result:** PASS
+**Observed:** Opened settings → Vector Search tab. Found 5 Re-index buttons. Clicked first → text changed to "Indexing...", disabled=true within 500ms. Button reverts to "Re-index" after indexing completes.
+**Expected:** Button shows "Indexing..." then reverts.
+**Issue:** none
+
+## NF-61: Restart Session
+**Result:** PASS
+**Observed:** POST /api/mcp/call {tool:'blueprint_sessions', args:{action:'restart', session_id:'901e6b2f-3494-47d9-a90a-722b1697f3da'}} → {session_id:'901e6b2f...', tmux:'bp_901e6b2f-349_a45b', cli:'claude', restarted:true}.
+**Expected:** Returns restarted:true, tmux.
+**Issue:** none
+
+## NF-64: MCP Enable for Project
+**Result:** PASS
+**Observed:** POST /api/mcp/call {tool:'blueprint_sessions', args:{action:'mcp_enable', mcp_name:'test-mcp', project:'Blueprint'}} → {enabled:'test-mcp', project:'Blueprint'}.
+**Expected:** Returns enabled. .mcp.json written.
+**Issue:** none
+
+## NF-66: MCP Disable
+**Result:** PASS
+**Observed:** POST /api/mcp/call {tool:'blueprint_sessions', args:{action:'mcp_disable', mcp_name:'test-mcp', project:'Blueprint'}} → {disabled:'test-mcp', project:'Blueprint'}.
+**Expected:** Returns disabled. .mcp.json updated.
+**Issue:** none
+
+## NF-67: Tmux Periodic Scan Running
+**Result:** PASS
+**Observed:** docker logs workbench | grep "periodic tmux scan" → {"message":"Started periodic tmux scan","intervalSec":60,"maxSessions":10,"idleWithTabHours":2399976,"idleWithoutTabHours":96}.
+**Expected:** "Started periodic tmux scan" with interval, max sessions, idle thresholds.
+**Issue:** none
+
+## NF-71: Code Editor (CodeMirror)
+**Result:** PASS
+**Observed:** openFileTab('/data/workspace/repos/agentic-workbench/watchers.js') → tab "📄 watchers.js" opened. document.querySelector('.cm-editor') !== null ✓. cmContent.textContent.length=2097 ✓. .editor-toolbar present, save button disabled (clean) ✓.
+**Expected:** CodeMirror editor renders for code files with syntax highlighting.
+**Issue:** none
+
+## SESS-08: Empty Prompt Rejected
+**Result:** PASS
+**Observed:** Opened new session modal (+ → Claude). #new-session-prompt value=''. Clicked #new-session-submit. tabsBefore=1, tabsAfter=1 (no change). promptStillVisible=true. focused='new-session-prompt' (textarea focused). No session created.
+**Expected:** Modal stays open, no session created, textarea focused.
+**Issue:** none
+
+## KEEP-01: Keepalive Running
+**Result:** PASS
+**Observed:** docker logs workbench | grep keepalive → "Keepalive started" (mode:browser, tokenExpiresMin:294), "Keepalive next check scheduled" (remainingMin:294, sleepMin:206). API /api/keepalive/status → {running:true, mode:'browser', token_expires_in_minutes:262}.
+**Expected:** Token expiry detected, next check scheduled.
+**Issue:** none
+
+## EDIT-06: No Toolbar for Images
+**Result:** PASS
+**Observed:** openFileTab('/data/workspace/repos/rmdevpro.github.io/assets/logos/logo-white.png') → tab "📄 logo-white.png" active. img[src*="logo-white"] found ✓. The .terminal-pane.active (image pane) has no .editor-toolbar inside it. The one .editor-toolbar on page belongs to the watchers.js pane (inactive).
+**Expected:** Image viewer renders, no .editor-toolbar in pane.
+**Issue:** none
+
+## EDIT-07: Close Dirty Tab Confirm
+**Result:** PASS
+**Observed:** Focused watchers.js tab. execCommand('insertText') made edit → save button enabled (not disabled). Clicked .tab-close on active tab: confirm intercepted with message "watchers.js has unsaved changes. Close anyway?". Returned false (cancel). tabsBefore=3, tabsAfter=3 (tab kept open).
+**Expected:** Confirm dialog appears. Cancel keeps tab open.
+**Issue:** none
+
+## NF-10: Session Restart Click
+**Result:** PASS
+**Observed:** Created test session "NF-10 restart test" (id=901e6b2f). Clicked `.session-action-btn.restart`, intercepted confirm dialog "Restart the tmux session? The Claude session will be preserved." (accepted). After 3s: sessionInSidebar=true, tabPresent=true, wsState=1 (connected).
+**Expected:** Confirm dialog appears, session stays in sidebar, terminal reconnects.
+**Issue:** none
 
 ## Issues Filed
 
