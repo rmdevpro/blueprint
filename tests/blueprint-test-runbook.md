@@ -3714,6 +3714,99 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 
 ---
 
+## Hotfix verification (2026-04-26 batch — #178/#179/#182/#173)
+
+### HOTFIX-178: Gemini key resolves consistently across DB / env / API write
+**Issue:** #178 — Gemini API key naming triangle
+**Fix:** `qdrant-sync.js:79` — env fallback reads `GEMINI_API_KEY` (matches what `routes.js:1135` writes), no longer `GOOGLE_API_KEY`.
+
+**Setup:** Backend deploy (M5 dev container).
+
+**Steps:**
+1. In Settings → API Keys, set Gemini API Key to a valid key.
+2. Confirm `process.env.GEMINI_API_KEY` is set inside the container: `docker exec <container> sh -c 'echo $GEMINI_API_KEY' | head -c 12` should match the first 12 chars of the key (or be empty if read from DB).
+3. Set `vector_embedding_provider` = `gemini` in Settings.
+4. `POST /api/qdrant/reindex` for `claude_sessions` (or call via `blueprint_sessions` MCP).
+5. Watch `docker logs <container> --tail 100 -f` during reindex.
+6. **Negative case:** clear DB row (`DELETE FROM settings WHERE key='gemini_api_key'`), restart container, confirm reindex still works using the env-var fallback (env is still set from step 1's API write).
+
+**Expected:**
+- No `HF Embedding API error` lines.
+- No `GOOGLE_API_KEY` references in logs.
+- Reindex completes; `claude_sessions` collection has new points (`POST /api/qdrant/status`).
+- Negative case reindex also succeeds (proves env fallback path).
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### HOTFIX-179: Indexer skips synthetic API-error chunks
+**Issue:** #179 — qdrant indexer ingests synthetic error placeholders
+**Fix:** `qdrant-sync.js:327` — added `if (entry.isApiErrorMessage) continue;` after type check.
+
+**Setup:** Backend deploy (M5 dev container) with at least one Claude session JSONL containing a synthetic API-error chunk. (Sample on irina: `/data/.claude/projects/-data-workspace-repos-agentic-workbench/2ec7b89c-….jsonl:1069`.)
+
+**Steps:**
+1. Confirm a synthetic chunk exists: `grep -l '"isApiErrorMessage":true' /data/.claude/projects/*/*.jsonl | head -1` returns at least one file.
+2. Reindex `claude_sessions` collection.
+3. Search via MCP `blueprint_sessions` action `search_semantic` with query `"Prompt is too long"` — should return zero matches OR only legitimate user/assistant mentions of that phrase, never the synthetic boilerplate text itself.
+4. Sanity: total point count for `claude_sessions` should match the count of non-synthetic user+assistant turns across all session JSONLs (not the raw line count).
+
+**Expected:**
+- Synthetic-chunk search returns clean results (no boilerplate dominating top-K).
+- Legit chunks still indexed (point count > 0; spot-check by searching for a known phrase from a real session).
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### HOTFIX-182: Error messages no longer truncated at 100 chars
+**Issue:** #182 — `substring(0, 100)` hides the actual error reason
+**Fix:** All five truncation sites bumped 100/200 → 1000.
+
+**Setup:** Backend deploy (M5 dev container).
+
+**Steps:**
+1. **Keepalive failure path:** force a keepalive query failure. Easiest: stop network egress to anthropic.com briefly during a keepalive cycle, OR temporarily set an invalid Anthropic API key. Watch `docker logs <container> --tail 50 -f` until a `Keepalive Claude query failed` line appears.
+2. Confirm the logged `err` field contains the full stderr from the `claude` CLI process (auth error message, network error, rate-limit body, etc.) — NOT just the bare command echo `Command failed: claude --print --no-session-persistence --model haiku ...`.
+3. **Git clone failure path:** `POST /api/projects` with `{path: "https://github.com/this-repo-does-not-exist-12345/foo"}`. Confirm the `400` response body's `error` field contains the full git error (e.g., `fatal: repository '...' not found` or similar), not a 200-char truncation.
+4. **Summary failure path:** trigger `POST /api/sessions/:id/summary` with an invalid sessionId pointing to a corrupt JSONL (or with an expired key). Confirm the 500 response's `error` field contains the full underlying error.
+
+**Expected:**
+- All three error paths surface the actual root cause in their respective logs/responses.
+- No truncation at 100 or 200 chars; full error message visible up to 1000 chars.
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### HOTFIX-173: xterm scrollbar tracks buffer growth while scrolled up
+**Issue:** #173 — xterm scrollbar range doesn't update when buffer grows while user is scrolled up
+**Fix:** `public/index.html:1401-area` — added `term.onWriteParsed → term.refresh(0, term.rows-1)` hook.
+**Surface:** UI/visual — REQUIRES headed browser per "no headless for visual bugs" rule. Use HF test Space + Hymie Firefox.
+
+**Setup:** UI deploy (HF test Space). Hymie OAuth setup complete per `blueprint-deployment.md`.
+
+**Steps:**
+1. Open the test Space in Hymie Firefox, log in past gate.
+2. Open a Claude session. Send a prompt that produces long streaming output: e.g., `list every directory under /data/workspace recursively and describe each in one sentence`.
+3. As soon as output starts streaming (within first 10-20 lines), scroll up in the terminal pane to read earlier rows. Keep the viewport above the bottom while output continues.
+4. Wait until at least 50+ new rows have been appended to the buffer below the viewport.
+5. Try to scroll back down using only the scrollbar (mouse drag or click on scrollbar track — NOT keyboard arrows).
+6. Confirm the scrollbar reaches the actual buffer end. Confirm latest output rows are reachable.
+
+**Expected:**
+- Scrollbar can reach the actual bottom of the buffer.
+- No need to press Ctrl+End / Down-arrow / Enter to "rescue" the viewport.
+- Compared to baseline capture `/mnt/storage/bug-monitor/bug-173-captured.json` showing `rowsBehind: 51` before fix, after-fix value should be `0`.
+
+**Watch for regression:**
+- High CPU during long Claude streams (every chunk triggers a `term.refresh()`). If observed, file follow-up to add rAF debounce.
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely Cause | Action |

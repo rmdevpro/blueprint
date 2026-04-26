@@ -457,7 +457,7 @@ async function summarizeSession(sessionId, project) {
     });
     const recent = messages.slice(-3);
     return {
-      summary: 'Failed to generate summary: ' + (err.message?.substring(0, 100) || 'unknown error'),
+      summary: 'Failed to generate summary: ' + (err.message?.substring(0, 1000) || 'unknown error'),
       recent_messages: recent,
       recentMessages: recent,
     };

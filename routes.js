@@ -529,11 +529,11 @@ function registerCoreRoutes(
           logger.warn('Git clone failed', {
             module: 'routes',
             url: projectPath.substring(0, 100),
-            err: gitErr.message?.substring(0, 200),
+            err: gitErr.message?.substring(0, 1000),
           });
           return res
             .status(400)
-            .json({ error: `Git clone failed: ${gitErr.message?.substring(0, 200)}` });
+            .json({ error: `Git clone failed: ${gitErr.message?.substring(0, 1000)}` });
         }
         db.ensureProject(repoName, targetPath);
         await trustDir(targetPath);
@@ -1363,7 +1363,7 @@ function registerCoreRoutes(
       res.json({ summary: result.summary, recentMessages: result.recentMessages });
     } catch (err) {
       logger.error('Error generating summary', { module: 'routes', err: err.message });
-      res.status(500).json({ error: err.message?.substring(0, 100) });
+      res.status(500).json({ error: err.message?.substring(0, 1000) });
     }
   });
 

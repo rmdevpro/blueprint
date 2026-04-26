@@ -75,8 +75,9 @@ function getEmbeddingConfig() {
 
   switch (provider) {
     case 'gemini': {
-      // Try DB setting (legacy), then env var (set by entrypoint or externally)
-      let key = _parseSetting('gemini_api_key', '') || process.env.GOOGLE_API_KEY || '';
+      // Try DB setting (legacy), then env var (set by entrypoint, by PUT /api/settings, or externally)
+      // #178: env var must match what routes.js writes — process.env.GEMINI_API_KEY, NOT GOOGLE_API_KEY.
+      let key = _parseSetting('gemini_api_key', '') || process.env.GEMINI_API_KEY || '';
       return { url: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-embedding-001', key };
     }
     case 'openai': {
@@ -325,6 +326,9 @@ function parseClaudeJsonl(content) {
     try {
       const entry = JSON.parse(line);
       if (entry.type === 'user' || entry.type === 'assistant') {
+        // #179: skip synthetic API-error placeholders (e.g. "Prompt is too long" boilerplate).
+        // These have entry.isApiErrorMessage===true and message.model==='<synthetic>'.
+        if (entry.isApiErrorMessage) continue;
         const msg = entry.message;
         if (!msg || !msg.content) continue;
         // Content can be string or array of content blocks
