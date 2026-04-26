@@ -28,6 +28,15 @@ function sanitizeTmuxName(name) {
   return name.replace(/[^a-zA-Z0-9_\-]/g, '_');
 }
 
+// #156: canonical tmux session-name derivation. Single source of truth so that
+// any module reasoning about a session's tmux pane (session-utils, tmux-lifecycle,
+// routes, ws-terminal) gets the same name without re-implementing the format.
+function tmuxNameFor(sessionId) {
+  const crypto = require('crypto');
+  const hash = crypto.createHash('md5').update(sessionId).digest('hex').substring(0, 4);
+  return sanitizeTmuxName(`bp_${sessionId.substring(0, 12)}_${hash}`);
+}
+
 function shellEscape(arg) {
   return "'" + arg.replace(/'/g, "'\\''") + "'";
 }
@@ -292,6 +301,7 @@ module.exports = {
   HOME,
   resolveProjectPath,
   sanitizeTmuxName,
+  tmuxNameFor,
   shellEscape,
   sanitizeErrorForClient,
   claudeExecAsync,

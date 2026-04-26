@@ -799,6 +799,103 @@ function discoverCodexSessions() {
   return results;
 }
 
+// ── #156: Unified single-session metadata read ─────────────────────────────
+// Single function the status bar, sidebar, MCP tokens, and MCP config readers
+// all funnel through. Returns DB row + file metadata + token usage + tmux active
+// state in one shape. TTL-cached to dedupe parallel callers (sidebar polling +
+// status bar polling on the same session would otherwise hit disk twice).
+const _sessionInfoCache = new Map();
+const SESSION_INFO_TTL_MS = 2000;
+
+function invalidateSessionInfoCache(sessionId) {
+  if (sessionId) _sessionInfoCache.delete(sessionId);
+  else _sessionInfoCache.clear();
+}
+
+async function getSessionInfo(sessionId) {
+  if (!sessionId) return null;
+  const cached = _sessionInfoCache.get(sessionId);
+  if (cached && Date.now() - cached.ts < SESSION_INFO_TTL_MS) return cached.value;
+
+  const dbRow = db.getSessionFull(sessionId);
+  if (!dbRow) {
+    _sessionInfoCache.set(sessionId, { ts: Date.now(), value: null });
+    return null;
+  }
+
+  const cliType = dbRow.cli_type || 'claude';
+  let fileMeta = null;
+  let tokens = { input_tokens: 0, model: null, max_tokens: 200000 };
+
+  if (cliType === 'claude') {
+    const sDir = sessionsDir(dbRow.project_path);
+    const jsonlFile = join(sDir, `${sessionId}.jsonl`);
+    fileMeta = await parseSessionFile(jsonlFile);
+    tokens = await getTokenUsage(sessionId, dbRow.project_name);
+  } else if (cliType === 'gemini') {
+    if (dbRow.cli_session_id) {
+      const sessions = discoverGeminiSessions();
+      const target = sessions.find(g => g.sessionId === dbRow.cli_session_id);
+      if (target) {
+        fileMeta = {
+          name: target.name,
+          timestamp: target.timestamp,
+          messageCount: target.messageCount,
+          model: target.model,
+        };
+      }
+    }
+    tokens = _getGeminiTokenUsage(sessionId);
+  } else if (cliType === 'codex') {
+    if (dbRow.cli_session_id) {
+      const sessions = discoverCodexSessions();
+      const target = sessions.find(c => {
+        const rolloutName = basename(c.filePath, '.jsonl');
+        const m = rolloutName.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+        return (m ? m[1] : rolloutName) === dbRow.cli_session_id;
+      });
+      if (target) {
+        fileMeta = {
+          name: target.name,
+          timestamp: target.timestamp,
+          messageCount: target.messageCount,
+          model: target.model,
+        };
+      }
+    }
+    tokens = _getCodexTokenUsage(sessionId);
+  }
+
+  const tmux = safe.tmuxNameFor(sessionId);
+  const active = await safe.tmuxExists(tmux);
+
+  const info = {
+    id: dbRow.id,
+    project_id: dbRow.project_id,
+    project_name: dbRow.project_name,
+    project_path: dbRow.project_path,
+    cli_type: cliType,
+    cli_session_id: dbRow.cli_session_id || null,
+    name: dbRow.name || fileMeta?.name || 'Untitled Session',
+    state: dbRow.state || (dbRow.archived ? 'archived' : 'active'),
+    archived: !!dbRow.archived,
+    model_override: dbRow.model_override || null,
+    model: dbRow.model_override || fileMeta?.model || tokens.model || null,
+    input_tokens: tokens.input_tokens || 0,
+    max_tokens: tokens.max_tokens || 200000,
+    message_count: fileMeta?.messageCount || 0,
+    timestamp: fileMeta?.timestamp || dbRow.updated_at,
+    notes: dbRow.notes || '',
+    created_at: dbRow.created_at,
+    updated_at: dbRow.updated_at,
+    tmux,
+    active,
+  };
+
+  _sessionInfoCache.set(sessionId, { ts: Date.now(), value: info });
+  return info;
+}
+
 module.exports = {
   sessionsDir,
   parseSessionFile,
@@ -810,6 +907,8 @@ module.exports = {
   searchSessions,
   summarizeSession,
   getTokenUsage,
+  getSessionInfo,
+  invalidateSessionInfoCache,
   getSessionSlug,
   CLAUDE_HOME,
 };

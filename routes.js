@@ -346,30 +346,33 @@ function registerCoreRoutes(
     return null;
   }
 
-  async function buildSessionList(dbSessions, sessDir) {
-    const sessions = [];
+  async function buildSessionList(dbSessions, _sessDir) {
+    // #156: disambiguation pre-pass — for non-Claude sessions whose cli_session_id
+    // hasn't been stored yet, run the claim algorithm so the DB has the right
+    // pointer before getSessionInfo() fetches per-session metadata. Claude sessions
+    // don't need this (file naming = session id directly).
     for (const s of dbSessions) {
       const cliType = s.cli_type || 'claude';
-      let fileMeta = null;
-
-      if (cliType === 'claude') {
-        const jsonlPath = join(sessDir, `${s.id}.jsonl`);
-        fileMeta = await sessionUtils.parseSessionFile(jsonlPath);
-      } else {
-        fileMeta = _getNonClaudeMetadata(s);
+      if (cliType !== 'claude' && !s.cli_session_id) {
+        _getNonClaudeMetadata(s);
       }
+    }
 
+    const sessions = [];
+    for (const s of dbSessions) {
+      const info = await sessionUtils.getSessionInfo(s.id);
+      if (!info) continue;
       sessions.push({
-        id: s.id,
-        name: s.name || fileMeta?.name || 'Untitled Session',
-        timestamp: fileMeta?.timestamp || s.updated_at,
-        messageCount: fileMeta?.messageCount || 0,
-        model: s.model_override || fileMeta?.model || '',
-        tmux: tmuxName(s.id),
-        active: await safe.tmuxExists(tmuxName(s.id)),
-        state: s.state || (s.archived ? 'archived' : 'active'),
-        cli_type: cliType,
-        archived: !!s.archived,
+        id: info.id,
+        name: info.name,
+        timestamp: info.timestamp,
+        messageCount: info.message_count,
+        model: info.model || '',
+        tmux: info.tmux,
+        active: info.active,
+        state: info.state,
+        cli_type: info.cli_type,
+        archived: info.archived,
       });
     }
     sessions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -1436,10 +1439,11 @@ function registerCoreRoutes(
       const { sessionId } = req.params;
       if (!validateSessionId(sessionId))
         return res.status(400).json({ error: 'invalid session ID format' });
-      const { project } = req.query;
-      if (!project) return res.json({ tokens: null });
-      const result = await sessionUtils.getTokenUsage(sessionId, project);
-      res.json(result);
+      // #156: route through getSessionInfo so the cache dedupes against parallel
+      // sidebar polls. Project param is no longer needed (session_full has the path).
+      const info = await sessionUtils.getSessionInfo(sessionId);
+      if (!info) return res.json({ input_tokens: 0, model: null, max_tokens: 200000 });
+      res.json({ input_tokens: info.input_tokens, model: info.model, max_tokens: info.max_tokens });
     } catch (err) {
       logger.error('Error getting token usage', { module: 'routes', err: err.message });
       res.json({ input_tokens: 0, model: null, max_tokens: 200000 });

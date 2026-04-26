@@ -2,7 +2,6 @@
 
 const { readdir, stat, unlink } = require('fs/promises');
 const { join } = require('path');
-const crypto = require('crypto');
 
 module.exports = function createTmuxLifecycle({
   safe,
@@ -22,11 +21,10 @@ module.exports = function createTmuxLifecycle({
   const SCAN_INTERVAL_MS = config.get('tmux.scanIntervalSeconds', 60) * 1000;
   const MAX_TMUX_SESSIONS = config.get('tmux.maxSessions', 10);
 
-  function tmuxName(sessionId) {
-    // Deterministic suffix from session ID to prevent collisions while remaining predictable
-    const hash = crypto.createHash('md5').update(sessionId).digest('hex').substring(0, 4);
-    return safe.sanitizeTmuxName(`bp_${sessionId.substring(0, 12)}_${hash}`);
-  }
+  // #156: delegate to safe.tmuxNameFor (the canonical implementation lives in
+  // safe-exec.js so session-utils + others can derive the same name without
+  // depending on this factory).
+  const tmuxName = safe.tmuxNameFor;
 
   async function tmuxExists(name) {
     return await safe.tmuxExists(name);

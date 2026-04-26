@@ -4127,6 +4127,38 @@ Then measure:
 
 ---
 
+### HOTFIX-156: Single-source session metadata via getSessionInfo()
+**Issue:** #156 — session metadata read by 4 paths (status bar tokens / sidebar list / MCP tokens / MCP config) duplicating disk reads and risking divergent shapes.
+**Fix:**
+- `safe-exec.js` — new `tmuxNameFor(sessionId)` (single source of truth for tmux session naming).
+- `tmux-lifecycle.js` — `tmuxName` now delegates to `safe.tmuxNameFor`.
+- `session-utils.js` — new `getSessionInfo(sessionId)` returns unified shape (id, project_*, cli_type, cli_session_id, name, state, model, input_tokens, max_tokens, message_count, timestamp, tmux, active, etc.); 2s TTL cache to dedupe parallel callers; `invalidateSessionInfoCache()` exported for write-side hooks.
+- `routes.js` — `/api/sessions/:id/tokens` and `buildSessionList` route through `getSessionInfo`. `_getNonClaudeMetadata` retained as a list-context disambiguation pre-pass that populates `cli_session_id` when missing.
+- `mcp-tools.js` — `tokens` action routes through `getSessionInfo`.
+**Surface:** Backend refactor — verify via curl + spot-check sidebar/status bar in Hymie.
+
+**Setup:** Deploy to M5 dev. Have at least one Claude session and one Gemini or Codex session running (any 1d+ existing sessions in the sidebar work).
+
+**Steps:**
+1. `curl http://m5:7860/api/state | jq '.sessions[0:3] | map({id,name,model,messageCount,active,cli_type})'` — confirm sessions render with name/model/messageCount/active populated for both Claude and non-Claude.
+2. Pick an active session id, `curl 'http://m5:7860/api/sessions/<id>/tokens?project=<project>' | jq` — confirm `{input_tokens, model, max_tokens}` shape unchanged.
+3. Same id again immediately — should return same numbers (cache hit).
+4. Sidebar in Hymie Firefox: open M5 dev, confirm session list renders identically to before (names, message counts, active dot, model labels for non-Claude).
+5. Status bar (active session bar): open a Claude session, confirm Model/Tokens populate correctly within 1-2 polls.
+
+**Expected:**
+- All session-list and per-session-token read paths return equivalent data shape to pre-refactor.
+- No new errors in `/api/logs?level=ERROR&module=session-utils` or `module=routes`.
+- Cache hit on repeat-call within 2s (no extra disk read; not directly observable but no perf regression).
+
+**Watch for regressions:**
+- Newly-created non-Claude sessions: file metadata may take 1 sidebar render to appear (disambiguation pre-pass writes cli_session_id, next render sees file). This was the same behavior pre-refactor.
+- Cache staleness after rename/archive: up to 2s lag before user-visible UI updates. Acceptable.
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
 ### HOTFIX-181: Dual-sink logger + /api/logs query API + UI error banner
 **Issue:** #181 — log surfacing: 2,374 qdrant-sync 404s went unnoticed because logs only existed in Docker's stdout ring buffer.
 **Fix:**

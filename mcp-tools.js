@@ -226,7 +226,10 @@ async function handleSessions(args, res) {
     case 'tokens': {
       if (!validateSessionId(args.session_id))
         return res.status(400).json({ error: 'invalid session_id format' });
-      return await sessionUtils.getTokenUsage(args.session_id, args.project);
+      // #156: route through getSessionInfo so cache dedupes vs UI polling.
+      const info = await sessionUtils.getSessionInfo(args.session_id);
+      if (!info) return { input_tokens: 0, model: null, max_tokens: 200000 };
+      return { input_tokens: info.input_tokens, model: info.model, max_tokens: info.max_tokens };
     }
     case 'summarize': {
       if (!validateSessionId(args.session_id))
