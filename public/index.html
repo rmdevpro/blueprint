@@ -3126,18 +3126,24 @@ build/**</textarea>
       // code here >" until the user manually pasted.
       // Fix: wrap the code in xterm's bracketed-paste sequences (CSI 200~ /
       // CSI 201~) so Claude/Ink sees a proper paste event, then send Enter.
+      // Scope: only Ink-based CLIs (claude, gemini, codex). Plain Terminal
+      // sessions get the original raw-char behavior in case the receiving
+      // shell isn't in bracketed-paste mode.
       const BP_START = '\x1b[200~';
       const BP_END = '\x1b[201~';
-      const sendCodeAsPaste = (sock) => {
-        sock.send(BP_START + code + BP_END);
+      const INK_CLIS = new Set(['claude', 'gemini', 'codex']);
+      const sendCode = (sock, cliType) => {
+        const useBracketed = INK_CLIS.has(cliType);
+        sock.send(useBracketed ? (BP_START + code + BP_END) : code);
         setTimeout(() => sock.send('\r'), 500);
       };
 
       if (authTriggerTabId && tabs.has(authTriggerTabId)) {
         const tab = tabs.get(authTriggerTabId);
-        if (tab.ws && tab.ws.readyState === WebSocket.OPEN) sendCodeAsPaste(tab.ws);
+        if (tab.ws && tab.ws.readyState === WebSocket.OPEN) sendCode(tab.ws, tab.cli_type);
       } else if (window._loginWs && window._loginWs.readyState === WebSocket.OPEN) {
-        sendCodeAsPaste(window._loginWs);
+        // No tab ref available — assume claude (the legacy /login path)
+        sendCode(window._loginWs, 'claude');
       }
 
       // Dismiss modal after a short delay to let the CLI process
