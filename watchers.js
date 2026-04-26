@@ -270,19 +270,27 @@ module.exports = function createWatchers({
       /* expected: first run — file does not exist yet, will be created */
     }
 
+    // Escape the project path for embedding inside a TOML basic-string
+    // (the part between the quotes in `[projects."..."]`). TOML basic-string
+    // escapes \ → \\ and " → \". Without this, a path with " or \ would
+    // produce invalid TOML and break Codex config parsing entirely.
+    const escapeTomlBasicString = (s) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     let appended = '';
+    let appendedCount = 0;
     for (const project of db.getProjects()) {
       const p = project.path;
+      const escaped = escapeTomlBasicString(p);
       // Match `[projects."<p>"]` literally — TOML keys are exact strings.
-      const blockMarker = `[projects."${p}"]`;
+      const blockMarker = `[projects."${escaped}"]`;
       if (content.includes(blockMarker)) continue;
       appended += `\n${blockMarker}\ntrust_level = "trusted"\n`;
+      appendedCount++;
     }
     if (!appended) return;
     try {
       await fsp.mkdir(join(HOME, '.codex'), { recursive: true });
       await fsp.appendFile(codexConfigFile, appended);
-      logger.info('Trusted Codex project directories', { module: 'watchers', count: appended.split('\n').filter(l => l.startsWith('[projects.')).length });
+      logger.info('Trusted Codex project directories', { module: 'watchers', count: appendedCount });
     } catch (err) {
       logger.error('Failed to update codex trust', { module: 'watchers', op: 'trustCodexProjectDirs', err: err.message });
     }
