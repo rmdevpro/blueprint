@@ -867,13 +867,16 @@
 **Expected:** Real filesystem directories shown.
 
 ## NF-73: Task Context Menu — Folder
-**Result:** SKIP
-**Observed:** Right-click context menu on task tree folder not automated (requires actual right-click interaction).
-**Notes:** Context menu mechanism exists per previous run.
+**Result:** PASS
+**Observed:** contextmenu event on .task-folder-label → context menu items include "Add Task" ✓ and "New Folder" ✓ (confirmed via filter on all .context-menu-item elements).
+**Expected:** Folder context menu shows "Add Task" and "New Folder".
+**Issue:** none
 
 ## NF-74: Task Context Menu — Task
-**Result:** SKIP
-**Notes:** Not tested (NF-73 skipped).
+**Result:** PASS
+**Observed:** contextmenu event on .task-node → context menu items: ["Edit", "Complete", "Archive", "Delete"] — all 4 present ✓.
+**Expected:** Context menu on task shows Edit, Complete, Archive, Delete.
+**Issue:** none
 
 ## NF-75: Project Picker Multi-Root
 **Result:** PASS
@@ -881,12 +884,16 @@
 **Expected:** Picker shows mount roots.
 
 ## NF-76: Empty Projects Visible in Sidebar
-**Result:** SKIP
-**Observed:** Not tested — would require creating a new project with no sessions.
+**Result:** PASS
+**Observed:** Created directory /data/workspace/nf76-empty-test via SSH. POST /api/projects {path, name} → {added:true}. After 3s: project header "nf76-empty-test" visible in sidebar (headerCount 10→11). Empty project shows with no session count badge.
+**Expected:** Empty projects visible in sidebar.
+**Issue:** none
 
 ## NF-77: File Browser Context Menus
-**Result:** SKIP
-**Observed:** Right-click automation not completed (would need jQueryFileTree expand + right-click).
+**Result:** PASS
+**Observed:** jQueryFileTree `<a>` elements present in #file-browser-tree (7 items). contextmenu on dir link (/data/workspace/docs/) → .context-menu appears with items: ["New File", "New Folder", "Upload", "Rename", "Delete"] ✓. contextmenu on file link (.mcp.json) → items: ["Open", "Rename", "Delete"] ✓.
+**Expected:** Context menus with correct actions for files and folders.
+**Issue:** none
 
 ## NF-78: CLI Type Dropdown — All Types
 **Result:** PASS
@@ -951,11 +958,15 @@
 **Issue:** none
 
 ## TASK-01 through TASK-06
-**Result:** PASS (TASK-01, TASK-03), SKIP (TASK-02, TASK-04, TASK-05, TASK-06)
+**Result:** PASS (all 6)
 **Observed:**
 - TASK-01: #task-tree shows workspace folders ✓
-- TASK-03: Task created via MCP, id=53 ✓
-- TASK-02/04/05/06: Context menu and checkbox interactions skipped (automation difficulty)
+- TASK-02: contextmenu on .task-folder-label → "Add Task" and "New Folder" in context menu ✓
+- TASK-03: Task created via MCP (id=53, "Runbook USR-03 test") ✓
+- TASK-04: Checkbox click on task-node → afterChecked=true; API update confirmed status='done', completed_at set ✓
+- TASK-05: Created task id=55 "TASK-05 delete test", clicked .task-delete (✕) → task removed from DOM (nodesBefore=1, nodesAfter=0) ✓
+- TASK-06: Expanded first folder (child div: none→visible), switched Files→Tasks → childDivDisplay="" (visible, preserved=true) ✓
+**Issue:** none
 
 ## CONN-01: Connect by Name Query
 **Result:** PASS
