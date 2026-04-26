@@ -3068,7 +3068,7 @@ Quick pass/fail checklist for all 139 UI elements. Execute with `browser_evaluat
 
 ---
 
-## Phase 13: Regression Tests for Session Fixes (Issues #119-#150)
+## Phase 13: Regression Tests for Issue Fixes
 
 Tests for all fixes applied in the canonical branch. Every test uses Playwright MCP with full UI interaction. No curl-only testing.
 
@@ -3726,12 +3726,8 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 
 ---
 
-## Hotfix verification (2026-04-26 batch — #178/#179/#182/#173)
-
-### HOTFIX-178: Gemini key resolves consistently across DB / env / API write
-**Issue:** #178 — Gemini API key naming triangle
-**Fix:** `qdrant-sync.js:79` — env fallback reads `GEMINI_API_KEY` (matches what `routes.js:1135` writes), no longer `GOOGLE_API_KEY`.
-
+### REG-178: Gemini key resolves consistently across DB / env / API write
+**Source:** Issue #178 (regression test — must continue to pass).
 **Setup:** Backend deploy (M5 dev container).
 
 **Steps:**
@@ -3752,10 +3748,8 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 
 ---
 
-### HOTFIX-179: Indexer skips synthetic API-error chunks
-**Issue:** #179 — qdrant indexer ingests synthetic error placeholders
-**Fix:** `qdrant-sync.js:327` — added `if (entry.isApiErrorMessage) continue;` after type check.
-
+### REG-179: Indexer skips synthetic API-error chunks
+**Source:** Issue #179 (regression test — must continue to pass).
 **Setup:** Backend deploy (M5 dev container) with at least one Claude session JSONL containing a synthetic API-error chunk. (Sample on irina: `/data/.claude/projects/-data-workspace-repos-agentic-workbench/2ec7b89c-….jsonl:1069`.)
 
 **Steps:**
@@ -3772,10 +3766,8 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 
 ---
 
-### HOTFIX-182: Error messages no longer truncated at 100 chars
-**Issue:** #182 — `substring(0, 100)` hides the actual error reason
-**Fix:** All five truncation sites bumped 100/200 → 1000.
-
+### REG-182: Error messages no longer truncated at 100 chars
+**Source:** Issue #182 (regression test — must continue to pass).
 **Setup:** Backend deploy (M5 dev container).
 
 **Steps:**
@@ -3792,9 +3784,8 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 
 ---
 
-### HOTFIX-186: File browser pane scrolls horizontally when tree content overflows
-**Issue:** #186 — File browser pane: add horizontal scroll when tree content overflows
-**Fix:** `public/index.html` — `#panel-content { overflow-x: auto }` + `UL.jqueryFileTree LI > A { white-space: nowrap }`.
+### REG-186: File browser pane scrolls horizontally when tree content overflows
+**Source:** Issue #186 (regression test — must continue to pass).
 **Surface:** UI/visual — requires HEADED browser per "no headless for visual bugs" rule.
 
 **Setup:** UI deploy at ${WORKBENCH_URL}. Open Files panel.
@@ -3815,10 +3806,8 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 
 ---
 
-### HOTFIX-189: API responses sanitize URL credentials
-**Issue:** #189 — Wider error messages may echo URL credentials / paths
-**Fix:** `safe-exec.js` — added `sanitizeErrorForClient(msg)` that strips `https?://user:pass@host` userinfo. `routes.js:536` + `:1366` use it on client-visible error responses. Internal logger calls keep raw 1000-char messages.
-
+### REG-189: API responses sanitize URL credentials
+**Source:** Issue #189 (regression test — must continue to pass).
 **Setup:** Backend deploy.
 
 **Steps:**
@@ -3835,10 +3824,8 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 
 ---
 
-### HOTFIX-176: qdrant-sync survives cold-start race + recovers from later qdrant outages
-**Issue:** #176 — `qdrant-sync.start()` returns silently on cold-start race, never retries
-**Fix:** `qdrant-sync.js` — `_waitForQdrant` does 5 inline retries with linear backoff (1s, 2s, 3s, 4s, 5s = ~15s ceiling) before scheduling a 60s-interval background retry that takes over if qdrant comes up later.
-
+### REG-176: qdrant-sync survives cold-start race + recovers from later qdrant outages
+**Source:** Issue #176 (regression test — must continue to pass).
 **Setup:** Backend deploy on M5 dev. Need a way to start the workbench with qdrant temporarily unavailable.
 
 **Steps:**
@@ -3855,10 +3842,8 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 
 ---
 
-### HOTFIX-191: qdrant-sync skips empty-text chunks before embed
-**Issue:** #191 — `EmbedContentRequest.content contains an empty Part` 400 from Gemini
-**Fix:** `qdrant-sync.js:syncFileToCollection` — filter chunks to non-empty text before calling `embed()`.
-
+### REG-191: qdrant-sync skips empty-text chunks before embed
+**Source:** Issue #191 (regression test — must continue to pass).
 **Setup:** Backend deploy on M5 dev with Gemini provider configured. Need at least one workspace file the chunker would produce empty chunks for (e.g., empty CLAUDE.md, frontmatter-only .md).
 
 **Steps:**
@@ -3876,10 +3861,8 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 
 ---
 
-### HOTFIX-192: qdrant-sync respects Gemini's 100-batch limit
-**Issue:** #192 — `BatchEmbedContentsRequest.requests: at most 100 requests can be in one batch`
-**Fix:** `qdrant-sync.js:embed()` — recursive sub-batching with `MAX_BATCH = 100` and a 100ms inter-batch delay.
-
+### REG-192: qdrant-sync respects Gemini's 100-batch limit
+**Source:** Issue #192 (regression test — must continue to pass).
 **Setup:** Backend deploy. Need a large markdown file that produces >100 chunks (e.g., the gate2*-compliance review docs that originally hit this).
 
 **Steps:**
@@ -3896,10 +3879,8 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 
 ---
 
-### HOTFIX-193: POST /api/projects accepts URL paths without slash mangling
-**Issue:** #193 — `https://` collapsed to `https:/` then rejected as "Invalid git URL"
-**Fix:** `routes.js:514` — only normalize slashes for non-URL paths.
-
+### REG-193: POST /api/projects accepts URL paths without slash mangling
+**Source:** Issue #193 (regression test — must continue to pass).
 **Setup:** Backend deploy. Workbench reachable.
 
 **Steps:**
@@ -3917,10 +3898,8 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 
 ---
 
-### HOTFIX-187: Status bar Model populates from sidebar fallback for all CLIs
-**Issue:** #187 — Status bar shows "Model: unknown" for first turn after creating a Claude session
-**Fix:** `public/index.html:updateStatusBar` — drop the `cliType !== 'claude'` guard on the projectState fallback so all CLIs use the sidebar's model data when `/api/sessions/:id/tokens` hasn't returned yet.
-
+### REG-187: Status bar Model populates from sidebar fallback for all CLIs
+**Source:** Issue #187 (regression test — must continue to pass).
 **Setup:** UI deploy. Need a fresh CLI session creation to trigger the previously-lagging path.
 
 **Steps (real user):**
@@ -3939,9 +3918,8 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 
 ---
 
-### HOTFIX-190: sanitizeErrorForClient redacts token@host and query-string secrets
-**Issue:** #190 — sanitizer scope expansion
-**Fix:** `safe-exec.js:sanitizeErrorForClient` — added two more redaction passes after the existing user:pass@ pass:
+### REG-190: sanitizeErrorForClient redacts token@host and query-string secrets
+**Source:** Issue #190 (regression test — must continue to pass).
 1. Bare `https://token@host` → `https://***@host`
 2. Common credential query params (`api_key`, `token`, `auth`, `key`, `secret`, `password`, `access_token`, `refresh_token`, `api-key`, `x-api-key`, `apikey`) → value redacted to `***`
 
@@ -3984,10 +3962,8 @@ Should print the input unchanged — author lines / non-URL `@` patterns are NOT
 
 ---
 
-### HOTFIX-169: Auth modal Submit advances the CLI's /login prompt
-**Issue:** #169 — modal Submit closed the modal but CLI dangled at "Paste code here >"
-**Fix:** `public/index.html:submitAuthCode` — wrap the code in xterm's bracketed-paste sequences (\\x1b[200~ … \\x1b[201~) before sending via WS. Claude CLI uses Ink (React for terminals), which distinguishes typed keystrokes from paste events. Without bracketed-paste wrapping, Ink treated the code chars as individual keypresses and the /login input handler ignored them.
-
+### REG-169: Auth modal Submit advances the CLI's /login prompt
+**Source:** Issue #169 (regression test — must continue to pass).
 **Surface:** UI/visual + backend. Requires headed browser (Hymie) + a real Claude OAuth flow. Auth state is wiped on every HF rebuild (no persistent storage), so this is the canonical per-deploy auth setup test.
 
 **Setup:** ${WORKBENCH_URL} rebuilt with the fix. ${GATE_USER}/${GATE_PASS} (if gate present) + API keys ready (`/mnt/storage/credentials/api-keys/`). Hymie Firefox session.
@@ -4020,9 +3996,8 @@ Should print the input unchanged — author lines / non-URL `@` patterns are NOT
 
 ---
 
-### HOTFIX-194: Right file panel stays bounded to viewport, scrollbars stay reachable
-**Issue:** #194 — file tree grows past viewport bottom; horizontal scrollbar lands below the fold
-**Fix:** `public/index.html` — flex-column chain on `#panel-content` + `.panel-section` with `min-height: 0` so `#file-browser-tree` is bounded to its flex parent's height instead of taking natural height.
+### REG-194: Right file panel stays bounded to viewport, scrollbars stay reachable
+**Source:** Issue #194 (regression test — must continue to pass).
 **Surface:** UI/visual — requires HEADED browser per "no headless for visual bugs" rule.
 
 **Setup:** UI deploy at ${WORKBENCH_URL}. Open Files panel via the right-pane `☰` toggle. Need a workspace with enough nested content that the rendered tree exceeds viewport height. If a real workspace doesn't have enough content, inject synthetic items via `browser_evaluate` to force overflow (per the verification recipe below).
@@ -4067,10 +4042,8 @@ Then measure:
 
 ---
 
-### HOTFIX-188: registerCodexMcp does not corrupt config.toml
-**Issue:** #188 — Codex config corruption from over-greedy cleanup regex
-**Fix:** `watchers.js:236` — deleted the cleanup branch entirely; function now just check-and-appends.
-
+### REG-188: registerCodexMcp does not corrupt config.toml
+**Source:** Issue #188 (regression test — must continue to pass).
 **Setup:** Backend deploy. Need a container where Codex config exists and is loadable BEFORE this verification (validate baseline by running `codex --version`).
 
 **Steps:**
@@ -4089,9 +4062,8 @@ Then measure:
 
 ---
 
-### HOTFIX-173: xterm scrollbar tracks buffer growth while scrolled up
-**Issue:** #173 — xterm scrollbar range doesn't update when buffer grows while user is scrolled up
-**Fix:** `public/index.html:1401-area` — added `term.onWriteParsed → term.refresh(0, term.rows-1)` hook.
+### REG-173: xterm scrollbar tracks buffer growth while scrolled up
+**Source:** Issue #173 (regression test — must continue to pass).
 **Surface:** UI/visual — REQUIRES headed browser per "no headless for visual bugs" rule. Use ${WORKBENCH_URL} + headed browser.
 
 **Setup:** UI deploy at ${WORKBENCH_URL}. Hymie OAuth setup complete per `blueprint-deployment.md`.
@@ -4116,9 +4088,8 @@ Then measure:
 
 ---
 
-### HOTFIX-174: tini reaps orphan zombie CLI processes
-**Issue:** #174 — `[claude] <defunct>` zombies accumulate in container; `node` (PID 1) doesn't reap reparented orphan grandchildren.
-**Fix:** `Dockerfile` — installed `tini` via apt and changed `ENTRYPOINT` to `["/usr/bin/tini", "--", "/entrypoint.sh"]`. tini at PID 1 auto-reaps any orphans regardless of which intermediate (tmux/bash) ancestor died.
+### REG-174: tini reaps orphan zombie CLI processes
+**Source:** Issue #174 (regression test — must continue to pass).
 **Surface:** Container infrastructure — verify on any deployed container after image rebuild.
 
 **Setup:** Container deploy at ${WORKBENCH_URL}. Connect via `docker exec` or SSH.
@@ -4139,9 +4110,8 @@ Then measure:
 
 ---
 
-### HOTFIX-156: Single-source session metadata via getSessionInfo()
-**Issue:** #156 — session metadata read by 4 paths (status bar tokens / sidebar list / MCP tokens / MCP config) duplicating disk reads and risking divergent shapes.
-**Fix:**
+### REG-156: Single-source session metadata via getSessionInfo()
+**Source:** Issue #156 (regression test — must continue to pass).
 - `safe-exec.js` — new `tmuxNameFor(sessionId)` (single source of truth for tmux session naming).
 - `tmux-lifecycle.js` — `tmuxName` now delegates to `safe.tmuxNameFor`.
 - `session-utils.js` — new `getSessionInfo(sessionId)` returns unified shape (id, project_*, cli_type, cli_session_id, name, state, model, input_tokens, max_tokens, message_count, timestamp, tmux, active, etc.); 2s TTL cache to dedupe parallel callers; `invalidateSessionInfoCache()` exported for write-side hooks.
@@ -4171,9 +4141,8 @@ Then measure:
 
 ---
 
-### HOTFIX-181: Dual-sink logger + /api/logs query API + UI error banner
-**Issue:** #181 — log surfacing: 2,374 qdrant-sync 404s went unnoticed because logs only existed in Docker's stdout ring buffer.
-**Fix:**
+### REG-181: Dual-sink logger + /api/logs query API + UI error banner
+**Source:** Issue #181 (regression test — must continue to pass).
 - `db.js` — new `logs` table (id, ts, level, module, message, context) with indices on ts, level+ts, module+ts. Helpers: `insertLog`, `queryLogs`, `errorCountSince`, `topErrorSince`, `cleanupOldLogs`.
 - `logger.js` — every `log.{debug,info,warn,error}` call now also persists to `logs` table via lazy `db` require. Failure-safe (one stderr warn per process). Hourly TTL sweep via setInterval.unref'd; default retention `LOG_RETENTION='-7 days'`.
 - `routes.js` — `GET /api/logs?level=&module=&since=1h&limit=200`, `GET /api/logs/summary?since=1h` (count + topError for banner).
@@ -4207,9 +4176,8 @@ Then measure:
 
 ---
 
-### HOTFIX-180: API key changes validated synchronously on PUT /api/settings
-**Issue:** #180 — bad keys silently saved; only failed later in background reindex; user thought save succeeded.
-**Fix:** `routes.js:1133` (PUT /api/settings) calls `qdrant.validateProviderConfig(buildCandidateConfig(key, value))` for `gemini_api_key`, `codex_api_key`, `vector_embedding_provider`, `vector_custom_url`, `vector_custom_key`. On failure: returns 400 with the actual provider error string, does NOT save.
+### REG-180: API key changes validated synchronously on PUT /api/settings
+**Source:** Issue #180 (regression test — must continue to pass).
 **Surface:** Backend API — can be tested with curl against ${WORKBENCH_URL}.
 
 **Setup:** Backend deploy. Get a valid Gemini API key for the positive case.
@@ -4232,10 +4200,9 @@ Then measure:
 
 ---
 
-### HOTFIX-147: Atomic temp→real session-id handoff
-**Issue:** #147 — duplicate session entries appearing in sidebar/tab bar after creating a new session.
+### REG-147: Atomic temp→real session-id handoff
+**Source:** Issue #147 (regression test — must continue to pass).
 **Root cause (3-CLI consensus):** `resolveSessionId` and `resolveStaleNewSessions` in session-resolver.js performed insert-real → update-metadata → delete-temp as separate statements. `/api/state` polls landing in the brief window saw both rows.
-**Fix:** wrap each handoff in `db.db.transaction(() => { … })()`. /api/state can never observe both rows now.
 **Surface:** Backend.
 
 **Setup:** Deploy to ${WORKBENCH_URL}. Have a Claude session creation flow ready.
@@ -4254,9 +4221,8 @@ Then measure:
 
 ---
 
-### HOTFIX-157: Auto-respawn dead tmux pane on tab reconnect
-**Issue:** #157 — coming back to a tab after long idle / container restart, terminal shows "[Session detached]" and user must close + relaunch.
-**Fix:** `ws-terminal.js` — when a WS connects with a known tmuxSession whose tmux pane is gone, look up the blueprint session by tmuxName prefix (`db.getSessionByPrefix`), respawn tmux via `safe.tmuxCreateCLI` using the session's project_path + cli_type, then attach. Falls through to the existing close-with-error path if lookup or respawn fails.
+### REG-157: Auto-respawn dead tmux pane on tab reconnect
+**Source:** Issue #157 (regression test — must continue to pass).
 **Surface:** Backend WS path + UI behavior. REQUIRES Playwright UI verification (per UI-component rule).
 
 **Setup:** Deploy to ${WORKBENCH_URL}. Open a Claude session in the workbench so a tmux pane exists.
@@ -4284,9 +4250,8 @@ Then measure:
 
 ---
 
-### HOTFIX-180-UI: Settings UI surfaces validation errors + rolls back optimistic cache
-**Issue:** #180 follow-up — original backend validation worked, but `saveSetting` in public/index.html was fire-and-forget (no `res.ok` check, no error surface, no rollback of `_settingsCache[key]`). User typed bad key, saw nothing, assumed save succeeded.
-**Fix:** `saveSetting` now: (a) snapshots previousValue before optimistic write, (b) checks res.ok, (c) on failure rolls `_settingsCache[key]` back AND shows red dismissible banner inside Settings modal with the actual provider error string, (d) clears banner on next successful save. Network error and HTTP non-OK both handled.
+### REG-180-UI: Settings UI surfaces validation errors + rolls back optimistic cache
+**Source:** Issue #180 (regression test — must continue to pass).
 **Surface:** UI — REQUIRES Playwright (or Hymie) verification. Backend curl alone is insufficient.
 
 **Setup:** Deploy to ${WORKBENCH_URL}. Have a known-valid Gemini API key already saved (so you can confirm rollback).
@@ -4316,7 +4281,6 @@ Then measure:
 **Result:** ☐ PASS ☐ FAIL ☐ SKIP
 
 ---
-
 ## Troubleshooting
 
 | Symptom | Likely Cause | Action |
