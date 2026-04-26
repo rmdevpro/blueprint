@@ -163,6 +163,20 @@ async function embed(texts, dims) {
   const cfg = getEmbeddingConfig();
   if (!cfg.key && !cfg.isHF) throw new Error('No embedding API key configured');
 
+  // #192: Gemini's OpenAI-compat embeddings endpoint caps batches at 100. HF and
+  // OpenAI also benefit from chunking to avoid surprise rate / payload limits.
+  // Recurse over sub-batches if the input exceeds the cap.
+  const MAX_BATCH = 100;
+  if (texts.length > MAX_BATCH) {
+    const out = [];
+    for (let i = 0; i < texts.length; i += MAX_BATCH) {
+      const sub = await embed(texts.slice(i, i + MAX_BATCH), dims);
+      out.push(...sub);
+      if (i + MAX_BATCH < texts.length) await new Promise(r => setTimeout(r, 100));
+    }
+    return out;
+  }
+
   // HuggingFace Inference API has a different format
   if (cfg.isHF) {
     const response = await fetch(cfg.url, {
@@ -456,7 +470,8 @@ async function syncFileToCollection(filePath, collection, baseDir, dims) {
     must: [{ key: 'file_path', match: { value: relPath } }],
   });
 
-  const chunks = chunkDocument(content, filePath);
+  // #191: skip empty-text chunks before embed — Gemini rejects empty Parts with HTTP 400.
+  const chunks = chunkDocument(content, filePath).filter(c => c.text && c.text.trim().length > 0);
   if (chunks.length === 0) return 0;
 
   const texts = chunks.map(c => c.text);

@@ -511,7 +511,12 @@ function registerCoreRoutes(
       if (!projectPath) return res.status(400).json({ error: 'path required' });
       if (name && name.length > PROJECT_NAME_MAX_LEN)
         return res.status(400).json({ error: `name too long (max ${PROJECT_NAME_MAX_LEN})` });
-      projectPath = projectPath.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+      // #193: don't collapse slashes in URLs — that turns https:// into https:/
+      // and the URL-validation downstream rejects with a misleading "Invalid git
+      // URL" error. Only normalize slashes for filesystem paths.
+      const isUrl = projectPath.startsWith('http://') || projectPath.startsWith('https://') || projectPath.startsWith('git@');
+      projectPath = projectPath.replace(/\/$/, '');
+      if (!isUrl) projectPath = projectPath.replace(/\/+/g, '/') || '/';
 
       if (projectPath.startsWith('http') || projectPath.startsWith('git@')) {
         const repoName = name || projectPath.split('/').pop().replace('.git', '');

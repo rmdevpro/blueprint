@@ -3843,6 +3843,68 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 
 ---
 
+### HOTFIX-191: qdrant-sync skips empty-text chunks before embed
+**Issue:** #191 — `EmbedContentRequest.content contains an empty Part` 400 from Gemini
+**Fix:** `qdrant-sync.js:syncFileToCollection` — filter chunks to non-empty text before calling `embed()`.
+
+**Setup:** Backend deploy on M5 dev with Gemini provider configured. Need at least one workspace file the chunker would produce empty chunks for (e.g., empty CLAUDE.md, frontmatter-only .md).
+
+**Steps:**
+1. Confirm baseline: `docker logs workbench --since 5m | grep "EmpsuptyEmbedContentRequest.content contains an empty Part"` should show OLD entries (pre-fix).
+2. Trigger reindex of `documents` via `POST /api/qdrant/reindex` with `{collection: "documents"}`.
+3. Watch logs during reindex: should NOT produce any new `empty Part` errors.
+4. Sanity: collection point count grows, files that had empty chunks contribute zero points (skipped) but DO NOT abort the file's other valid chunks.
+
+**Expected:**
+- Zero `empty Part` errors after fix.
+- Files with mixed empty + non-empty chunks: only non-empty get indexed.
+- Files entirely empty: silent skip (return 0).
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### HOTFIX-192: qdrant-sync respects Gemini's 100-batch limit
+**Issue:** #192 — `BatchEmbedContentsRequest.requests: at most 100 requests can be in one batch`
+**Fix:** `qdrant-sync.js:embed()` — recursive sub-batching with `MAX_BATCH = 100` and a 100ms inter-batch delay.
+
+**Setup:** Backend deploy. Need a large markdown file that produces >100 chunks (e.g., the gate2*-compliance review docs that originally hit this).
+
+**Steps:**
+1. Identify a file in `/data/workspace` that would exceed 100 chunks (review docs, large logs).
+2. Touch the file (or update its content) so qdrant-sync re-syncs it.
+3. Watch logs: should see no `at most 100 requests` errors.
+4. Sanity: file is fully indexed (chunk count = expected from `chunkDocument` output, all chunks present in qdrant).
+
+**Expected:**
+- No `at most 100 requests` errors regardless of chunk count.
+- Large files complete indexing in ~N/100 round-trips with small inter-batch delays.
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
+### HOTFIX-193: POST /api/projects accepts URL paths without slash mangling
+**Issue:** #193 — `https://` collapsed to `https:/` then rejected as "Invalid git URL"
+**Fix:** `routes.js:514` — only normalize slashes for non-URL paths.
+
+**Setup:** Backend deploy. Workbench reachable.
+
+**Steps:**
+1. POST `/api/projects` with body `{"path": "https://github.com/this-repo-does-not-exist-aaa/foo.git"}` to a known-bad URL.
+2. Confirm response is NOT `{"error":"Git clone failed: Invalid git URL"}`. The error should reflect the ACTUAL git failure (e.g., `repository '...' not found`, `Authentication failed`, etc.).
+3. POST with a real git URL like `{"path": "https://github.com/octocat/Hello-World.git"}` (or any small public repo). Confirm clone succeeds: 200 + `cloned: true` + path under `/data/workspace`.
+4. POST with a filesystem path like `{"path": "/data/workspace/docs"}`. Confirm slash-collapse still applies (no double-slash regression for FS paths).
+
+**Expected:**
+- URL paths reach `gitCloneAsync` intact; real git error surfaces.
+- Filesystem paths still get normalized.
+- A successful clone creates the project as expected.
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
 ### HOTFIX-188: registerCodexMcp does not corrupt config.toml
 **Issue:** #188 — Codex config corruption from over-greedy cleanup regex
 **Fix:** `watchers.js:236` — deleted the cleanup branch entirely; function now just check-and-appends.
