@@ -305,6 +305,12 @@ if (require.main === module) {
             err: err.message,
           }),
         );
+        watchers.trustCodexProjectDirs().catch((err) =>
+          logger.error('Post-startup trust Codex project dirs failed', {
+            module: 'server',
+            err: err.message,
+          }),
+        );
 
         // Start Qdrant vector sync (non-blocking — skips if Qdrant unavailable)
         require('./qdrant-sync').start().catch((err) =>

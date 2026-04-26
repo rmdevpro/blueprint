@@ -249,6 +249,45 @@ module.exports = function createWatchers({
     }
   }
 
+  // #204: mirror of trustProjectDirs but for Codex. Codex stores trusted
+  // directories in /data/.codex/config.toml as `[projects."<exact-path>"]`
+  // blocks with `trust_level = "trusted"`. Trust is per-exact-path (NOT
+  // recursive), so trusting /data/workspace doesn't trust subdirectories —
+  // every Blueprint project needs its own block. Without this, spawning a
+  // Codex session in a project that's never been opened in Codex before
+  // pops up a trust dialog and blocks the test/automation.
+  async function trustCodexProjectDirs() {
+    const HOME = safe.HOME;
+    const codexConfigFile = join(HOME, '.codex', 'config.toml');
+    let content = '';
+    try {
+      content = await fsp.readFile(codexConfigFile, 'utf-8');
+    } catch (err) {
+      if (err.code !== 'ENOENT') {
+        logger.warn('Failed to read codex config.toml', { module: 'watchers', op: 'trustCodexProjectDirs', err: err.message });
+        return;
+      }
+      /* expected: first run — file does not exist yet, will be created */
+    }
+
+    let appended = '';
+    for (const project of db.getProjects()) {
+      const p = project.path;
+      // Match `[projects."<p>"]` literally — TOML keys are exact strings.
+      const blockMarker = `[projects."${p}"]`;
+      if (content.includes(blockMarker)) continue;
+      appended += `\n${blockMarker}\ntrust_level = "trusted"\n`;
+    }
+    if (!appended) return;
+    try {
+      await fsp.mkdir(join(HOME, '.codex'), { recursive: true });
+      await fsp.appendFile(codexConfigFile, appended);
+      logger.info('Trusted Codex project directories', { module: 'watchers', count: appended.split('\n').filter(l => l.startsWith('[projects.')).length });
+    } catch (err) {
+      logger.error('Failed to update codex trust', { module: 'watchers', op: 'trustCodexProjectDirs', err: err.message });
+    }
+  }
+
   async function trustProjectDirs() {
     const configFile = join(CLAUDE_HOME, '.claude.json');
     let cfg = {};
@@ -335,6 +374,7 @@ module.exports = function createWatchers({
     registerGeminiMcp,
     registerCodexMcp,
     trustProjectDirs,
+    trustCodexProjectDirs,
     ensureSettings,
   };
 };
