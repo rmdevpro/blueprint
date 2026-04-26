@@ -808,18 +808,29 @@ const _sessionInfoCache = new Map();
 const SESSION_INFO_TTL_MS = 2000;
 
 function invalidateSessionInfoCache(sessionId) {
-  if (sessionId) _sessionInfoCache.delete(sessionId);
-  else _sessionInfoCache.clear();
+  if (sessionId) {
+    _sessionInfoCache.delete(`${sessionId}:0`);
+    _sessionInfoCache.delete(`${sessionId}:1`);
+  } else {
+    _sessionInfoCache.clear();
+  }
 }
 
-async function getSessionInfo(sessionId) {
+async function getSessionInfo(sessionId, opts = {}) {
   if (!sessionId) return null;
-  const cached = _sessionInfoCache.get(sessionId);
+  // includeTokens: when false, skip the per-CLI token-usage read. buildSessionList
+  // sets this so a sidebar refresh isn't N JSONL re-reads (only the active session
+  // bar polls /api/sessions/:id/tokens, which uses includeTokens=true).
+  const includeTokens = opts.includeTokens !== false;
+  // Cache key includes the includeTokens flag so a no-tokens entry doesn't satisfy
+  // a later tokens-required call.
+  const cacheKey = `${sessionId}:${includeTokens ? 1 : 0}`;
+  const cached = _sessionInfoCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < SESSION_INFO_TTL_MS) return cached.value;
 
   const dbRow = db.getSessionFull(sessionId);
   if (!dbRow) {
-    _sessionInfoCache.set(sessionId, { ts: Date.now(), value: null });
+    _sessionInfoCache.set(cacheKey, { ts: Date.now(), value: null });
     return null;
   }
 
@@ -831,7 +842,9 @@ async function getSessionInfo(sessionId) {
     const sDir = sessionsDir(dbRow.project_path);
     const jsonlFile = join(sDir, `${sessionId}.jsonl`);
     fileMeta = await parseSessionFile(jsonlFile);
-    tokens = await getTokenUsage(sessionId, dbRow.project_name);
+    // getTokenUsage's second arg is the project NAME (it does db.getProject(name)
+    // internally to resolve the path). dbRow.project_name is the right key.
+    if (includeTokens) tokens = await getTokenUsage(sessionId, dbRow.project_name);
   } else if (cliType === 'gemini') {
     if (dbRow.cli_session_id) {
       const sessions = discoverGeminiSessions();
@@ -845,7 +858,7 @@ async function getSessionInfo(sessionId) {
         };
       }
     }
-    tokens = _getGeminiTokenUsage(sessionId);
+    if (includeTokens) tokens = _getGeminiTokenUsage(sessionId);
   } else if (cliType === 'codex') {
     if (dbRow.cli_session_id) {
       const sessions = discoverCodexSessions();
@@ -863,7 +876,7 @@ async function getSessionInfo(sessionId) {
         };
       }
     }
-    tokens = _getCodexTokenUsage(sessionId);
+    if (includeTokens) tokens = _getCodexTokenUsage(sessionId);
   }
 
   const tmux = safe.tmuxNameFor(sessionId);
@@ -892,7 +905,7 @@ async function getSessionInfo(sessionId) {
     active,
   };
 
-  _sessionInfoCache.set(sessionId, { ts: Date.now(), value: info });
+  _sessionInfoCache.set(cacheKey, { ts: Date.now(), value: info });
   return info;
 }
 

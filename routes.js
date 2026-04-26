@@ -297,6 +297,11 @@ function registerCoreRoutes(
     return null;
   }
 
+  // SIDE EFFECT: when this matches a disk session, it writes the resolved
+  // cli_session_id back to the DB via setCliSessionId so subsequent fast-path
+  // lookups (in session-utils.getSessionInfo) can find the file by ID directly.
+  // Callers that just want the side-effect (buildSessionList pre-pass) can ignore
+  // the return value.
   function _getNonClaudeMetadata(session) {
     const cliType = session.cli_type || 'claude';
     if (cliType === 'claude') return null;
@@ -360,7 +365,10 @@ function registerCoreRoutes(
 
     const sessions = [];
     for (const s of dbSessions) {
-      const info = await sessionUtils.getSessionInfo(s.id);
+      // includeTokens=false: sidebar list doesn't show per-session token counts;
+      // only the active-session status bar polls /tokens which uses includeTokens=true.
+      // Avoids N JSONL re-reads per /api/state poll.
+      const info = await sessionUtils.getSessionInfo(s.id, { includeTokens: false });
       if (!info) continue;
       sessions.push({
         id: info.id,
@@ -914,6 +922,7 @@ function registerCoreRoutes(
       if (name.length > SESSION_NAME_MAX_LEN)
         return res.status(400).json({ error: `name too long (max ${SESSION_NAME_MAX_LEN})` });
       db.renameSession(sessionId, name.trim());
+      sessionUtils.invalidateSessionInfoCache(sessionId);
       try {
         const session = db.getSessionFull(sessionId);
         if (session && session.project_name) {
@@ -998,6 +1007,7 @@ function registerCoreRoutes(
           return res.status(400).json({ error: `notes too long (max ${NOTES_MAX_LEN})` });
         db.setSessionNotes(sessionId, notes);
       }
+      sessionUtils.invalidateSessionInfoCache(sessionId);
       res.json({ saved: true });
     } catch (err) {
       logger.error('Error updating session config', { module: 'routes', err: err.message });
@@ -1014,6 +1024,7 @@ function registerCoreRoutes(
         return res.status(400).json({ error: 'invalid session ID format' });
       const { archived } = req.body;
       db.setSessionState(sessionId, archived ? 'archived' : 'active');
+      sessionUtils.invalidateSessionInfoCache(sessionId);
       res.json({ id: sessionId, archived: !!archived });
     } catch (err) {
       logger.error('Error archiving session', { module: 'routes', err: err.message });
