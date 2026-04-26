@@ -3905,6 +3905,53 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 
 ---
 
+### HOTFIX-194: Right file panel stays bounded to viewport, scrollbars stay reachable
+**Issue:** #194 — file tree grows past viewport bottom; horizontal scrollbar lands below the fold
+**Fix:** `public/index.html` — flex-column chain on `#panel-content` + `.panel-section` with `min-height: 0` so `#file-browser-tree` is bounded to its flex parent's height instead of taking natural height.
+**Surface:** UI/visual — requires HEADED browser per "no headless for visual bugs" rule.
+
+**Setup:** UI deploy (HF test Space or M5 dev). Open Files panel via the right-pane `☰` toggle. Need a workspace with enough nested content that the rendered tree exceeds viewport height. If a real workspace doesn't have enough content, inject synthetic items via `browser_evaluate` to force overflow (per the verification recipe below).
+
+**Steps (real user perspective):**
+1. Log in (gate creds for test Space).
+2. Click `☰` to open the right Files panel.
+3. Click `▶ /data/workspace` to expand the mount.
+4. Drill into a directory with many subdirs/files. Recursively expand a few levels.
+5. **Verify panel boundary**: the right Files panel's bottom edge aligns with the bottom of the workbench UI. Settings button (bottom-left of sidebar) and the panel's bottom should be at the same y. Panel does NOT extend below the visible page.
+6. **Verify internal scroll works for tall trees**: scroll the file tree vertically with the mouse wheel — content inside the panel scrolls; the rest of the workbench (sidebar, terminal pane) does NOT scroll.
+7. **Verify horizontal scroll works for long names**: drill into a directory with long filenames OR resize the panel narrower. Drag the horizontal scrollbar at the bottom of the file tree → tail of long filenames becomes visible. The horizontal scrollbar must be at the visible bottom of the panel, NOT off-screen.
+
+**Verification recipe (when no real tree is tall enough):**
+After expanding the real tree, run `browser_evaluate` to inject synthetic LIs:
+```js
+const tree = document.querySelector('#file-browser-tree');
+const ul = tree.querySelector('UL.jqueryFileTree');
+for (let i = 0; i < 200; i++) {
+  const li = document.createElement('li');
+  li.className = 'file ext_md';
+  const a = document.createElement('a');
+  a.innerText = `synthetic-file-${i}-with-extra-length-to-fill.md`;
+  li.appendChild(a);
+  ul.appendChild(li);
+}
+```
+Then measure:
+- `document.querySelector('#right-panel').getBoundingClientRect()` → bottom should equal `window.innerHeight`
+- `document.querySelector('#file-browser-tree').getBoundingClientRect().bottom` → should be `<= window.innerHeight`
+- `document.querySelector('#file-browser-tree').scrollHeight > clientHeight` → true (overflow exists)
+- After `tree.scrollTop = 9999; tree.scrollLeft = 9999;`, both end positions reach (no off-screen scrollbar)
+- `document.body.scrollHeight === window.innerHeight` and `window.scrollY === 0` (outer page never scrolls)
+
+**Expected:**
+- Right panel bottom aligns with viewport bottom regardless of tree size.
+- Tree extends only inside the panel; internal scrollbars handle overflow.
+- Horizontal scrollbar reachable at the bottom of the visible panel area.
+- Outer page never scrolls — body remains at scrollHeight = innerHeight.
+
+**Result:** ☐ PASS ☐ FAIL ☐ SKIP
+
+---
+
 ### HOTFIX-188: registerCodexMcp does not corrupt config.toml
 **Issue:** #188 — Codex config corruption from over-greedy cleanup regex
 **Fix:** `watchers.js:236` — deleted the cleanup branch entirely; function now just check-and-appends.
