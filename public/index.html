@@ -3881,11 +3881,56 @@ build/**</textarea>
 
     async function saveSetting(key, value) {
       _settingsCache[key] = value;
-      await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key, value }),
-      });
+      let res;
+      try {
+        res = await fetch('/api/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key, value }),
+        });
+      } catch (err) {
+        showSettingsError(`Save failed: ${err.message}`);
+        return false;
+      }
+      if (!res.ok) {
+        // #180: backend rejects bad API keys / unreachable provider configs with
+        // 400 + an error string. Surface it to the user instead of silently failing.
+        let errMsg = `Save failed (HTTP ${res.status})`;
+        try {
+          const data = await res.json();
+          if (data && data.error) errMsg = data.error;
+        } catch { /* not JSON */ }
+        showSettingsError(errMsg);
+        return false;
+      }
+      hideSettingsError();
+      return true;
+    }
+
+    function showSettingsError(msg) {
+      let banner = document.getElementById('settings-error-banner');
+      if (!banner) {
+        const modal = document.querySelector('#settings-modal .modal-content');
+        if (!modal) { console.error(msg); return; }
+        banner = document.createElement('div');
+        banner.id = 'settings-error-banner';
+        banner.style.cssText = `
+          background: var(--bg-tertiary); border: 1px solid var(--error, #d32f2f);
+          color: var(--error, #d32f2f); padding: 8px 12px; margin: 8px 0;
+          border-radius: 4px; font-size: 13px; display: flex; align-items: center;
+          justify-content: space-between; gap: 8px;
+        `;
+        modal.insertBefore(banner, modal.firstElementChild?.nextElementSibling || null);
+      }
+      banner.innerHTML = `
+        <span><span style="font-size:14px">&#9888;</span> ${escapeHtml(msg).slice(0, 600)}</span>
+        <button onclick="hideSettingsError()" style="background:none;border:none;color:var(--error,#d32f2f);cursor:pointer;font-size:16px;padding:0 4px">&times;</button>
+      `;
+    }
+
+    function hideSettingsError() {
+      const banner = document.getElementById('settings-error-banner');
+      if (banner) banner.remove();
     }
 
     async function loadMcpServers() {
