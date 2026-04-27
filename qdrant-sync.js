@@ -176,6 +176,35 @@ async function embedWithConfig(cfg, texts, dims) {
     return out;
   }
 
+  // Retry transient network failures with exponential backoff. The provider
+  // (Gemini in particular) occasionally drops connections via TCP reset under
+  // sustained concurrent load — surfaces as 'fetch failed' / EPIPE /
+  // ECONNRESET / UND_ERR_BODY_TIMEOUT etc. Per-batch isolated reproductions
+  // of the failing data succeed; the failure mode only appears under
+  // concurrent file-watcher-driven load. Retry handles it cleanly.
+  const MAX_ATTEMPTS = 4;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await _embedOnce(cfg, texts, dims);
+    } catch (err) {
+      const code = err?.cause?.code;
+      const transient =
+        code === 'EPIPE' || code === 'ECONNRESET' || code === 'ETIMEDOUT' ||
+        code === 'UND_ERR_SOCKET' || code === 'UND_ERR_BODY_TIMEOUT' ||
+        /fetch failed|socket hang up|network/i.test(err?.message || '');
+      if (!transient || attempt === MAX_ATTEMPTS) throw err;
+      const backoffMs = 500 * Math.pow(2, attempt - 1); // 500, 1000, 2000
+      logger.warn('Embedding API transient error, retrying', {
+        module: 'qdrant-sync', attempt, backoffMs,
+        cause: err?.cause?.message || err.message, code,
+      });
+      await new Promise(r => setTimeout(r, backoffMs));
+    }
+  }
+}
+
+async function _embedOnce(cfg, texts, dims) {
+
   // HuggingFace Inference API has a different format
   if (cfg.isHF) {
     const response = await fetch(cfg.url, {
