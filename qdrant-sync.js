@@ -676,7 +676,15 @@ async function scanClaudeSessions() {
           cfg.dims,
         );
       } catch (err) {
-        logger.error('Claude session sync error', { module: 'qdrant-sync', file, err: err.message });
+        // Capture err.cause too — node-fetch puts the underlying transport
+        // error (ECONNRESET / ETIMEDOUT / UND_ERR_*) there. Without it,
+        // 'fetch failed' is undebuggable.
+        logger.error('Claude session sync error', {
+          module: 'qdrant-sync', file,
+          err: err.message,
+          cause: err.cause ? (err.cause.message || String(err.cause)) : undefined,
+          code: err.cause?.code,
+        });
       }
     }
   }
