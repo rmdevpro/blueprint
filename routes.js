@@ -1538,6 +1538,67 @@ function registerCoreRoutes(
     }
   });
 
+  // ── Tmux input primitives ────────────────────────────────────────────────
+  // Generic delivery of text/keys to a session's tmux pane via server-side
+  // load-buffer/paste-buffer/send-keys. Robust to a closed terminal WS on
+  // the client (e.g. browser tab backgrounded during OAuth flow). Shape
+  // mirrors the planned `workbench_sessions send_text` / `send_key` MCP
+  // actions so the MCP rework can reuse the same primitives.
+
+  const SEND_TEXT_MAX_LEN = 8192;
+  const ALLOWED_NAMED_KEYS = new Set([
+    'Enter', 'Escape', 'Tab', 'Space', 'BSpace',
+    'Up', 'Down', 'Left', 'Right',
+    'Home', 'End', 'PageUp', 'PageDown',
+    'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
+  ]);
+  function isValidKey(key) {
+    if (typeof key !== 'string' || key.length === 0) return false;
+    if (ALLOWED_NAMED_KEYS.has(key)) return true;
+    // Single printable ASCII char (e.g. "1", "y", "n" for menu selection)
+    return key.length === 1 && key.charCodeAt(0) >= 0x20 && key.charCodeAt(0) <= 0x7e;
+  }
+
+  app.post('/api/sessions/:sessionId/send_text', async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      if (!validateSessionId(sessionId))
+        return res.status(400).json({ error: 'invalid session ID format' });
+      const { text } = req.body;
+      if (typeof text !== 'string' || text.length === 0)
+        return res.status(400).json({ error: 'text required (non-empty string)' });
+      if (text.length > SEND_TEXT_MAX_LEN)
+        return res.status(400).json({ error: `text too long (max ${SEND_TEXT_MAX_LEN})` });
+      const tmux = tmuxName(sessionId);
+      if (!(await tmuxExists(tmux)))
+        return res.status(410).json({ error: 'tmux session not running' });
+      await safe.tmuxSendTextAsync(tmux, text);
+      res.json({ ok: true });
+    } catch (err) {
+      logger.warn('send_text failed', { module: 'routes', err: err.message });
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/sessions/:sessionId/send_key', async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      if (!validateSessionId(sessionId))
+        return res.status(400).json({ error: 'invalid session ID format' });
+      const { key } = req.body;
+      if (!isValidKey(key))
+        return res.status(400).json({ error: 'invalid key (must be a named key like Enter, or a single printable ASCII char)' });
+      const tmux = tmuxName(sessionId);
+      if (!(await tmuxExists(tmux)))
+        return res.status(410).json({ error: 'tmux session not running' });
+      await safe.tmuxSendKeyAsync(tmux, key);
+      res.json({ ok: true });
+    } catch (err) {
+      logger.warn('send_key failed', { module: 'routes', err: err.message });
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── File operations ─────────────────────────────────────────────────────
 
   app.post('/api/mkdir', async (req, res) => {

@@ -208,6 +208,36 @@ async function tmuxSendKeysAsync(sessionName, text) {
 }
 
 /**
+ * Paste-only counterpart to tmuxSendKeysAsync. Loads the text into a tmux
+ * buffer and pastes it into the target pane WITHOUT a trailing Enter — caller
+ * decides whether/when to submit via tmuxSendKeyAsync(name, 'Enter'). Matches
+ * the planned `workbench_sessions send_text` MCP action shape.
+ */
+async function tmuxSendTextAsync(sessionName, text) {
+  const safeName = sanitizeTmuxName(sessionName);
+  const tmpFile = join(
+    os.tmpdir(),
+    `tmux_paste_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.txt`,
+  );
+  await writeFileAsync(tmpFile, text);
+  try {
+    await tmuxExecAsync(['load-buffer', tmpFile]);
+    await tmuxExecAsync(['paste-buffer', '-t', safeName]);
+  } finally {
+    try {
+      await unlinkAsync(tmpFile);
+    } catch (cleanupErr) {
+      if (cleanupErr.code !== 'ENOENT') {
+        logger.debug('tmuxSendTextAsync cleanup failed', {
+          module: 'safe-exec',
+          err: cleanupErr.message,
+        });
+      }
+    }
+  }
+}
+
+/**
  * Async version of tmuxSendKey — sends a named key to a tmux session.
  */
 async function tmuxSendKeyAsync(sessionName, keyName) {
@@ -314,6 +344,7 @@ module.exports = {
   tmuxCreateBash,
   tmuxKill,
   tmuxSendKeysAsync,
+  tmuxSendTextAsync,
   tmuxSendKeyAsync,
   gitCloneAsync,
   grepSearchAsync,

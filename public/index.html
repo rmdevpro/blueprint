@@ -864,6 +864,7 @@ build/**</textarea>
         <input id="auth-code-input" class="code-input" type="text" placeholder="Paste authorization code here" autocomplete="off">
         <button id="auth-code-submit" class="code-submit" onclick="submitAuthCode()">Submit</button>
       </div>
+      <div id="auth-error" style="display:none;margin-top:12px;color:var(--accent-error,#f55);font-size:13px"></div>
     </div>
   </div>
 
@@ -3120,6 +3121,8 @@ build/**</textarea>
 
       document.getElementById('auth-link').href = cleanUrl;
       document.getElementById('auth-code-input').value = '';
+      const errEl = document.getElementById('auth-error');
+      if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
       document.getElementById('auth-modal').classList.add('visible');
       document.getElementById('auth-code-input').focus();
     }
@@ -3130,48 +3133,58 @@ build/**</textarea>
       authTriggerTabId = null;
     }
 
-    function submitAuthCode() {
+    async function submitAuthCode() {
       const code = document.getElementById('auth-code-input').value.trim();
       if (!code) return;
 
-      // #169: Claude CLI uses Ink (React for terminals), which distinguishes
-      // typed keystrokes from paste events via bracketed-paste mode. Sending
-      // raw chars via WS made Ink treat them as individual keypresses, which
-      // its /login input handler didn't accept — the CLI dangled at "Paste
-      // code here >" until the user manually pasted.
-      // Fix: wrap the code in xterm's bracketed-paste sequences (CSI 200~ /
-      // CSI 201~) so Claude/Ink sees a proper paste event, then send Enter.
-      // Scope: only Ink-based CLIs (claude, gemini, codex). Plain Terminal
-      // sessions get the original raw-char behavior in case the receiving
-      // shell isn't in bracketed-paste mode.
-      const BP_START = '\x1b[200~';
-      const BP_END = '\x1b[201~';
-      const INK_CLIS = new Set(['claude', 'gemini', 'codex']);
-      const sendCode = (sock, cliType) => {
-        const useBracketed = INK_CLIS.has(cliType);
-        sock.send(useBracketed ? (BP_START + code + BP_END) : code);
-        setTimeout(() => sock.send('\r'), 500);
-      };
+      // Server-side delivery via tmux load-buffer + paste-buffer + send-keys.
+      // Replaces the prior tab.ws.send() path which silently failed when the
+      // terminal WebSocket had been closed (browser tab backgrounded during
+      // OAuth flow → HF proxy idled the WS → readyState !== OPEN → drop).
+      // Tmux's paste-buffer delivers the text as an atomic paste event
+      // regardless of the inner CLI's bracketed-paste mode, so #169 stays
+      // resolved without any client-side CSI sequences.
+      const submitBtn = document.getElementById('auth-code-submit');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Authenticating...';
 
-      if (authTriggerTabId && tabs.has(authTriggerTabId)) {
-        const tab = tabs.get(authTriggerTabId);
-        if (tab.ws && tab.ws.readyState === WebSocket.OPEN) sendCode(tab.ws, tab.cli_type);
-      } else if (window._loginWs && window._loginWs.readyState === WebSocket.OPEN) {
-        // No tab ref available — assume claude (the legacy /login path)
-        sendCode(window._loginWs, 'claude');
+      const sessionId = (authTriggerTabId && tabs.has(authTriggerTabId))
+        ? tabs.get(authTriggerTabId).id
+        : null;
+
+      try {
+        if (!sessionId) throw new Error('No session attached to this auth modal');
+        let r = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/send_text`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: code }),
+        });
+        if (!r.ok) throw new Error(`send_text failed (HTTP ${r.status})`);
+        r = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/send_key`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'Enter' }),
+        });
+        if (!r.ok) throw new Error(`send_key failed (HTTP ${r.status})`);
+      } catch (err) {
+        // Surface the error in the modal rather than silently closing
+        submitBtn.textContent = 'Retry';
+        submitBtn.disabled = false;
+        const errEl = document.getElementById('auth-error');
+        if (errEl) {
+          errEl.textContent = `Submit failed: ${err.message}`;
+          errEl.style.display = 'block';
+        }
+        return;
       }
-
-      // Dismiss modal after a short delay to let the CLI process
-      document.getElementById('auth-code-submit').disabled = true;
-      document.getElementById('auth-code-submit').textContent = 'Authenticating...';
 
       setTimeout(() => {
         document.getElementById('auth-modal').classList.remove('visible');
-        document.getElementById('auth-code-submit').disabled = false;
-        document.getElementById('auth-code-submit').textContent = 'Submit';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit';
         authModalVisible = false;
         authTriggerTabId = null;
-      }, 3000);
+      }, 1500);
     }
 
     // Allow Enter to submit the code
