@@ -45,7 +45,7 @@ function apiCall(method, path, body) {
 
 const TOOLS = [
   {
-    name: 'blueprint_files',
+    name: 'workbench_files',
     description: 'Workspace file operations — read, write, list, delete, grep, and semantic search across documents and code.',
     inputSchema: {
       type: 'object',
@@ -67,7 +67,7 @@ const TOOLS = [
     },
   },
   {
-    name: 'blueprint_sessions',
+    name: 'workbench_sessions',
     description: 'Session operations across all CLIs (Claude, Gemini, Codex) — list, lookup by name, config, search, summarize, and session lifecycle.',
     inputSchema: {
       type: 'object',
@@ -97,7 +97,7 @@ const TOOLS = [
     },
   },
   {
-    name: 'blueprint_tasks',
+    name: 'workbench_tasks',
     description: 'Task management — create, complete, reopen, archive, move, and update tasks organized by workspace folder.',
     inputSchema: {
       type: 'object',

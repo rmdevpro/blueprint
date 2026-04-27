@@ -36,7 +36,7 @@ function resolveWorkspacePath(relPath) {
   return full;
 }
 
-// ── blueprint_files ──────────────────────────────────────────────────────────
+// ── workbench_files ──────────────────────────────────────────────────────────
 
 async function handleFiles(args, res) {
   switch (args.action) {
@@ -127,7 +127,7 @@ async function handleFiles(args, res) {
   }
 }
 
-// ── blueprint_sessions ───────────────────────────────────────────────────────
+// ── workbench_sessions ───────────────────────────────────────────────────────
 
 async function ensureSessionTmux(session, projectPath) {
   const hash = crypto.createHash('md5').update(session.id).digest('hex').substring(0, 4);
@@ -382,7 +382,7 @@ async function handleSessions(args, res) {
   }
 }
 
-// ── blueprint_tasks ──────────────────────────────────────────────────────────
+// ── workbench_tasks ──────────────────────────────────────────────────────────
 
 async function handleTasks(args, res) {
   switch (args.action) {
@@ -442,9 +442,9 @@ function registerMcpRoutes(app) {
   app.get('/api/mcp/tools', (req, res) => {
     res.json({
       tools: [
-        { name: 'blueprint_files', description: 'Workspace file operations — read, write, list, delete, grep, and semantic search.' },
-        { name: 'blueprint_sessions', description: 'Session operations across all CLIs — list, lookup, config, search, summarize.' },
-        { name: 'blueprint_tasks', description: 'Task management — create, complete, reopen, archive, move, update.' },
+        { name: 'workbench_files', description: 'Workspace file operations — read, write, list, delete, grep, and semantic search.' },
+        { name: 'workbench_sessions', description: 'Session operations across all CLIs — list, lookup, config, search, summarize.' },
+        { name: 'workbench_tasks', description: 'Task management — create, complete, reopen, archive, move, update.' },
       ],
     });
   });
@@ -453,16 +453,18 @@ function registerMcpRoutes(app) {
     const { tool, args } = req.body;
     if (!args || !args.action) return res.status(400).json({ error: 'action required' });
 
+    // Phase 4 rename: workbench_* are canonical; blueprint_* kept as aliases.
+    const canonical = (tool || '').replace(/^blueprint_/, 'workbench_');
     try {
       let result;
-      switch (tool) {
-        case 'blueprint_files':
+      switch (canonical) {
+        case 'workbench_files':
           result = await handleFiles(args, res);
           break;
-        case 'blueprint_sessions':
+        case 'workbench_sessions':
           result = await handleSessions(args, res);
           break;
-        case 'blueprint_tasks':
+        case 'workbench_tasks':
           result = await handleTasks(args, res);
           break;
         default:

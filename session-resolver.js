@@ -24,7 +24,7 @@ module.exports = function createSessionResolver({
     if (cliType && cliType !== 'claude') {
       discoverCliSessionId(tmpId, cliType).catch(err => {
         logger.error('CLI session ID discovery failed', {
-          module: 'session-resolver', blueprintId: tmpId.substring(0, 12), err: err.message,
+          module: 'session-resolver', workbenchId: tmpId.substring(0, 12), err: err.message,
         });
       });
       return;
@@ -206,9 +206,9 @@ module.exports = function createSessionResolver({
    * Discover the CLI's internal session ID for a Gemini or Codex session.
    * Polls for up to 60s looking for a new session file to appear after creation.
    */
-  async function discoverCliSessionId(blueprintSessionId, cliType) {
-    if (pendingResolutions.has(blueprintSessionId)) return;
-    pendingResolutions.set(blueprintSessionId, true);
+  async function discoverCliSessionId(workbenchSessionId, cliType) {
+    if (pendingResolutions.has(workbenchSessionId)) return;
+    pendingResolutions.set(workbenchSessionId, true);
 
     const home = safe.HOME;
     const maxWait = 30; // 30 attempts × 2s = 60s
@@ -268,10 +268,10 @@ module.exports = function createSessionResolver({
                     if (data.sessionId) {
                       logger.info('Gemini CLI session ID discovered', {
                         module: 'session-resolver',
-                        blueprintId: blueprintSessionId.substring(0, 12),
+                        workbenchId: workbenchSessionId.substring(0, 12),
                         cliSessionId: data.sessionId.substring(0, 12),
                       });
-                      db.setCliSessionId(blueprintSessionId, data.sessionId);
+                      db.setCliSessionId(workbenchSessionId, data.sessionId);
                       return;
                     }
                   } catch { /* parse error */ }
@@ -306,10 +306,10 @@ module.exports = function createSessionResolver({
               if (codexId) {
                 logger.info('Codex CLI session ID discovered', {
                   module: 'session-resolver',
-                  blueprintId: blueprintSessionId.substring(0, 12),
+                  workbenchId: workbenchSessionId.substring(0, 12),
                   cliSessionId: codexId.substring(0, 12),
                 });
-                db.setCliSessionId(blueprintSessionId, codexId);
+                db.setCliSessionId(workbenchSessionId, codexId);
                 return;
               }
             }
@@ -319,11 +319,11 @@ module.exports = function createSessionResolver({
 
       logger.warn('CLI session ID discovery timed out', {
         module: 'session-resolver',
-        blueprintId: blueprintSessionId.substring(0, 12),
+        workbenchId: workbenchSessionId.substring(0, 12),
         cliType,
       });
     } finally {
-      pendingResolutions.delete(blueprintSessionId);
+      pendingResolutions.delete(workbenchSessionId);
     }
   }
 

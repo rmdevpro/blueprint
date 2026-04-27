@@ -10,9 +10,9 @@ You are an agent in the Workbench system. This system and its agents serve the u
 
 ## MCP Tools
 
-- **blueprint_files** — list, read, create, update, delete, grep, and semantic search across workspace files
-- **blueprint_sessions** — list, connect, restart, configure, search, and summarize sessions across all CLIs
-- **blueprint_tasks** — create, complete, reopen, archive, move, and update tasks organized by workspace folders
+- **workbench_files** — list, read, create, update, delete, grep, and semantic search across workspace files
+- **workbench_sessions** — list, connect, restart, configure, search, and summarize sessions across all CLIs
+- **workbench_tasks** — create, complete, reopen, archive, move, and update tasks organized by workspace folders
 
 ## Guides
 
