@@ -4116,14 +4116,26 @@ build/**</textarea>
     // surfaces a clickable banner with the count + most recent module/message.
     // Click opens a modal listing the last 50 ERROR rows for triage.
 
+    // When the user dismisses the error banner via the X, suppress re-show
+    // until a NEWER error fires (compared by topError timestamp). Reload =
+    // reset (banner re-shows if errors are still in the 1h window).
+    let _errorBannerDismissedThrough = null;
+
     async function checkErrors() {
       try {
         const res = await fetch('/api/logs/summary?since=1h');
         const summary = await res.json();
         if (summary.errorCount > 0) {
+          // Suppress if user dismissed and no newer error has appeared since
+          if (_errorBannerDismissedThrough && summary.topError &&
+              summary.topError.ts <= _errorBannerDismissedThrough) {
+            hideErrorBanner();
+            return;
+          }
           showErrorBanner(summary.errorCount, summary.topError);
         } else {
           hideErrorBanner();
+          _errorBannerDismissedThrough = null; // window cleared on its own
         }
       } catch (err) {
         console.error('Error summary check failed:', err);
@@ -4138,17 +4150,29 @@ build/**</textarea>
         banner.style.cssText = `
           background: var(--bg-tertiary); border-bottom: 2px solid var(--error, #d32f2f);
           padding: 10px 16px; font-size: 13px; color: var(--error, #d32f2f);
-          display: flex; align-items: center; gap: 8px; cursor: pointer;
+          display: flex; align-items: center; gap: 8px;
         `;
-        banner.title = 'Click for details';
-        banner.onclick = openErrorLogModal;
         document.getElementById('main').insertBefore(banner, document.getElementById('tab-bar'));
       }
       const top = topError ? ` — top: <strong>${escapeHtml(topError.module || 'unknown')}</strong> ${escapeHtml(topError.message).slice(0, 120)}` : '';
+      const lastErrTs = topError ? escapeHtml(topError.ts) : '';
       banner.innerHTML = `
-        <span style="font-size:16px">&#9888;</span>
-        <span>${count} error(s) in the last hour${top} <em style="margin-left:8px;opacity:0.7">[click for details]</em></span>
+        <span style="font-size:16px;cursor:pointer" title="Click for details">&#9888;</span>
+        <span style="cursor:pointer;flex:1" title="Click for details">${count} error(s) in the last hour${top} <em style="margin-left:8px;opacity:0.7">[click for details]</em></span>
+        <button id="error-banner-dismiss" data-last-ts="${lastErrTs}" title="Dismiss until a newer error fires" style="background:none;border:none;color:var(--error,#d32f2f);cursor:pointer;font-size:18px;padding:0 4px;line-height:1">&times;</button>
       `;
+      // Wire handlers
+      const detailsClick = (e) => {
+        if (e.target.id === 'error-banner-dismiss') return;
+        openErrorLogModal();
+      };
+      banner.querySelectorAll('span').forEach(s => s.onclick = detailsClick);
+      const dismiss = banner.querySelector('#error-banner-dismiss');
+      dismiss.onclick = (e) => {
+        e.stopPropagation();
+        _errorBannerDismissedThrough = dismiss.dataset.lastTs || new Date().toISOString();
+        hideErrorBanner();
+      };
     }
 
     function hideErrorBanner() {
