@@ -87,7 +87,7 @@ For self-hosted operation:
 docker compose up -d
 ```
 
-Then open `http://localhost:7860`. See the **Hugging Face Spaces** section in `config/docs/sdlc/guides/blueprint-deployment.md` for HF deployment.
+Then open `http://localhost:7860`. See the **Hugging Face Spaces** section in `config/docs/sdlc/guides/workbench-deployment.md` for HF deployment.
 
 ## Configuration
 

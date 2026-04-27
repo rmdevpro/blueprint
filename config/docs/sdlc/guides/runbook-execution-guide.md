@@ -1,6 +1,6 @@
 # Workbench UI Test Runbook — Execution Guide
 
-This guide is for the **orchestrator** who runs the master UI test runbook (`tests/blueprint-test-runbook.md`) against a Workbench deployment. It covers spawning an executor, briefing it, monitoring it, recovering from common failure modes, and triaging the results.
+This guide is for the **orchestrator** who runs the master UI test runbook (`tests/workbench-test-runbook.md`) against a Workbench deployment. It covers spawning an executor, briefing it, monitoring it, recovering from common failure modes, and triaging the results.
 
 The runbook itself is a test catalog — what to test. This guide is the procedure — how to drive it to completion.
 
@@ -125,7 +125,7 @@ The executor declares done. Verify before accepting:
 
 ```bash
 # Coverage check
-runbook_test_count=$(grep -cE '^### (REG|NF|SMOKE|CORE|FEAT|EDGE|CLI|E2E|USER|SESS|EDIT|TASK|MCP|KEEP|QDRANT|PROMPT|CONN)-' tests/blueprint-test-runbook.md)
+runbook_test_count=$(grep -cE '^### (REG|NF|SMOKE|CORE|FEAT|EDGE|CLI|E2E|USER|SESS|EDIT|TASK|MCP|KEEP|QDRANT|PROMPT|CONN)-' tests/workbench-test-runbook.md)
 results_count=$(grep -cE '^\*\*Result:\*\* (PASS|FAIL|SKIP)' tests/runbook-results-<date>.md)
 # Counts should be roughly aligned; results may exceed runbook if carry-forwards from a partial included extra HOTFIX-style entries.
 

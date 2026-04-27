@@ -8,9 +8,9 @@
 
 This matrix maps every active runbook scenario to its corresponding test plan scenario(s), identifying coverage gaps in both directions.
 
-- **Runbook**: `tests/blueprint-test-runbook.md` — 144 active execution scenarios
-- **UI Test Plan**: `tests/blueprint-test-plan-ui.md` — 281 active scenarios (Gate C)
-- **Backend Test Plan**: `tests/blueprint-test-plan-backend.md` — 378 active scenarios (Gates A & B)
+- **Runbook**: `tests/workbench-test-runbook.md` — 144 active execution scenarios
+- **UI Test Plan**: `tests/workbench-test-plan-ui.md` — 281 active scenarios (Gate C)
+- **Backend Test Plan**: `tests/workbench-test-plan-backend.md` — 378 active scenarios (Gates A & B)
 
 ## 1. Runbook → Test Plan Mapping
 

@@ -4092,7 +4092,7 @@ Then measure:
 **Source:** Issue #173 (regression test — must continue to pass).
 **Surface:** UI/visual — REQUIRES headed browser per "no headless for visual bugs" rule. Use ${WORKBENCH_URL} + headed browser.
 
-**Setup:** UI deploy at ${WORKBENCH_URL}. Hymie OAuth setup complete per `blueprint-deployment.md`.
+**Setup:** UI deploy at ${WORKBENCH_URL}. Hymie OAuth setup complete per `workbench-deployment.md`.
 
 **Steps:**
 1. Open ${WORKBENCH_URL} in a headed browser; log in past gate if present.

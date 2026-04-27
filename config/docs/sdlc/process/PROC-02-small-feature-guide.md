@@ -238,4 +238,4 @@ gh issue comment [number] \
 
 ***
 
-**Related:** [Debugging Procedure](./PROC-01-debugging-guide.md) · [Tmux Guide](../guides/using-other-clis-via-tmux.md) · [Deployment Guide](../guides/blueprint-deployment.md)
+**Related:** [Debugging Procedure](./PROC-01-debugging-guide.md) · [Tmux Guide](../guides/using-other-clis-via-tmux.md) · [Deployment Guide](../guides/workbench-deployment.md)

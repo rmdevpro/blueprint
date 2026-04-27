@@ -17,4 +17,4 @@ You are an agent in the Workbench system. This system and its agents serve the u
 ## Guides
 
 - `docs/guides/using-other-clis-via-tmux.md` — how to interact with CLI sessions via tmux, including long prompts (load-buffer/paste-buffer) and startup handling
-- `docs/guides/blueprint-deployment.md` — the /data volume convention and deployment architecture
+- `docs/guides/workbench-deployment.md` — the /data volume convention and deployment architecture

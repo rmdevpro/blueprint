@@ -257,4 +257,4 @@ The goal is zero idle time. There is always work to do.
 
 ***
 
-**Related:** [Small Feature Procedure](./PROC-02-small-feature-guide.md) · [Tmux Guide](../../guides/using-other-clis-via-tmux.md) · [Deployment Guide](../guides/blueprint-deployment.md)
+**Related:** [Small Feature Procedure](./PROC-02-small-feature-guide.md) · [Tmux Guide](../../guides/using-other-clis-via-tmux.md) · [Deployment Guide](../guides/workbench-deployment.md)

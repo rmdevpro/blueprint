@@ -200,14 +200,14 @@ Eight tests, ~10 min total:
 
 | # | ID | Where to run | What it covers | Notes |
 |---|---|---|---|---|
-| 1 | **GATE-MKT-01** (HF-deploy-specific) | Marketing Space (no creds) | Page loads; `__GATE_MODE__ === 'template'`; `planlogo.png` renders (not broken-image); `blueprint-preview.png` background renders; "Duplicate this Space" button present | No login required |
+| 1 | **GATE-MKT-01** (HF-deploy-specific) | Marketing Space (no creds) | Page loads; `__GATE_MODE__ === 'template'`; `planlogo.png` renders (not broken-image); `workbench-preview.png` background renders; "Duplicate this Space" button present | No login required |
 | 2 | **GATE-LOGIN-01** (HF-deploy-specific) | Test Space (creds set) | Page loads; `__GATE_MODE__ === 'password'`; login form rendered with username + password fields; planlogo visible | No login required |
 | 3 | **GATE-LOGIN-02** (HF-deploy-specific) | Test Space | Submit valid creds → redirected past gate; full app shell visible (sidebar, status bar, panel toggles) | Uses gate creds |
-| 4 | **SMOKE-01** (`tests/blueprint-test-runbook.md` Phase 1) | Test Space (post-login) | Page title "Blueprint"; sidebar present; project list populates; settings modal hidden | |
+| 4 | **SMOKE-01** (`tests/workbench-test-runbook.md` Phase 1) | Test Space (post-login) | Page title "Blueprint"; sidebar present; project list populates; settings modal hidden | |
 | 5 | **SMOKE-02** (Phase 1) | Test Space | `.project-group` count matches `/api/state` projects; active filter selected by default | |
 | 6 | **SMOKE-03** (Phase 1) | Test Space | `/health` returns ok; `/api/auth/status` returns valid; `/api/mounts` returns array | |
 | 7 | **USR-05** (Phase 7) | Test Space | Open Files panel, expand a mount, click into a directory, file tree renders | |
-| 8 | **REG-148-01** (`tests/blueprint-test-runbook.md` REG-148-01, P0) | Test Space | Create one Claude + one Gemini + one Codex session in the same project; for 5 rounds, click each tab → send a verifiable message ("what is 7 times 8") → wait 10s → confirm CLI responded with the correct answer (not just echoed input). | Requires Hymie auth setup above to be complete. |
+| 8 | **REG-148-01** (`tests/workbench-test-runbook.md` REG-148-01, P0) | Test Space | Create one Claude + one Gemini + one Codex session in the same project; for 5 rounds, click each tab → send a verifiable message ("what is 7 times 8") → wait 10s → confirm CLI responded with the correct answer (not just echoed input). | Requires Hymie auth setup above to be complete. |
 
 REG-148-01 is the definitive functional check — runbook is explicit that "clicking tabs is NOT enough; you must chat with each CLI and verify it responds." Failure criteria are strict (any 401, blank response, login screen, piled-up input, or wrong-CLI content = FAIL).
 
