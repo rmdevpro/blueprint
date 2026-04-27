@@ -364,6 +364,28 @@ async function upsertPoints(collection, points) {
   if (!r.ok) throw new Error(`Qdrant upsert failed: ${await r.text()}`);
 }
 
+// Qdrant rejects POST bodies > 32 MiB by default. Batch by serialized request
+// size (not point count) so a single large session can't produce one oversized
+// PUT and EPIPE on socket close. 24 MiB leaves headroom for HTTP/JSON framing.
+const QDRANT_BODY_LIMIT = 24 * 1024 * 1024;
+
+async function upsertPointsBatched(collection, points) {
+  if (!points.length) return;
+  let batch = [];
+  let batchBytes = 2; // for `[]`
+  for (const p of points) {
+    const pBytes = Buffer.byteLength(JSON.stringify(p), 'utf8') + 1; // +1 for comma
+    if (batch.length > 0 && batchBytes + pBytes > QDRANT_BODY_LIMIT) {
+      await upsertPoints(collection, batch);
+      batch = [];
+      batchBytes = 2;
+    }
+    batch.push(p);
+    batchBytes += pBytes;
+  }
+  if (batch.length > 0) await upsertPoints(collection, batch);
+}
+
 async function deletePointsByFilter(collection, filter) {
   const r = await fetch(`${QDRANT_URL}/collections/${collection}/points/delete`, {
     method: 'POST',
@@ -603,7 +625,7 @@ async function syncFileToCollection(filePath, collection, baseDir, dims) {
     },
   }));
 
-  await upsertPoints(collection, points);
+  await upsertPointsBatched(collection, points);
   syncStmts.upsert.run(filePath, collection, 0, fileStat.mtimeMs, hash);
   return points.length;
 }
@@ -697,11 +719,7 @@ async function syncSessionFile(filePath, collection, parser, dims) {
     },
   }));
 
-  // Batch the upsert too — Qdrant rejects POST bodies > 32 MiB by default.
-  const UPSERT_BATCH = 5000;
-  for (let i = 0; i < points.length; i += UPSERT_BATCH) {
-    await upsertPoints(collection, points.slice(i, i + UPSERT_BATCH));
-  }
+  await upsertPointsBatched(collection, points);
 
   syncStmts.upsertWithTurnIndex.run(
     filePath, collection, content.length, fileStat.mtimeMs, '', lastTurn,
