@@ -56,6 +56,7 @@ module.exports = function createKeepalive({ safe, config, logger }) {
       logger.error('Keepalive Claude query failed', {
         module: 'keepalive',
         err: err.message?.substring(0, 1000),
+        stderr: err.stderr?.toString().substring(0, 1000),
       });
       return null;
     }

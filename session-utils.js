@@ -450,14 +450,16 @@ async function summarizeSession(sessionId, project) {
     const recent = messages.slice(-3);
     return { summary, recent_messages: recent, recentMessages: recent };
   } catch (err) {
+    const stderr = err.stderr?.toString().substring(0, 1000);
     logger.error('Failed to generate session summary', {
       module: 'session-utils',
       sessionId: sessionId.substring(0, 8),
       err: err.message,
+      stderr,
     });
     const recent = messages.slice(-3);
     return {
-      summary: 'Failed to generate summary: ' + (err.message?.substring(0, 1000) || 'unknown error'),
+      summary: 'Failed to generate summary: ' + (stderr || err.message?.substring(0, 1000) || 'unknown error'),
       recent_messages: recent,
       recentMessages: recent,
     };
