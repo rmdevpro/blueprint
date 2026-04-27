@@ -568,8 +568,8 @@
           <select id="setting-theme" onchange="applyTheme(this.value); saveSetting('theme', this.value)">
             <option value="dark">Dark</option>
             <option value="light">Light</option>
-            <option value="blueprint-dark">Blueprint Dark</option>
-            <option value="blueprint-light">Blueprint Light</option>
+            <option value="workbench-dark">Workbench Dark</option>
+            <option value="workbench-light">Workbench Light</option>
           </select>
         </div>
         <div class="setting-row">
@@ -3480,8 +3480,8 @@ build/**</textarea>
       '--text-muted': '#999999', '--border': '#d1d1d1', '--accent': '#0066cc',
     };
 
-    // Blueprint Dark — deep navy with bright white/blue lines, high contrast
-    const BLUEPRINT_DARK_THEME = {
+    // Workbench Dark — deep navy with bright white/blue lines, high contrast
+    const WORKBENCH_DARK_THEME = {
       background: '#081220', foreground: '#e0eeff', cursor: '#5cb0ff',
       selectionBackground: '#1e3a5f',
       black: '#081220', red: '#ff7080', green: '#60d888', yellow: '#f0c850',
@@ -3491,15 +3491,15 @@ build/**</textarea>
       brightCyan: '#78e8f0', brightWhite: '#ffffff',
     };
 
-    const BLUEPRINT_DARK_CSS = {
+    const WORKBENCH_DARK_CSS = {
       '--bg-primary': '#081220', '--bg-secondary': '#0c1a30', '--bg-tertiary': '#122240',
       '--bg-hover': '#182c50', '--text-primary': '#f0f6ff', '--text-secondary': '#c0d8f0',
       '--text-muted': '#e0ecff', '--border': '#1a3458', '--accent': '#e0ecff',
       '--accent-hover': '#f0f6ff', '--success': '#60d888', '--warning': '#f0c850', '--danger': '#ff7080',
     };
 
-    // Blueprint Light — light blueprint paper with dark blue text, high contrast like traditional light theme
-    const BLUEPRINT_LIGHT_THEME = {
+    // Workbench Light — light workbench paper with dark blue text, high contrast like traditional light theme
+    const WORKBENCH_LIGHT_THEME = {
       background: '#e8f0f8', foreground: '#0e2a4e', cursor: '#1a4a80',
       selectionBackground: '#b0cce8',
       black: '#0e2a4e', red: '#b01030', green: '#186830', yellow: '#6a5010',
@@ -3507,11 +3507,11 @@ build/**</textarea>
       brightBlack: '#3a6090', brightRed: '#d02040', brightGreen: '#208840',
       brightYellow: '#887020', brightBlue: '#2868a8', brightMagenta: '#8838b8',
       brightCyan: '#188088', brightWhite: '#0e2a4e',
-      // white/brightWhite remapped to dark blueprint blues: previously equal to
+      // white/brightWhite remapped to dark workbench blues: previously equal to
       // the background (#e8f0f8 / #f4f8fc), making any ANSI-white output invisible. (#165)
     };
 
-    const BLUEPRINT_LIGHT_CSS = {
+    const WORKBENCH_LIGHT_CSS = {
       '--bg-primary': '#e8f0f8', '--bg-secondary': '#f0f4fa', '--bg-tertiary': '#d8e4f0',
       '--bg-hover': '#d0dcea', '--text-primary': '#0e2a4e', '--text-secondary': '#2a5080',
       '--text-muted': '#5a88b0', '--border': '#b8cce0', '--accent': '#1a5a9e',
@@ -3521,8 +3521,8 @@ build/**</textarea>
     const THEMES = {
       dark: { css: null, term: TERM_THEME },
       light: { css: LIGHT_CSS, term: LIGHT_THEME },
-      'blueprint-dark': { css: BLUEPRINT_DARK_CSS, term: BLUEPRINT_DARK_THEME },
-      'blueprint-light': { css: BLUEPRINT_LIGHT_CSS, term: BLUEPRINT_LIGHT_THEME },
+      'workbench-dark': { css: WORKBENCH_DARK_CSS, term: WORKBENCH_DARK_THEME },
+      'workbench-light': { css: WORKBENCH_LIGHT_CSS, term: WORKBENCH_LIGHT_THEME },
     };
 
     function applyTheme(theme) {
@@ -3532,8 +3532,8 @@ build/**</textarea>
       // Clear all custom properties first
       const allKeys = new Set([
         ...Object.keys(LIGHT_CSS),
-        ...Object.keys(BLUEPRINT_DARK_CSS),
-        ...Object.keys(BLUEPRINT_LIGHT_CSS),
+        ...Object.keys(WORKBENCH_DARK_CSS),
+        ...Object.keys(WORKBENCH_LIGHT_CSS),
       ]);
       allKeys.forEach(k => root.style.removeProperty(k));
 
@@ -3548,7 +3548,7 @@ build/**</textarea>
       }
 
       // Toggle sidebar logo for theme + apply variant (default / development / production)
-      const isDark = theme === 'dark' || theme === 'blueprint-dark';
+      const isDark = theme === 'dark' || theme === 'workbench-dark';
       const variant = db_getSetting('logo_variant') || 'default';
       const prefix = variant === 'development' ? 'dev' : variant === 'production' ? 'prod' : 'logo';
       document.querySelectorAll('.logo-dark').forEach(el => {
@@ -3582,7 +3582,7 @@ build/**</textarea>
         const res = await fetch('/api/settings');
         const s = await res.json();
         _settingsCache = s;
-        applyTheme(s.theme || 'blueprint-dark');
+        applyTheme(s.theme || 'workbench-dark');
         if (s.font_size) applyFontSize(s.font_size);
         if (s.font_family) applyFontFamily(s.font_family);
       } catch {}

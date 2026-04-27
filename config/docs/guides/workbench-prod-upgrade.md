@@ -32,16 +32,16 @@ Always backup before touching anything. Both the data volume and the Docker imag
 
 ```bash
 # Create dated backup directory
-mkdir -p /mnt/storage/backups/blueprint/<YYYY-MM-DD>
+mkdir -p /mnt/storage/backups/workbench/<YYYY-MM-DD>
 
 # Backup persistent data volume
-tar -czf /mnt/storage/backups/blueprint/<YYYY-MM-DD>/data-backup.tar.gz -C <volume-host-path-parent> <volume-dir-name>
+tar -czf /mnt/storage/backups/workbench/<YYYY-MM-DD>/data-backup.tar.gz -C <volume-host-path-parent> <volume-dir-name>
 
 # Backup current Docker image
-docker save <image-name> -o /mnt/storage/backups/blueprint/<YYYY-MM-DD>/image-backup.tar
+docker save <image-name> -o /mnt/storage/backups/workbench/<YYYY-MM-DD>/image-backup.tar
 
 # Verify
-ls -lh /mnt/storage/backups/blueprint/<YYYY-MM-DD>/
+ls -lh /mnt/storage/backups/workbench/<YYYY-MM-DD>/
 ```
 
 **Do not proceed until both backups exist and have reasonable sizes.**
@@ -145,9 +145,9 @@ curl -X PUT http://localhost:<external-port>/api/settings \
   -d '{"key":"codex_api_key","value":"<key>"}'
 
 # Verify MCP registered for all 3 CLIs
-docker exec <container> grep blueprint /data/.claude/settings.json
-docker exec <container> grep blueprint /data/.gemini/settings.json
-docker exec <container> grep blueprint /data/.codex/config.toml
+docker exec <container> grep workbench /data/.claude/settings.json
+docker exec <container> grep workbench /data/.gemini/settings.json
+docker exec <container> grep workbench /data/.codex/config.toml
 ```
 
 ---
@@ -191,10 +191,10 @@ If anything goes wrong:
 docker stop <container-name> && docker rm <container-name>
 
 # Restore the old image
-docker load -i /mnt/storage/backups/blueprint/<YYYY-MM-DD>/image-backup.tar
+docker load -i /mnt/storage/backups/workbench/<YYYY-MM-DD>/image-backup.tar
 
 # Restore data if corruption occurred
-tar -xzf /mnt/storage/backups/blueprint/<YYYY-MM-DD>/data-backup.tar.gz -C <volume-host-path-parent>
+tar -xzf /mnt/storage/backups/workbench/<YYYY-MM-DD>/data-backup.tar.gz -C <volume-host-path-parent>
 
 # Restart with old image
 docker run -d --name <container-name> \
@@ -227,12 +227,12 @@ Everything on the `/data` volume persists across container rebuilds:
 |-------|---------------|
 | Host | 192.168.1.110 |
 | SSH user | aristotle9 |
-| Container | blueprint-prod1 |
-| Image | blueprint-prod |
+| Container | workbench-prod1 |
+| Image | workbench-prod |
 | External port | 6343 |
 | Internal port | 7860 |
-| Data volume | /mnt/workspace/blueprint → /data |
+| Data volume | /mnt/workspace/workbench → /data |
 | Storage volume | /mnt/storage → /mnt/storage |
-| Git repo | /mnt/storage/projects/blueprint |
+| Git repo | /mnt/storage/projects/workbench |
 | Git remote | rmdevpro (not origin) |
 | Branch | huggingface-space |

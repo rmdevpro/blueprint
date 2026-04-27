@@ -128,15 +128,15 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
 
   it('SESS-04: creating Gemini session via API returns cli_type gemini', async () => {
     const data = await apiPost('/api/sessions', {
-      project: 'bp-seed', prompt: 'test gemini', cli_type: 'gemini',
+      project: 'wb-seed', prompt: 'test gemini', cli_type: 'gemini',
     });
     assert.ok(data.id, `session ID returned, got: ${JSON.stringify(data)}`);
     assert.ok(data.tmux, 'tmux name returned');
     // Check state shows the session with correct CLI type
     await new Promise(r => setTimeout(r, 3000));
     const state = await apiGet('/api/state');
-    const proj = state.projects.find(p => p.name === 'bp-seed');
-    assert.ok(proj, 'bp-seed project found in state');
+    const proj = state.projects.find(p => p.name === 'wb-seed');
+    assert.ok(proj, 'wb-seed project found in state');
     const sess = proj.sessions.find(s => s.id === data.id);
     assert.ok(sess, 'session found in state');
     assert.equal(sess.cli_type, 'gemini');
@@ -144,27 +144,27 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
 
   it('SESS-05: Gemini session persists in state (not cleaned up by reconciler)', async () => {
     const data = await apiPost('/api/sessions', {
-      project: 'bp-seed', prompt: 'persist test', cli_type: 'gemini',
+      project: 'wb-seed', prompt: 'persist test', cli_type: 'gemini',
     });
     assert.ok(data.id, 'session created');
     // Wait for multiple state poll cycles
     await new Promise(r => setTimeout(r, 6000));
     const state = await apiGet('/api/state');
-    const proj = state.projects.find(p => p.name === 'bp-seed');
-    assert.ok(proj, 'bp-seed project found');
+    const proj = state.projects.find(p => p.name === 'wb-seed');
+    assert.ok(proj, 'wb-seed project found');
     const sess = proj.sessions.find(s => s.id === data.id);
     assert.ok(sess, 'Gemini session still in state after 6 seconds');
     assert.equal(sess.cli_type, 'gemini');
   });
 
   it('SESS-06: sidebar shows CLI type indicator (C for Claude, G for Gemini)', async () => {
-    const c = await apiPost('/api/sessions', { project: 'bp-seed', prompt: 'claude indicator', cli_type: 'claude' });
-    const g = await apiPost('/api/sessions', { project: 'bp-seed', prompt: 'gemini indicator', cli_type: 'gemini' });
+    const c = await apiPost('/api/sessions', { project: 'wb-seed', prompt: 'claude indicator', cli_type: 'claude' });
+    const g = await apiPost('/api/sessions', { project: 'wb-seed', prompt: 'gemini indicator', cli_type: 'gemini' });
     assert.ok(c.id && g.id, 'both sessions created');
     await new Promise(r => setTimeout(r, 3000));
     const state = await apiGet('/api/state');
-    const proj = state.projects.find(p => p.name === 'bp-seed');
-    assert.ok(proj, 'bp-seed found');
+    const proj = state.projects.find(p => p.name === 'wb-seed');
+    assert.ok(proj, 'wb-seed found');
     const claude = proj.sessions.find(s => s.name === 'claude indicator');
     const gemini = proj.sessions.find(s => s.name === 'gemini indicator');
     assert.ok(claude, 'claude session found');
@@ -176,7 +176,7 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
   // ── #94: File Editor Save / Save As ────────────────────────
 
   it('EDIT-01: opening a file shows toolbar with Save and Save As buttons', async () => {
-    await page.evaluate(() => openFileTab('/data/workspace/bp-seed/README.md'));
+    await page.evaluate(() => openFileTab('/data/workspace/wb-seed/README.md'));
     await page.waitForSelector('.editor-toolbar', { timeout: 5000 });
     const saveBtn = page.locator('.editor-save-btn');
     const saveAsBtn = page.locator('.editor-saveas-btn');
@@ -185,7 +185,7 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
   });
 
   it('EDIT-02: Save button is disabled when file is clean, enabled when dirty', async () => {
-    await page.evaluate(() => openFileTab('/data/workspace/bp-seed/README.md'));
+    await page.evaluate(() => openFileTab('/data/workspace/wb-seed/README.md'));
     await page.waitForSelector('.editor-toolbar', { timeout: 5000 });
     // Clean state
     const cleanDisabled = await page.evaluate(() => document.querySelector('.editor-save-btn').disabled);
@@ -206,9 +206,9 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
     // Create a test file via MCP (ensures workspace path)
     await apiPost('/api/mcp/call', {
       tool: 'workbench_files',
-      args: { action: 'create', path: 'bp-seed/edit-test.txt', content: 'original' },
+      args: { action: 'create', path: 'wb-seed/edit-test.txt', content: 'original' },
     });
-    await page.evaluate(() => openFileTab('/data/workspace/bp-seed/edit-test.txt'));
+    await page.evaluate(() => openFileTab('/data/workspace/wb-seed/edit-test.txt'));
     await page.waitForSelector('.editor-toolbar', { timeout: 5000 });
     // Edit
     await page.evaluate(() => {
@@ -228,7 +228,7 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
     assert.equal(dirty, false, 'dirty reset after save');
     // Verify file content on disk
     const rd = await apiPost('/api/mcp/call', {
-      tool: 'workbench_files', args: { action: 'read', path: 'bp-seed/edit-test.txt' },
+      tool: 'workbench_files', args: { action: 'read', path: 'wb-seed/edit-test.txt' },
     });
     assert.equal(rd.result.content, 'saved content');
   });
@@ -264,17 +264,17 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
     // Add via API to avoid prompt() dialog in headless
     const result = await apiPost('/api/mcp/call', {
       tool: 'workbench_tasks',
-      args: { action: 'add', folder_path: '/data/workspace/bp-seed', title: 'TASK-03 test task' },
+      args: { action: 'add', folder_path: '/data/workspace/wb-seed', title: 'TASK-03 test task' },
     });
     assert.ok(result.result.id, 'task created with ID');
     assert.equal(result.result.title, 'TASK-03 test task');
-    assert.equal(result.result.folder_path, '/data/workspace/bp-seed');
+    assert.equal(result.result.folder_path, '/data/workspace/wb-seed');
   });
 
   // ── #98: Session Connect / Restart ─────────────────────────
 
   it('CONN-01: connect action finds session by name query', async () => {
-    const sess = await apiPost('/api/sessions', { project: 'bp-seed', prompt: 'findme session', cli_type: 'claude' });
+    const sess = await apiPost('/api/sessions', { project: 'wb-seed', prompt: 'findme session', cli_type: 'claude' });
     assert.ok(sess.id, 'session created for connect test');
     await new Promise(r => setTimeout(r, 3000));
     const result = await apiPost('/api/mcp/call', {
@@ -287,7 +287,7 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
   });
 
   it('CONN-02: restart action kills and recreates tmux session', async () => {
-    const sess = await apiPost('/api/sessions', { project: 'bp-seed', prompt: 'restart test', cli_type: 'claude' });
+    const sess = await apiPost('/api/sessions', { project: 'wb-seed', prompt: 'restart test', cli_type: 'claude' });
     assert.ok(sess.id, 'session created for restart test');
     await new Promise(r => setTimeout(r, 3000));
     const result = await apiPost('/api/mcp/call', {
@@ -303,22 +303,22 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
 
   it('MCP-01: workbench_files list action returns entries', async () => {
     const result = await apiPost('/api/mcp/call', {
-      tool: 'workbench_files', args: { action: 'list', path: 'bp-seed' },
+      tool: 'workbench_files', args: { action: 'list', path: 'wb-seed' },
     });
     assert.ok(Array.isArray(result.result.entries), 'entries is array');
   });
 
   it('MCP-02: workbench_files create/read/delete cycle works', async () => {
     const cr = await apiPost('/api/mcp/call', {
-      tool: 'workbench_files', args: { action: 'create', path: 'bp-seed/mcp-test.txt', content: 'hello' },
+      tool: 'workbench_files', args: { action: 'create', path: 'wb-seed/mcp-test.txt', content: 'hello' },
     });
     assert.ok(cr.result.created);
     const rd = await apiPost('/api/mcp/call', {
-      tool: 'workbench_files', args: { action: 'read', path: 'bp-seed/mcp-test.txt' },
+      tool: 'workbench_files', args: { action: 'read', path: 'wb-seed/mcp-test.txt' },
     });
     assert.equal(rd.result.content, 'hello');
     const dl = await apiPost('/api/mcp/call', {
-      tool: 'workbench_files', args: { action: 'delete', path: 'bp-seed/mcp-test.txt' },
+      tool: 'workbench_files', args: { action: 'delete', path: 'wb-seed/mcp-test.txt' },
     });
     assert.ok(dl.result.deleted);
   });
@@ -351,13 +351,13 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
 
   it('MCP-05: workbench_sessions list returns sessions for project', async () => {
     const result = await apiPost('/api/mcp/call', {
-      tool: 'workbench_sessions', args: { action: 'list', project: 'bp-seed' },
+      tool: 'workbench_sessions', args: { action: 'list', project: 'wb-seed' },
     });
     assert.ok(Array.isArray(result.result));
   });
 
   it('MCP-06: workbench_sessions config saves session name', async () => {
-    const sess = await apiPost('/api/sessions', { project: 'bp-seed', prompt: 'config test', cli_type: 'claude' });
+    const sess = await apiPost('/api/sessions', { project: 'wb-seed', prompt: 'config test', cli_type: 'claude' });
     const result = await apiPost('/api/mcp/call', {
       tool: 'workbench_sessions', args: { action: 'config', session_id: sess.id, name: 'renamed by MCP' },
     });
@@ -496,9 +496,9 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
   it('TASKUX-02: checkbox complete updates inline without losing expand state', async () => {
     // Create a task
     await apiPost('/api/mcp/call', {
-      tool: 'workbench_tasks', args: { action: 'add', folder_path: '/data/workspace/bp-seed', title: 'inline-test' },
+      tool: 'workbench_tasks', args: { action: 'add', folder_path: '/data/workspace/wb-seed', title: 'inline-test' },
     });
-    await page.evaluate(() => { switchPanel('tasks'); expandedTaskFolders.add('/data/workspace'); expandedTaskFolders.add('/data/workspace/bp-seed'); loadTaskTree(); });
+    await page.evaluate(() => { switchPanel('tasks'); expandedTaskFolders.add('/data/workspace'); expandedTaskFolders.add('/data/workspace/wb-seed'); loadTaskTree(); });
     await new Promise(r => setTimeout(r, 2000));
     const before = await page.evaluate(() => {
       const node = document.querySelector('.task-node');
@@ -518,10 +518,10 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
 
   it('TASKUX-03: task filter buttons show correct tasks per filter', async () => {
     // Create tasks in different states
-    const t1 = await apiPost('/api/mcp/call', { tool: 'workbench_tasks', args: { action: 'add', folder_path: '/data/workspace/bp-seed', title: 'filter-todo' } });
-    const t2 = await apiPost('/api/mcp/call', { tool: 'workbench_tasks', args: { action: 'add', folder_path: '/data/workspace/bp-seed', title: 'filter-done' } });
+    const t1 = await apiPost('/api/mcp/call', { tool: 'workbench_tasks', args: { action: 'add', folder_path: '/data/workspace/wb-seed', title: 'filter-todo' } });
+    const t2 = await apiPost('/api/mcp/call', { tool: 'workbench_tasks', args: { action: 'add', folder_path: '/data/workspace/wb-seed', title: 'filter-done' } });
     await apiPost('/api/mcp/call', { tool: 'workbench_tasks', args: { action: 'complete', task_id: String(t2.result.id) } });
-    await page.evaluate(() => { expandedTaskFolders.add('/data/workspace'); expandedTaskFolders.add('/data/workspace/bp-seed'); });
+    await page.evaluate(() => { expandedTaskFolders.add('/data/workspace'); expandedTaskFolders.add('/data/workspace/wb-seed'); });
 
     // Active filter
     await page.evaluate(() => setTaskFilter('todo'));
@@ -543,8 +543,8 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
   // ── #94: Editor Enhancements ───────────────────────────
 
   it('EDITUX-01: save button flashes green "Saved" on successful save', async () => {
-    await apiPost('/api/mcp/call', { tool: 'workbench_files', args: { action: 'create', path: 'bp-seed/save-flash-test.txt', content: 'hello' } });
-    await page.evaluate(() => openFileTab('/data/workspace/bp-seed/save-flash-test.txt'));
+    await apiPost('/api/mcp/call', { tool: 'workbench_files', args: { action: 'create', path: 'wb-seed/save-flash-test.txt', content: 'hello' } });
+    await page.evaluate(() => openFileTab('/data/workspace/wb-seed/save-flash-test.txt'));
     await new Promise(r => setTimeout(r, 2000));
     const result = await page.evaluate(() => {
       const tabId = Array.from(tabs.keys()).find(k => k.startsWith('file-'));
@@ -560,7 +560,7 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
   });
 
   it('EDITUX-02: dirty tab has italic name and yellow top border', async () => {
-    await page.evaluate(() => openFileTab('/data/workspace/bp-seed/save-flash-test.txt'));
+    await page.evaluate(() => openFileTab('/data/workspace/wb-seed/save-flash-test.txt'));
     await new Promise(r => setTimeout(r, 2000));
     await page.evaluate(() => {
       const tabId = Array.from(tabs.keys()).find(k => k.startsWith('file-'));
@@ -585,7 +585,7 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
   // ── #102: System Prompt UI ─────────────────────────────
 
   it('PROMPTUI-01: project config modal has Claude/Gemini/Codex prompt buttons', async () => {
-    await page.evaluate(() => openProjectConfig('bp-seed'));
+    await page.evaluate(() => openProjectConfig('wb-seed'));
     await new Promise(r => setTimeout(r, 1000));
     const buttons = await page.evaluate(() => {
       const modal = document.querySelector('[id^="proj-config-"]');
@@ -599,7 +599,7 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
   });
 
   it('PROMPTUI-02: clicking Gemini button creates GEMINI.md from template and opens editor', async () => {
-    await page.evaluate(() => openProjectConfig('bp-seed'));
+    await page.evaluate(() => openProjectConfig('wb-seed'));
     await new Promise(r => setTimeout(r, 1000));
     await page.evaluate(() => {
       const btns = document.querySelectorAll('[id^="proj-config-"] button');
@@ -613,7 +613,7 @@ describe('Multi-CLI sessions, editors, and task panel (browser)', () => {
       return null;
     });
     assert.ok(tab, 'GEMINI.md tab opened');
-    assert.ok(tab.path.includes('bp-seed'), 'path is in project');
+    assert.ok(tab.path.includes('wb-seed'), 'path is in project');
     assert.ok(tab.hasEditor, 'editor loaded');
   });
 

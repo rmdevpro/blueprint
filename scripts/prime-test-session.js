@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Prime a Blueprint test session with conversation from a Claude CLI JSONL file.
+ * Prime a Workbench test session with conversation from a Claude CLI JSONL file.
  *
- * Usage: node prime-test-session.js <jsonl-path> <blueprint-url> <project> [target-chars]
+ * Usage: node prime-test-session.js <jsonl-path> <workbench-url> <project> [target-chars]
  *
- * Reads user/assistant messages from the JSONL, creates a session in Blueprint,
+ * Reads user/assistant messages from the JSONL, creates a session in Workbench,
  * and writes a synthetic JSONL to disk so the session appears to have conversation history.
  */
 
@@ -12,12 +12,12 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 
-const [, , jsonlPath, blueprintUrl, project, targetCharsStr] = process.argv;
+const [, , jsonlPath, workbenchUrl, project, targetCharsStr] = process.argv;
 const targetChars = parseInt(targetCharsStr) || 680000; // ~170K tokens at 4 chars/token
 
-if (!jsonlPath || !blueprintUrl || !project) {
+if (!jsonlPath || !workbenchUrl || !project) {
   console.error(
-    'Usage: node prime-test-session.js <jsonl-path> <blueprint-url> <project> [target-chars]',
+    'Usage: node prime-test-session.js <jsonl-path> <workbench-url> <project> [target-chars]',
   );
   process.exit(1);
 }
@@ -99,9 +99,9 @@ async function main() {
     `Parsed ${messages.length} messages, ${totalChars} chars (~${Math.round(totalChars / 4)}  tokens)`,
   );
 
-  // Create a session in Blueprint
+  // Create a session in Workbench
   console.log(`Creating session in ${project}...`);
-  const session = await fetchJSON(`${blueprintUrl}/api/sessions`, {
+  const session = await fetchJSON(`${workbenchUrl}/api/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ project, prompt: 'Compaction stress test session' }),
@@ -113,7 +113,7 @@ async function main() {
   await new Promise((r) => setTimeout(r, 15000));
 
   // Get the real session ID
-  const state = await fetchJSON(`${blueprintUrl}/api/state`, { method: 'GET' });
+  const state = await fetchJSON(`${workbenchUrl}/api/state`, { method: 'GET' });
   const proj = state.projects?.find((p) => p.name === project);
   const sess = proj?.sessions?.find((s) => s.name?.includes('Compaction stress'));
   const realId = sess?.id || session.id;
@@ -178,14 +178,14 @@ async function main() {
   console.log(`\nWrote ${jsonlLines.length} entries to: ${outFile}`);
   console.log(`Total size: ${(fs.statSync(outFile).size / 1024 / 1024).toFixed(1)} MB`);
   console.log(`\nTo inject into container:`);
-  console.log(`  docker cp ${outFile} blueprint:/tmp/prime.jsonl`);
+  console.log(`  docker cp ${outFile} workbench:/tmp/prime.jsonl`);
   console.log(
-    `  docker exec -u hopper blueprint bash -c 'cat /tmp/prime.jsonl >> <session-jsonl-path>'`,
+    `  docker exec -u hopper workbench bash -c 'cat /tmp/prime.jsonl >> <session-jsonl-path>'`,
   );
   console.log(`\nOr use SSH:`);
   console.log(`  scp ${outFile} aristotle9@192.168.1.110:/tmp/`);
   console.log(
-    `  ssh aristotle9@192.168.1.110 "docker cp /tmp/prime_${realId.substring(0, 8)}.jsonl blueprint:/tmp/prime.jsonl && docker exec -u hopper blueprint bash -c 'cat /tmp/prime.jsonl >> <session-jsonl-path>'"`,
+    `  ssh aristotle9@192.168.1.110 "docker cp /tmp/prime_${realId.substring(0, 8)}.jsonl workbench:/tmp/prime.jsonl && docker exec -u hopper workbench bash -c 'cat /tmp/prime.jsonl >> <session-jsonl-path>'"`,
   );
 }
 

@@ -17,14 +17,14 @@
 - Smart compaction — CMP tests for compaction pipeline removed
 - Messages system — send/get/mark-read functions and table removed from db.js
 - Notes endpoints — `/api/projects/:name/notes` and `/api/sessions/:id/notes` GET/PUT removed from routes.js
-- Plan tools — `blueprint_read_plan`, `blueprint_update_plan` removed from mcp-tools.js
-- `blueprint_send_message`, `blueprint_get_project_notes`, `blueprint_get_session_notes`, `blueprint_ask_cli`, `blueprint_ask_quorum`, `blueprint_smart_compaction` — all removed
+- Plan tools — `workbench_read_plan`, `workbench_update_plan` removed from mcp-tools.js
+- `workbench_send_message`, `workbench_get_project_notes`, `workbench_get_session_notes`, `workbench_ask_cli`, `workbench_ask_quorum`, `workbench_smart_compaction` — all removed
 
 ### Changed modules
 - `mcp-tools.js` — 17 tools consolidated to 3 (`workbench_files`, `workbench_sessions`, `workbench_tasks`)
 - `mcp-server.js` — tool definitions updated to match
 - `db.js` — added `cli_type` column, `mcp_registry` and `mcp_project_enabled` tables, `searchSessionsByName()`
-- `safe-exec.js` — added `tmuxCreateGemini()`, `tmuxCreateCodex()`, user `blueprint` (was `hopper`)
+- `safe-exec.js` — added `tmuxCreateGemini()`, `tmuxCreateCodex()`, user `workbench` (was `hopper`)
 - `routes.js` — `POST /api/sessions` accepts `cli_type`, resume launches correct CLI
 - `tmux-lifecycle.js` — periodic scan, idle timeouts, session limits
 - `qdrant-sync.js` — new module for vector search
@@ -34,8 +34,8 @@
 - `qdrant-sync.js` — Qdrant vector sync, embedding pipeline, file watching
 
 ### Path changes
-- Container user: `blueprint` (was `hopper`)
-- Workspace: `/home/blueprint/workspace` (was `/mnt/workspace`)
+- Container user: `workbench` (was `hopper`)
+- Workspace: `/home/workbench/workspace` (was `/mnt/workspace`)
 - No `CLAUDE_HOME` override — uses `$HOME/.claude` naturally
 **Reviewed by (R1):** Claude (Sonnet 4.6), Gemini, Grok, GPT
 **Reviewed by (R2):** Claude (Sonnet 4.6), Gemini, Grok, GPT
@@ -267,19 +267,19 @@ The following apply to all tests regardless of layer:
 
 | Concern | Production | Test |
 |---------|-----------|------|
-| Docker Compose project name | `blueprint` | `blueprint-test` |
-| Network | `default` | `blueprint-test_default` |
-| Data volumes | `joshua26_workspace`, `joshua26_storage` | `blueprint-test_workspace`, `blueprint-test_storage` |
+| Docker Compose project name | `workbench` | `workbench-test` |
+| Network | `default` | `workbench-test_default` |
+| Data volumes | `joshua26_workspace`, `joshua26_storage` | `workbench-test_workspace`, `workbench-test_storage` |
 | Port binding | `7866:3000` | `7867:3000` |
 | Database | `/data/.workbench/workbench.db` | Fresh DB per gating run |
-| Container name | `blueprint-blueprint-1` | `blueprint-test` |
+| Container name | `workbench-workbench-1` | `workbench-test` |
 | Environment | `WORKBENCH_DATA=/data/.workbench` | `WORKBENCH_DATA=/data/.workbench` |
 | Outbound internet | Unrestricted | Blocked or routed to local stub server |
 | MAX_TMUX_SESSIONS | 5 (default) | 10 (explicit in compose) |
 
 A dedicated `docker-compose.test.yml` override file provides these isolation settings. No test points at production `.workbench`, `.claude`, workspace, or DB. The compose file is a prerequisite artifact that must be created before the first gating run.
 
-**Outbound network isolation:** The `blueprint-test` container must not make outbound internet requests during Gate B. DNS resolution for external hosts is blocked at the Docker network level or routed to a local stub. This ensures the gating suite never flakes due to external API latency or availability.
+**Outbound network isolation:** The `workbench-test` container must not make outbound internet requests during Gate B. DNS resolution for external hosts is blocked at the Docker network level or routed to a local stub. This ensures the gating suite never flakes due to external API latency or availability.
 
 ### 3.2 Configuration
 
@@ -316,7 +316,7 @@ Deterministic fixtures are required for scenarios involving non-deterministic or
 | ANSI-polluted PTY output | Auth URL detection (BRW-28, AUTH-ANSI-01..03) | Raw text files with real terminal control characters, cursor repositioning, color codes |
 | Chunked WebSocket frames | Auth URL arriving fragmented across frames | Binary frame fixtures |
 | Malformed JSONL | Concurrent write corruption, truncated lines | `.jsonl` files with known defects |
-| Checker hallucination responses | Conversational text around JSON, wrong schema JSON | Text fixtures for `parseBlueprint` |
+| Checker hallucination responses | Conversational text around JSON, wrong schema JSON | Text fixtures for `parseWorkbench` |
 | File tree fixture | Drag-and-drop tests | Pre-created directory tree in test workspace |
 | Stateful mock sequences | CMP-42 git commit path, compaction phase transitions | Ordered response arrays for sequential `capturePaneAsync` returns |
 | xterm.js terminal content | Browser tests needing terminal text assertions | Use `page.evaluate(() => term.buffer.active.getLine(row).translateToString())` via the exposed xterm instance, not DOM text selectors. xterm.js fragments text across spans; DOM assertions will fail |
@@ -327,9 +327,9 @@ All fixtures live in `tests/fixtures/` and are imported by test modules. No test
 
 For every gating run:
 
-1. **Teardown:** `docker compose -p blueprint-test down -v` (remove containers and volumes)
-2. **Rebuild:** `docker compose -p blueprint-test build --no-cache`
-3. **Start:** `docker compose -p blueprint-test up -d`
+1. **Teardown:** `docker compose -p workbench-test down -v` (remove containers and volumes)
+2. **Rebuild:** `docker compose -p workbench-test build --no-cache`
+3. **Start:** `docker compose -p workbench-test up -d`
 4. **Health wait:** Poll `GET http://localhost:7867/health` every 2s, timeout 120s. Require all dependency statuses healthy. Additionally verify: tmux is executable (`docker exec ... tmux -V`), `claude` stub/binary is on PATH, settings.json exists, workspace is writable
 5. **Seed data:** Run data loading scripts against live container
 6. **Run mock tests:** `npm test`
@@ -386,7 +386,7 @@ Minimum structural coverage threshold: **80% line coverage, 70% branch coverage*
 
 | Layer | Reset Actions |
 |-------|--------------|
-| Live/API | Delete test-created sessions (by naming convention `test_*`), delete test-created tasks, delete test-created projects (except seed project), truncate messages table, remove bridge files, kill orphaned `bp_test_*` tmux sessions |
+| Live/API | Delete test-created sessions (by naming convention `test_*`), delete test-created tasks, delete test-created projects (except seed project), truncate messages table, remove bridge files, kill orphaned `wb_test_*` tmux sessions |
 | Browser | All of the above, plus: dismiss open modals/overlays, close all tabs except first, navigate to base URL, clear `localStorage` test keys |
 
 **Principle:** Every test must succeed or fail on its own merit, never because a previous test left debris.
@@ -401,7 +401,7 @@ The stub CLI is the most critical test infrastructure artifact for the standard 
 | Session resolution | Create file within the polling window so `session-resolver.js` can find it |
 | Usage blocks | Include realistic `input_tokens`/`output_tokens` values in assistant message usage |
 | `--print` response | Return non-empty text to stdout |
-| Compaction checker replies | Return valid `{"blueprint": "..."}` JSON lines from configurable response files |
+| Compaction checker replies | Return valid `{"workbench": "..."}` JSON lines from configurable response files |
 | Auth prompt emission | Write ANSI-formatted OAuth URL to stdout (for auth flow tests) |
 | Exit codes | Exit 0 on success, non-zero on configured failure |
 | Configurable responses | Read response from `$STUB_RESPONSE_FILE` environment variable or fixture path |
@@ -558,7 +558,7 @@ Coverage completeness is enforced by structural coverage tooling (`c8`) per §3.
 
 | ID | Capability | Layer | Status |
 |----|-----------|-------|--------|
-| TMX-01 | Tmux session name generation (`bp_` + 12 chars) | Mock | NONE |
+| TMX-01 | Tmux session name generation (`wb_` + 12 chars) | Mock | NONE |
 | TMX-02 | Tmux session existence check | Mock + Live | NONE |
 | TMX-03 | Tmux session creation (Claude) | Live | NONE |
 | TMX-04 | Tmux session creation (bash) | Live | NONE |
@@ -649,10 +649,10 @@ This is the highest-risk subsystem. It requires both granular stage tests and fu
 | ID | Capability | Layer | Status |
 |----|-----------|-------|--------|
 | CMP-01 | ANSI escape code stripping | Mock | NONE |
-| CMP-02 | Blueprint JSON parsing (valid line) | Mock | NONE |
-| CMP-03 | Blueprint JSON parsing (malformed) | Mock | NONE |
-| CMP-03a | Blueprint JSON parsing (hallucinated conversational text around JSON, valid JSON with wrong schema) | Mock | NONE |
-| CMP-04 | Agent message extraction removes blueprint lines | Mock | NONE |
+| CMP-02 | Workbench JSON parsing (valid line) | Mock | NONE |
+| CMP-03 | Workbench JSON parsing (malformed) | Mock | NONE |
+| CMP-03a | Workbench JSON parsing (hallucinated conversational text around JSON, valid JSON with wrong schema) | Mock | NONE |
+| CMP-04 | Agent message extraction removes workbench lines | Mock | NONE |
 
 **Context setup tests:**
 
@@ -844,27 +844,27 @@ This is the highest-risk subsystem. It requires both granular stage tests and fu
 | MCP-03 | Plan path traversal protection (symlink-safe, realpath) | Mock + Live | NONE |
 | MCP-04 | MCP session ID validation | Mock | NONE |
 | MCP-05 | MCP task ID validation | Mock | NONE |
-| MCP-06a | `blueprint_search_sessions` — valid query returns results, empty query returns empty | Live | NONE |
-| MCP-06b | `blueprint_summarize_session` — valid session returns summary text | Live | NONE |
-| MCP-06c | `blueprint_list_sessions` — returns session list for project | Live | NONE |
-| MCP-06d | ~~`blueprint_get_project_notes`~~ REMOVED | — | — |
-| MCP-06e | ~~`blueprint_get_session_notes`~~ REMOVED | — | — |
-| MCP-06f | `blueprint_get_tasks` — returns task list | Live | NONE |
-| MCP-06g | `blueprint_add_task` — creates task, verify DB row | Live | NONE |
-| MCP-06h | `blueprint_complete_task` — marks complete | Live | NONE |
-| MCP-06i | `blueprint_get_project_claude_md` — returns CLAUDE.md content | Live | NONE |
-| MCP-06j | ~~`blueprint_read_plan`~~ REMOVED | — | — |
-| MCP-06k | ~~`blueprint_update_plan`~~ REMOVED | — | — |
-| MCP-06l | `blueprint_set_session_config` — updates config, verify DB | Live | NONE |
-| MCP-06m | `blueprint_reopen_task` — reopens completed task | Live | NONE |
-| MCP-06n | `blueprint_delete_task` — deletes task, verify DB | Live | NONE |
-| MCP-06o | `blueprint_set_project_notes` — sets notes, verify DB | Live | NONE |
-| MCP-06p | `blueprint_set_session_notes` — sets session notes | Live | NONE |
-| MCP-06q | `blueprint_get_token_usage` — returns token usage data | Live | NONE |
+| MCP-06a | `workbench_search_sessions` — valid query returns results, empty query returns empty | Live | NONE |
+| MCP-06b | `workbench_summarize_session` — valid session returns summary text | Live | NONE |
+| MCP-06c | `workbench_list_sessions` — returns session list for project | Live | NONE |
+| MCP-06d | ~~`workbench_get_project_notes`~~ REMOVED | — | — |
+| MCP-06e | ~~`workbench_get_session_notes`~~ REMOVED | — | — |
+| MCP-06f | `workbench_get_tasks` — returns task list | Live | NONE |
+| MCP-06g | `workbench_add_task` — creates task, verify DB row | Live | NONE |
+| MCP-06h | `workbench_complete_task` — marks complete | Live | NONE |
+| MCP-06i | `workbench_get_project_claude_md` — returns CLAUDE.md content | Live | NONE |
+| MCP-06j | ~~`workbench_read_plan`~~ REMOVED | — | — |
+| MCP-06k | ~~`workbench_update_plan`~~ REMOVED | — | — |
+| MCP-06l | `workbench_set_session_config` — updates config, verify DB | Live | NONE |
+| MCP-06m | `workbench_reopen_task` — reopens completed task | Live | NONE |
+| MCP-06n | `workbench_delete_task` — deletes task, verify DB | Live | NONE |
+| MCP-06o | `workbench_set_project_notes` — sets notes, verify DB | Live | NONE |
+| MCP-06p | `workbench_set_session_notes` — sets session notes | Live | NONE |
+| MCP-06q | `workbench_get_token_usage` — returns token usage data | Live | NONE |
 | MCP-07 | Content-length limits enforced | Live | NONE |
-| MCP-08 | ~~`blueprint_send_message`~~ REMOVED | — | — |
-| MCP-09 | ~~`blueprint_smart_compaction`~~ REMOVED | — | — |
-| MCP-10 | ~~`blueprint_ask_quorum`~~ REMOVED | — | — |
+| MCP-08 | ~~`workbench_send_message`~~ REMOVED | — | — |
+| MCP-09 | ~~`workbench_smart_compaction`~~ REMOVED | — | — |
+| MCP-10 | ~~`workbench_ask_quorum`~~ REMOVED | — | — |
 
 #### 4.1.21 MCP Tools (External/Admin -- `mcp-external.js`) — REMOVED
 
@@ -873,13 +873,13 @@ This is the highest-risk subsystem. It requires both granular stage tests and fu
 | MCX-01 | ~~List external tools (internal + admin)~~ REMOVED | — | — |
 | MCX-02 | ~~Fallback to admin-only when internal fetch fails~~ REMOVED | — | — |
 | MCX-03 | ~~External call proxies internal tools~~ REMOVED | — | — |
-| MCX-04 | ~~`blueprint_create_session` admin tool~~ REMOVED | — | — |
-| MCX-05 | ~~`blueprint_set_session_state` admin tool~~ REMOVED | — | — |
-| MCX-06 | ~~`blueprint_get_token_usage` admin tool~~ REMOVED | — | — |
-| MCX-07 | ~~`blueprint_set_project_notes` admin tool~~ REMOVED | — | — |
-| MCX-08 | ~~`blueprint_set_project_claude_md` admin tool~~ REMOVED | — | — |
-| MCX-09 | ~~`blueprint_list_projects` admin tool~~ REMOVED | — | — |
-| MCX-10 | ~~`blueprint_update_settings` admin tool (with key validation)~~ REMOVED | — | — |
+| MCX-04 | ~~`workbench_create_session` admin tool~~ REMOVED | — | — |
+| MCX-05 | ~~`workbench_set_session_state` admin tool~~ REMOVED | — | — |
+| MCX-06 | ~~`workbench_get_token_usage` admin tool~~ REMOVED | — | — |
+| MCX-07 | ~~`workbench_set_project_notes` admin tool~~ REMOVED | — | — |
+| MCX-08 | ~~`workbench_set_project_claude_md` admin tool~~ REMOVED | — | — |
+| MCX-09 | ~~`workbench_list_projects` admin tool~~ REMOVED | — | — |
+| MCX-10 | ~~`workbench_update_settings` admin tool (with key validation)~~ REMOVED | — | — |
 | MCX-11 | ~~Unknown tool name returns error~~ REMOVED | — | — |
 
 #### 4.1.22 MCP Servers API
@@ -1001,7 +1001,7 @@ Previously in this section:
 | ID | Capability | Layer | Status |
 |----|-----------|-------|--------|
 | ENT-01 | Docker socket group matching (dynamic GID) | Live | NONE |
-| ENT-02 | User drop from root to blueprint via gosu | Live | NONE |
+| ENT-02 | User drop from root to workbench via gosu | Live | NONE |
 | ENT-03 | Data directory creation | Live | NONE |
 | ENT-04 | CLAUDE_HOME symlink setup | Live | NONE |
 | ENT-05 | Settings.json creation with defaults | Live | NONE |
@@ -1009,7 +1009,7 @@ Previously in this section:
 | ENT-07 | Skill installation from config/skills | Live | NONE |
 | ENT-08 | Credential verification | Live | NONE |
 | ENT-09 | Onboarding flags set | Live | NONE |
-| ENT-10 | Ownership fix to blueprint user | Live | NONE |
+| ENT-10 | Ownership fix to workbench user | Live | NONE |
 | ENT-11 | Docker socket owned by root emits warning (no docker group GID match) | Live | NONE |
 | ENT-12 | Startup with missing `tmux` binary — server starts degraded, session creation returns clear error | Live | NONE |
 
@@ -1089,7 +1089,7 @@ Previously in this section:
 
 | ID | Capability | Layer | Status |
 |----|-----------|-------|--------|
-| UI-34 | Theme switching (dark/light/blueprint-dark/blueprint-light) | Browser | NONE |
+| UI-34 | Theme switching (dark/light/workbench-dark/workbench-light) | Browser | NONE |
 | UI-35 | Terminal font size adjustment | Browser | NONE |
 | UI-36 | Terminal font family selection | Browser | NONE |
 | UI-37 | Default model configuration | Browser | NONE |
@@ -1218,7 +1218,7 @@ This section defines specific scenarios, inputs, expected outcomes, and gray-box
 - Input: Start fresh container, wait for health
 - Expected: Config initialized, watchers started, orphan cleanup completed
 - Layer: Live
-- Gray-box: Container log shows startup messages. Settings file exists. No orphaned `bp_*` tmux sessions
+- Gray-box: Container log shows startup messages. Settings file exists. No orphaned `wb_*` tmux sessions
 
 **SRV-05: Graceful error handling**
 - Input: Spawn `server.js` as a child process with `NODE_OPTIONS='--require ./tests/fixtures/trigger-uncaught.js'`. The fixture schedules `setTimeout(() => { throw new Error('test-uncaught-exception') }, 2000)` after the server starts. This injects a real uncaught exception without modifying application code.
@@ -1386,23 +1386,23 @@ This section defines specific scenarios, inputs, expected outcomes, and gray-box
 - Input: Create session, connect WS to `/ws/:tmuxSession`
 - Expected: PTY spawned attached to tmux session, bidirectional data flows
 - Layer: Live
-- Gray-box: `docker exec blueprint-test tmux list-sessions` shows session; container logs show PTY spawn entry
+- Gray-box: `docker exec workbench-test tmux list-sessions` shows session; container logs show PTY spawn entry
 
 **WS-03: Bidirectional data flow**
 - Input: Connect WS, send keystrokes, read output
 - Expected: Input appears in tmux capture-pane; command output received on WS
 - Layer: Live
-- Gray-box: `docker exec blueprint-test tmux capture-pane -t <session> -p` shows typed input
+- Gray-box: `docker exec workbench-test tmux capture-pane -t <session> -p` shows typed input
 
 **WS-04: Terminal resize handling**
 - Input: Send resize message `{type: "resize", cols: 120, rows: 40}` over WS
 - Expected: PTY dimensions updated, subsequent output wraps at new width
-- Layer: Mock — inject mock PTY, verify `pty.resize(cols, rows)` called with correct values. Live — send resize, verify `docker exec blueprint-test tmux display -t <session> -p '#{pane_width} #{pane_height}'` reflects new dimensions
+- Layer: Mock — inject mock PTY, verify `pty.resize(cols, rows)` called with correct values. Live — send resize, verify `docker exec workbench-test tmux display -t <session> -p '#{pane_width} #{pane_height}'` reflects new dimensions
 
 **WS-07: Cleanup on disconnect**
 - Input: Connect WS, then close connection
 - Expected: Three side effects occur: (1) PTY process killed, (2) browser count decremented in sharedState, (3) cleanup timer scheduled for tmux session
-- Layer: Mock — inject mock PTY (verify `.kill()` called), mock sharedState (verify `browserCount` decremented), mock timer (verify `setTimeout` scheduled with cleanup delay). Live — disconnect WS, verify: `docker exec blueprint-test tmux list-sessions` still shows session (cleanup is delayed, not immediate), container logs show disconnect cleanup entry
+- Layer: Mock — inject mock PTY (verify `.kill()` called), mock sharedState (verify `browserCount` decremented), mock timer (verify `setTimeout` scheduled with cleanup delay). Live — disconnect WS, verify: `docker exec workbench-test tmux list-sessions` still shows session (cleanup is delayed, not immediate), container logs show disconnect cleanup entry
 - Gray-box: Container logs for PTY kill, tmux ls for session presence, internal state for browser count. This scenario tests three independent side effects; each must be verified separately
 
 **WS-08: Token usage forwarded via WS**
@@ -1426,14 +1426,14 @@ This section defines specific scenarios, inputs, expected outcomes, and gray-box
 
 | # | Element | Checker Signal | Verification |
 |---|---------|---------------|-------------|
-| 1 | Plan mode entered | `{"blueprint": "enter_plan_mode"}` | Tmux capture shows plan mode |
-| 2 | Plan file copied | `{"blueprint": "read_plan_file"}` | Plan file exists |
+| 1 | Plan mode entered | `{"workbench": "enter_plan_mode"}` | Tmux capture shows plan mode |
+| 2 | Plan file copied | `{"workbench": "read_plan_file"}` | Plan file exists |
 | 3 | Context tail built | `recent_turns.md` created | File exists, size > 0 |
 | 4 | Unsaved work checked | Checker assesses state | Response references work state |
 | 5 | Git status checked | Checker evaluates changes | Response references git state |
-| 6 | Git commit (if needed) | `{"blueprint": "exit_plan_mode"}` → git → re-enter | Log shows git prompt |
+| 6 | Git commit (if needed) | `{"workbench": "exit_plan_mode"}` → git → re-enter | Log shows git prompt |
 | 7 | Agent state preserved | Checker confirms resumability | Response contains state summary |
-| 8 | Ready to compact | `{"blueprint": "ready_to_compact"}` | `parseBlueprint` returns it |
+| 8 | Ready to compact | `{"workbench": "ready_to_compact"}` | `parseWorkbench` returns it |
 
 **CMP-03a:** Hallucinated checker output (conversational text wrapping JSON, wrong schema) → retries or aborts, no infinite loop. Mock.
 
@@ -1483,7 +1483,7 @@ These tests verify that the threshold if-else-if chain does not trigger actions 
 
 | ID | Input | Expected | Layer | Gray-box |
 |----|-------|----------|-------|----------|
-| TMX-01 | Name generator | Matches `/^bp_[a-z0-9]{12}$/` | Mock | |
+| TMX-01 | Name generator | Matches `/^wb_[a-z0-9]{12}$/` | Mock | |
 | TMX-02 | Existence check | Returns boolean | Mock | |
 | TMX-03 | Create Claude session | Tmux created | Live | `tmux ls` |
 | TMX-04 | Create bash session | Tmux created | Live | `tmux ls` |
@@ -1645,15 +1645,15 @@ See §3.6 for methodology. Mock tests import functions; live tests use `child_pr
 | FS-03 | `GET /api/file` valid + outside workspace | 200 for both (AD-001) | Live |
 | FS-04 | `POST /api/jqueryFileTree` | HTML listing | Live |
 | FS-05 | File > 1MB | 413 | Mock + Live |
-| FS-06 | ~~`blueprint_update_plan` with `../`~~ REMOVED — plan tools deleted | — | — |
+| FS-06 | ~~`workbench_update_plan` with `../`~~ REMOVED — plan tools deleted | — | — |
 
 ### 5.25 Health Endpoint
 
 | ID | Input | Expected | Layer |
 |----|-------|----------|-------|
 | HLT-01 | All healthy | 200 | Live |
-| HLT-02a | DB file removed: `docker exec blueprint-test rm /data/.workbench/workbench.db` | 503, health response body shows db status unhealthy | Live |
-| HLT-02b | DB file unreadable: `docker exec blueprint-test chmod 000 /data/.workbench/workbench.db` (restore with `chmod 644` after test) | 503, health response body shows db status unhealthy | Live |
+| HLT-02a | DB file removed: `docker exec workbench-test rm /data/.workbench/workbench.db` | 503, health response body shows db status unhealthy | Live |
+| HLT-02b | DB file unreadable: `docker exec workbench-test chmod 000 /data/.workbench/workbench.db` (restore with `chmod 644` after test) | 503, health response body shows db status unhealthy | Live |
 | HLT-03 | Any state | db, workspace, auth fields present | Live |
 | HLT-04 | Invalid credentials | 200, auth degraded | Live |
 | HLT-05 | DB down, workspace up | 503, workspace healthy | Live |
@@ -1665,7 +1665,7 @@ See §3.6 for methodology. Mock tests import functions; live tests use `child_pr
 | ID | Input | Expected | Layer | Gray-box |
 |----|-------|----------|-------|----------|
 | ENT-01 | Docker socket mounted | GID matches | Live | `stat -c %g` |
-| ENT-02 | Fresh container | Process runs as `blueprint` user (not root) after gosu | Live | `whoami` inside running container returns `blueprint` |
+| ENT-02 | Fresh container | Process runs as `workbench` user (not root) after gosu | Live | `whoami` inside running container returns `workbench` |
 | ENT-03 | Fresh container | Dirs created | Live | `ls -la` |
 | ENT-04 | Fresh container | `$CLAUDE_HOME` points to symlinked location | Live | `readlink $CLAUDE_HOME` or `ls -la` shows symlink |
 | ENT-05 | No prior settings | `settings.json` defaults | Live | Read + verify |
@@ -1673,11 +1673,11 @@ See §3.6 for methodology. Mock tests import functions; live tests use `child_pr
 | ENT-07 | `config/skills` directory contains skill files | Skills installed into `$CLAUDE_HOME` | Live | Verify skill files exist in expected location after startup |
 | ENT-08 | Fresh container with credentials mounted | Credential file exists and is valid | Live | `docker exec` reads credential file, verifies JSON structure |
 | ENT-09 | Fresh container | Onboarding flags set | Live | Read `.claude.json` |
-| ENT-10 | Fresh container | workspace owned by `blueprint` user | Live | `stat -c %U` on `/home/blueprint/workspace` |
+| ENT-10 | Fresh container | workspace owned by `workbench` user | Live | `stat -c %U` on `/home/workbench/workspace` |
 | ENT-11 | Root-only socket GID | Warning logged | Live | Container logs |
 | ENT-12 | `tmux` hidden via PATH override | Server starts degraded, session creation → clear error | Live | API error response |
 
-**ENT-12 execution method:** Run ENT-12 at the END of the fresh-container suite. Override PATH to hide tmux: `docker exec blueprint-test env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin node -e "..."` (omit the directory containing tmux from PATH), or use a compose override that mounts a no-op stub at the tmux path. Do NOT rename or move the real tmux binary — if the test harness crashes mid-test, the container must remain usable. If ENT-12 fails or the harness crashes, the container must be torn down and rebuilt before any subsequent test run.
+**ENT-12 execution method:** Run ENT-12 at the END of the fresh-container suite. Override PATH to hide tmux: `docker exec workbench-test env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin node -e "..."` (omit the directory containing tmux from PATH), or use a compose override that mounts a no-op stub at the tmux path. Do NOT rename or move the real tmux binary — if the test harness crashes mid-test, the container must remain usable. If ENT-12 fails or the harness crashes, the container must be torn down and rebuilt before any subsequent test run.
 
 ### 5.27 Auth Modal (Browser)
 
@@ -1699,23 +1699,23 @@ See §3.6 for methodology. Mock tests import functions; live tests use `child_pr
 
 | ID | Tool | Input | Expected | Gray-Box |
 |----|------|-------|----------|----------|
-| MCP-06a | `blueprint_search_sessions` | `{query: "test"}` / `{query: ""}` | Results array / empty array | — |
-| MCP-06b | `blueprint_summarize_session` | Valid session ID | Non-empty summary text | — |
-| MCP-06c | `blueprint_list_sessions` | Valid project name | Session array for project | — |
-| MCP-06d | ~~`blueprint_get_project_notes`~~ REMOVED | — | — | — |
-| MCP-06e | ~~`blueprint_get_session_notes`~~ REMOVED | — | — | — |
-| MCP-06f | `blueprint_get_tasks` | Valid project | Task array | — |
-| MCP-06g | `blueprint_add_task` | `{project, text}` | Task created | DB: `SELECT count(*) FROM tasks` incremented by 1 |
-| MCP-06h | `blueprint_complete_task` | Valid task ID | Task completed | DB: `completed_at IS NOT NULL` |
-| MCP-06i | `blueprint_get_project_claude_md` | Valid project | CLAUDE.md content | — |
-| MCP-06j | ~~`blueprint_read_plan`~~ REMOVED | — | — | — |
-| MCP-06k | ~~`blueprint_update_plan`~~ REMOVED | — | — | — |
-| MCP-06l | `blueprint_set_session_config` | `{id, name: "new-name"}` | Config updated | DB: session name matches |
-| MCP-06m | `blueprint_reopen_task` | Completed task ID | Task reopened | DB: `completed_at IS NULL` |
-| MCP-06n | `blueprint_delete_task` | Valid task ID | Task deleted | DB: `SELECT count(*) FROM tasks WHERE id = ?` returns 0 |
-| MCP-06o | `blueprint_set_project_notes` | `{project, notes}` | Notes saved | DB: notes match |
-| MCP-06p | `blueprint_set_session_notes` | `{session, notes}` | Notes saved | DB: notes match |
-| MCP-06q | `blueprint_get_token_usage` | Valid session | Token usage data | — |
+| MCP-06a | `workbench_search_sessions` | `{query: "test"}` / `{query: ""}` | Results array / empty array | — |
+| MCP-06b | `workbench_summarize_session` | Valid session ID | Non-empty summary text | — |
+| MCP-06c | `workbench_list_sessions` | Valid project name | Session array for project | — |
+| MCP-06d | ~~`workbench_get_project_notes`~~ REMOVED | — | — | — |
+| MCP-06e | ~~`workbench_get_session_notes`~~ REMOVED | — | — | — |
+| MCP-06f | `workbench_get_tasks` | Valid project | Task array | — |
+| MCP-06g | `workbench_add_task` | `{project, text}` | Task created | DB: `SELECT count(*) FROM tasks` incremented by 1 |
+| MCP-06h | `workbench_complete_task` | Valid task ID | Task completed | DB: `completed_at IS NOT NULL` |
+| MCP-06i | `workbench_get_project_claude_md` | Valid project | CLAUDE.md content | — |
+| MCP-06j | ~~`workbench_read_plan`~~ REMOVED | — | — | — |
+| MCP-06k | ~~`workbench_update_plan`~~ REMOVED | — | — | — |
+| MCP-06l | `workbench_set_session_config` | `{id, name: "new-name"}` | Config updated | DB: session name matches |
+| MCP-06m | `workbench_reopen_task` | Completed task ID | Task reopened | DB: `completed_at IS NULL` |
+| MCP-06n | `workbench_delete_task` | Valid task ID | Task deleted | DB: `SELECT count(*) FROM tasks WHERE id = ?` returns 0 |
+| MCP-06o | `workbench_set_project_notes` | `{project, notes}` | Notes saved | DB: notes match |
+| MCP-06p | `workbench_set_session_notes` | `{session, notes}` | Notes saved | DB: notes match |
+| MCP-06q | `workbench_get_token_usage` | Valid session | Token usage data | — |
 
 ---
 
@@ -1750,8 +1750,8 @@ See §3.6 for methodology. Mock tests import functions; live tests use `child_pr
 | `GET /api/file` | Path outside workspace | 200 (AD-001) |
 | `GET /api/file` | File > 1MB | 413 |
 | `POST /api/mcp/call` | Unknown tool | Error response |
-| ~~`blueprint_update_plan` path traversal~~ REMOVED | — | — |
-| ~~`blueprint_update_plan` content limit~~ REMOVED | — | — |
+| ~~`workbench_update_plan` path traversal~~ REMOVED | — | — |
+| ~~`workbench_update_plan` content limit~~ REMOVED | — | — |
 | `POST /v1/chat/completions` | Empty messages | 400 |
 | `POST /v1/chat/completions` | Missing model | 200 (defaults) |
 | `POST /v1/chat/completions` | Prompt > 100KB | 400 |
@@ -1854,7 +1854,7 @@ For every error-path test (4xx/5xx responses), verify no partial state was writt
 |-----------|---------------------|
 | Session summary | Non-empty text, length > 50 |
 | Keepalive query | Non-empty response within timeout |
-| Compaction prep | Valid blueprint JSON commands |
+| Compaction prep | Valid workbench JSON commands |
 | Compaction recovery | New assistant output in tmux |
 | Quorum | Non-empty synthesis, artifact files exist |
 | OpenAI-compat | Choices with content |
@@ -1875,12 +1875,12 @@ Count-before/count-after pattern for every side-effecting tool:
 
 | Tool | Side Effect | Verification |
 |------|------------|-------------|
-| `blueprint_create_session` | Tmux + DB | Count before/after |
-| `blueprint_add_task` | DB row | Count before/after |
-| ~~`blueprint_send_message`~~ REMOVED | — | — |
-| ~~`blueprint_update_plan`~~ REMOVED | — | — |
-| `blueprint_set_project_notes` | DB notes | Read before/after |
-| ~~`blueprint_smart_compaction`~~ REMOVED | — | — |
+| `workbench_create_session` | Tmux + DB | Count before/after |
+| `workbench_add_task` | DB row | Count before/after |
+| ~~`workbench_send_message`~~ REMOVED | — | — |
+| ~~`workbench_update_plan`~~ REMOVED | — | — |
+| `workbench_set_project_notes` | DB notes | Read before/after |
+| ~~`workbench_smart_compaction`~~ REMOVED | — | — |
 
 ---
 
@@ -1888,7 +1888,7 @@ Count-before/count-after pattern for every side-effecting tool:
 
 ### 9.1 Database Queries
 
-**Access:** `docker exec blueprint-test sqlite3 /data/.workbench/workbench.db "..."`.
+**Access:** `docker exec workbench-test sqlite3 /data/.workbench/workbench.db "..."`.
 
 | Verification | Table | Query |
 |-------------|-------|-------|
@@ -1903,7 +1903,7 @@ Count-before/count-after pattern for every side-effecting tool:
 
 ### 9.2 Container Log Inspection
 
-**Access:** `docker logs blueprint-test --since <timestamp>`.
+**Access:** `docker logs workbench-test --since <timestamp>`.
 
 | Pattern | Meaning | When |
 |---------|---------|------|
@@ -1926,9 +1926,9 @@ Count-before/count-after pattern for every side-effecting tool:
 
 | Check | Command |
 |-------|---------|
-| Session exists | `docker exec blueprint-test tmux list-sessions` |
-| Pane content | `docker exec blueprint-test tmux capture-pane -t <session> -p` |
-| Session count | `docker exec blueprint-test tmux list-sessions \| wc -l` |
+| Session exists | `docker exec workbench-test tmux list-sessions` |
+| Pane content | `docker exec workbench-test tmux capture-pane -t <session> -p` |
+| Session count | `docker exec workbench-test tmux list-sessions \| wc -l` |
 
 ### 9.5 WebSocket Inspection
 
@@ -2134,9 +2134,9 @@ Must pass UTIL-01/02 first.
 
 ### Required Sequence
 
-1. `docker compose -p blueprint-test down -v`
-2. `docker compose -p blueprint-test build --no-cache`
-3. `docker compose -p blueprint-test up -d`
+1. `docker compose -p workbench-test down -v`
+2. `docker compose -p workbench-test build --no-cache`
+3. `docker compose -p workbench-test up -d`
 4. Health wait (120s timeout) + infrastructure checks
 5. Verify startup files
 6. Run complete suite

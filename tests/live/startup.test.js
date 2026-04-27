@@ -18,11 +18,11 @@ test('SRV-01: health endpoint returns 200 with ok status', async () => {
   assert.equal(r.data.status, 'ok');
 });
 
-test('SRV-02: serves index.html with Blueprint title', async () => {
+test('SRV-02: serves index.html with Workbench title', async () => {
   const r = await fetch(`${BASE_URL}/`);
   assert.equal(r.status, 200);
   const text = await r.text();
-  assert.ok(text.includes('Blueprint'));
+  assert.ok(text.includes('Workbench'));
   assert.ok(text.includes('<html'));
 });
 

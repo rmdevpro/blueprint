@@ -1,9 +1,9 @@
 services:
-  blueprint-test:
+  workbench-test:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: blueprint-oauth-test
+    container_name: workbench-oauth-test
     ports:
       - '7880:3000'
     tmpfs:

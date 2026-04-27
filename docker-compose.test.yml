@@ -1,16 +1,16 @@
 # Test isolation compose override per §3.1
-# Usage: docker compose -p blueprint-test -f docker-compose.yml -f docker-compose.test.yml up -d
+# Usage: docker compose -p workbench-test -f docker-compose.yml -f docker-compose.test.yml up -d
 
 services:
-  blueprint:
+  workbench:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: blueprint-test-blueprint-1
+    container_name: workbench-test-workbench-1
     ports:
       - '7867:3000'
     volumes:
-      - blueprint-test_data:/data
+      - workbench-test_data:/data
       - ./tests/fixtures/stub-claude.sh:/usr/local/bin/claude:ro
     environment:
       - PORT=3000
@@ -23,14 +23,14 @@ services:
       - TMUX_CLEANUP_MINUTES=2
       - LOG_LEVEL=DEBUG
     networks:
-      - blueprint-test
+      - workbench-test
     dns:
       - 127.0.0.1
     restart: 'no'
 
 networks:
-  blueprint-test:
+  workbench-test:
     driver: bridge
 
 volumes:
-  blueprint-test_data:
+  workbench-test_data:

@@ -56,7 +56,7 @@ function makeResolver({ filesByDir = new Map(), tmuxAlive = new Set(), configVal
   const resolver = createSessionResolver({
     db,
     safe,
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async (n) => tmuxAlive.has(n),
     sleep: async (ms) => {
       sleepCalls.push(ms);
@@ -92,7 +92,7 @@ test('RES-02: resolution preserves name, notes, state', async (t) => {
   });
   t.mock.method(require('node:fs/promises'), 'readdir', env.readdirMock);
   await env.resolver.resolveSessionId('new_1', {
-    tmux: 'bp_new_1',
+    tmux: 'wb_new_1',
     sessionsDir: dir,
     existingFiles: new Set(),
     projectId: 1,
@@ -130,13 +130,13 @@ test('RES-03: duplicate resolution suppressed', async (t) => {
   t.mock.method(require('node:fs/promises'), 'readdir', env.readdirMock);
   await Promise.all([
     env.resolver.resolveSessionId('new_1', {
-      tmux: 'bp_new_1',
+      tmux: 'wb_new_1',
       sessionsDir: dir,
       existingFiles: new Set(),
       projectId: 1,
     }),
     env.resolver.resolveSessionId('new_1', {
-      tmux: 'bp_new_1',
+      tmux: 'wb_new_1',
       sessionsDir: dir,
       existingFiles: new Set(),
       projectId: 1,
@@ -161,7 +161,7 @@ test('RES-04: timeout with dead tmux deletes temp session', async (t) => {
   });
   t.mock.method(require('node:fs/promises'), 'readdir', env.readdirMock);
   await env.resolver.resolveSessionId('new_1', {
-    tmux: 'bp_new_1',
+    tmux: 'wb_new_1',
     sessionsDir: dir,
     existingFiles: new Set(),
     projectId: 1,
@@ -173,7 +173,7 @@ test('RES-05: timeout with live tmux keeps temp session', async (t) => {
   const dir = '/sessions/_workspace_proj';
   const env = makeResolver({
     filesByDir: new Map([[dir, []]]),
-    tmuxAlive: new Set(['bp_new_1']),
+    tmuxAlive: new Set(['wb_new_1']),
     configValues: { 'resolver.maxAttempts': 2, 'resolver.sleepMs': 1 },
   });
   env.db.sessions.set('new_1', {
@@ -186,7 +186,7 @@ test('RES-05: timeout with live tmux keeps temp session', async (t) => {
   });
   t.mock.method(require('node:fs/promises'), 'readdir', env.readdirMock);
   await env.resolver.resolveSessionId('new_1', {
-    tmux: 'bp_new_1',
+    tmux: 'wb_new_1',
     sessionsDir: dir,
     existingFiles: new Set(),
     projectId: 1,
@@ -228,7 +228,7 @@ test('RES-08: concurrent JSONL creation resolves to first file', async (t) => {
   });
   t.mock.method(require('node:fs/promises'), 'readdir', env.readdirMock);
   await env.resolver.resolveSessionId('new_1', {
-    tmux: 'bp_new_1',
+    tmux: 'wb_new_1',
     sessionsDir: dir,
     existingFiles: new Set(),
     projectId: 1,
@@ -275,7 +275,7 @@ test('RES-09: resolveSessionId handles tmux rename failure (no server running)',
         throw new Error('no server running');
       },
     },
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     sleep: async () => {},
     logger: { info() {}, warn() {}, error() {}, debug() {} },
@@ -291,7 +291,7 @@ test('RES-09: resolveSessionId handles tmux rename failure (no server running)',
   });
   t.mock.method(require('node:fs/promises'), 'readdir', async () => ['real1.jsonl']);
   await resolver.resolveSessionId('new_t1', {
-    tmux: 'bp_new_t1',
+    tmux: 'wb_new_t1',
     sessionsDir: dir,
     existingFiles: new Set(),
     projectId: 1,
@@ -322,10 +322,10 @@ test('RES-10: resolveSessionId handles tmux rename failure (other error)', async
     safe: {
       findSessionsDir: () => dir,
       tmuxExecAsync: async () => {
-        throw new Error('session not found: bp_new_t2');
+        throw new Error('session not found: wb_new_t2');
       },
     },
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     sleep: async () => {},
     logger: { info() {}, warn() {}, error() {}, debug() {} },
@@ -341,7 +341,7 @@ test('RES-10: resolveSessionId handles tmux rename failure (other error)', async
   });
   t.mock.method(require('node:fs/promises'), 'readdir', async () => ['real2.jsonl']);
   await resolver.resolveSessionId('new_t2', {
-    tmux: 'bp_new_t2',
+    tmux: 'wb_new_t2',
     sessionsDir: dir,
     existingFiles: new Set(),
     projectId: 1,
@@ -453,7 +453,7 @@ test('RES-14: resolveStaleNewSessions handles readdir non-ENOENT error', async (
   const resolver = createSessionResolver({
     db,
     safe: { findSessionsDir: () => dir, tmuxExecAsync: async () => '' },
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     sleep: async () => {},
     logger: { info() {}, warn() {}, error: (msg, _meta) => errors.push(msg), debug() {} },
@@ -495,7 +495,7 @@ test('RES-15: resolveSessionId handles readdir non-ENOENT error during polling',
     return ['resolved.jsonl'];
   });
   await env.resolver.resolveSessionId('new_poll_err', {
-    tmux: 'bp_new_poll_err',
+    tmux: 'wb_new_poll_err',
     sessionsDir: dir,
     existingFiles: new Set(),
     projectId: 1,

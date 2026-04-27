@@ -50,7 +50,7 @@ function makeEnv(overrides = {}) {
     _checkCompactionNeeds_removed: async (...a) => {
       ccCalls.push(a);
     },
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     CLAUDE_HOME: '/tmp/claude',
     logger: { info() {}, warn() {}, error() {}, debug() {} },
@@ -78,10 +78,10 @@ test('WAT-03: debounces rapid changes into one callback', async () => {
   const env = makeEnv({
     sessionByPrefix: { abc123: { id: 'abc123', project_id: 1 } },
     projectsById: { 1: { id: 1, name: 'p', path: '/workspace/p' } },
-    sessionWsClients: new Map([['bp_abc123', ws]]),
+    sessionWsClients: new Map([['wb_abc123', ws]]),
   });
   try {
-    env.w.startJsonlWatcher('bp_abc123');
+    env.w.startJsonlWatcher('wb_abc123');
     const entry = [...env.watched.values()][0];
     entry.listener();
     entry.listener();
@@ -102,9 +102,9 @@ test('WAT-04: stopJsonlWatcher removes watch and timer', () => {
     projectsById: { 1: { id: 1, name: 'p', path: '/tmp' } },
   });
   try {
-    env.w.startJsonlWatcher('bp_abc');
+    env.w.startJsonlWatcher('wb_abc');
     [...env.watched.values()][0].listener();
-    env.w.stopJsonlWatcher('bp_abc');
+    env.w.stopJsonlWatcher('wb_abc');
     assert.equal(env.unwatchCalls.length, 1);
     assert.equal(env.timers[0].cleared, true);
   } finally {
@@ -115,9 +115,9 @@ test('WAT-04: stopJsonlWatcher removes watch and timer', () => {
 test('WAT: watcher does not start for new_ or t_ sessions', () => {
   const env = makeEnv({ sessionByPrefix: {} });
   try {
-    env.w.startJsonlWatcher('bp_new_123');
+    env.w.startJsonlWatcher('wb_new_123');
     assert.equal(env.watched.size, 0);
-    env.w.startJsonlWatcher('bp_t_456');
+    env.w.startJsonlWatcher('wb_t_456');
     assert.equal(env.watched.size, 0);
   } finally {
     env.cleanup();
@@ -127,7 +127,7 @@ test('WAT: watcher does not start for new_ or t_ sessions', () => {
 test('WAT: watcher does not start when session not in DB', () => {
   const env = makeEnv({ sessionByPrefix: {} });
   try {
-    env.w.startJsonlWatcher('bp_unknown');
+    env.w.startJsonlWatcher('wb_unknown');
     assert.equal(env.watched.size, 0);
   } finally {
     env.cleanup();
@@ -140,7 +140,7 @@ test('WAT: watcher does not start when project not in DB', () => {
     projectsById: {},
   });
   try {
-    env.w.startJsonlWatcher('bp_xyz');
+    env.w.startJsonlWatcher('wb_xyz');
     assert.equal(env.watched.size, 0, 'Should not watch when project missing');
   } finally {
     env.cleanup();
@@ -151,7 +151,7 @@ test('WAT: stopJsonlWatcher is idempotent when no watcher exists', () => {
   const env = makeEnv({});
   try {
     // Should not throw
-    env.w.stopJsonlWatcher('bp_nonexistent');
+    env.w.stopJsonlWatcher('wb_nonexistent');
     assert.equal(env.unwatchCalls.length, 0);
   } finally {
     env.cleanup();
@@ -163,7 +163,7 @@ test('WAT: JSONL watcher callback handles ENOENT gracefully', async () => {
   const env = makeEnv({
     sessionByPrefix: { err1: { id: 'err1', project_id: 1 } },
     projectsById: { 1: { id: 1, name: 'p', path: '/tmp' } },
-    sessionWsClients: new Map([['bp_err1', ws]]),
+    sessionWsClients: new Map([['wb_err1', ws]]),
   });
   // Override sessionUtils.getTokenUsage to throw ENOENT
   const _origW = createWatchers;
@@ -182,14 +182,14 @@ test('WAT: JSONL watcher callback handles ENOENT gracefully', async () => {
         throw e;
       },
     },
-    sessionWsClients: new Map([['bp_err1', ws]]),
-    tmuxName: (id) => `bp_${id}`,
+    sessionWsClients: new Map([['wb_err1', ws]]),
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     CLAUDE_HOME: '/tmp/claude',
     logger: { info() {}, warn() {}, error() {}, debug() {} },
   });
   try {
-    w2.startJsonlWatcher('bp_err1');
+    w2.startJsonlWatcher('wb_err1');
     const entry = [...env.watched.values()][0];
     if (entry) {
       entry.listener();
@@ -224,7 +224,7 @@ test('WAT-SW-02: settings watcher sends update to connected websockets', async (
   const path = require('node:path');
   const wsMessages = [];
   const ws = { readyState: 1, send: (m) => wsMessages.push(JSON.parse(m)) };
-  const swc = new Map([['bp_s1', ws]]);
+  const swc = new Map([['wb_s1', ws]]);
 
   const tmpClaudeHome = await fsp.mkdtemp(path.join(require('node:os').tmpdir(), 'bp-wat-sw-'));
   await fsp.writeFile(
@@ -240,7 +240,7 @@ test('WAT-SW-02: settings watcher sends update to connected websockets', async (
     config: { get: (k, fb) => fb },
     sessionUtils: { getTokenUsage: async () => ({}) },
     sessionWsClients: swc,
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     CLAUDE_HOME: tmpClaudeHome,
     logger: { info() {}, warn() {}, error() {}, debug() {} },
@@ -275,7 +275,7 @@ test('WAT-SW-03: settings watcher handles invalid JSON gracefully', async () => 
     config: { get: (k, fb) => fb },
     sessionUtils: { getTokenUsage: async () => ({}) },
     sessionWsClients: swc,
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     CLAUDE_HOME: tmpClaudeHome,
     logger: { info() {}, warn() {}, error() {}, debug() {} },
@@ -307,7 +307,7 @@ test('WAT-MCP-01: registerMcpServer creates settings.json when not present', asy
     config: { get: (k, fb) => fb },
     sessionUtils: { getTokenUsage: async () => ({}) },
     sessionWsClients: new Map(),
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     CLAUDE_HOME: tmpClaudeHome,
     logger: { info() {}, warn() {}, error() {}, debug() {} },
@@ -317,8 +317,8 @@ test('WAT-MCP-01: registerMcpServer creates settings.json when not present', asy
     const content = JSON.parse(
       await fsp.readFile(path.join(tmpClaudeHome, 'settings.json'), 'utf-8'),
     );
-    assert.ok(content.mcpServers.blueprint, 'Should have blueprint MCP server registered');
-    assert.equal(content.mcpServers.blueprint.command, 'node');
+    assert.ok(content.mcpServers.workbench, 'Should have workbench MCP server registered');
+    assert.equal(content.mcpServers.workbench.command, 'node');
   } finally {
     env.cleanup();
   }
@@ -332,7 +332,7 @@ test('WAT-MCP-02: registerMcpServer skips when already registered correctly', as
   await fsp.writeFile(
     path.join(tmpClaudeHome, 'settings.json'),
     JSON.stringify({
-      mcpServers: { blueprint: { command: 'node', args: expectedArgs } },
+      mcpServers: { workbench: { command: 'node', args: expectedArgs } },
     }),
   );
 
@@ -343,7 +343,7 @@ test('WAT-MCP-02: registerMcpServer skips when already registered correctly', as
     config: { get: (k, fb) => fb },
     sessionUtils: { getTokenUsage: async () => ({}) },
     sessionWsClients: new Map(),
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     CLAUDE_HOME: tmpClaudeHome,
     logger: { info() {}, warn() {}, error() {}, debug() {} },
@@ -354,7 +354,7 @@ test('WAT-MCP-02: registerMcpServer skips when already registered correctly', as
     const content = JSON.parse(
       await fsp.readFile(path.join(tmpClaudeHome, 'settings.json'), 'utf-8'),
     );
-    assert.ok(content.mcpServers.blueprint);
+    assert.ok(content.mcpServers.workbench);
   } finally {
     env.cleanup();
   }
@@ -374,7 +374,7 @@ test('WAT-MCP-03: registerMcpServer handles corrupt settings.json', async () => 
     config: { get: (k, fb) => fb },
     sessionUtils: { getTokenUsage: async () => ({}) },
     sessionWsClients: new Map(),
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     CLAUDE_HOME: tmpClaudeHome,
     logger: { info() {}, warn() {}, error: (msg) => errors.push(msg), debug() {} },
@@ -409,7 +409,7 @@ test('WAT-TPD-01: trustProjectDirs creates .claude.json when not present', async
     config: { get: (k, fb) => fb },
     sessionUtils: { getTokenUsage: async () => ({}) },
     sessionWsClients: new Map(),
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     CLAUDE_HOME: tmpClaudeHome,
     logger: { info() {}, warn() {}, error() {}, debug() {} },
@@ -448,7 +448,7 @@ test('WAT-TPD-02: trustProjectDirs skips already trusted projects', async () => 
     config: { get: (k, fb) => fb },
     sessionUtils: { getTokenUsage: async () => ({}) },
     sessionWsClients: new Map(),
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     CLAUDE_HOME: tmpClaudeHome,
     logger: { info() {}, warn() {}, error() {}, debug() {} },
@@ -483,7 +483,7 @@ test('WAT-TPD-03: trustProjectDirs handles corrupt .claude.json', async () => {
     config: { get: (k, fb) => fb },
     sessionUtils: { getTokenUsage: async () => ({}) },
     sessionWsClients: new Map(),
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     CLAUDE_HOME: tmpClaudeHome,
     logger: { info() {}, warn() {}, error: (msg) => errors.push(msg), debug() {} },
@@ -513,7 +513,7 @@ test('WAT-ES-01: ensureSettings creates settings.json when missing', async () =>
     config: { get: (k, fb) => fb },
     sessionUtils: { getTokenUsage: async () => ({}) },
     sessionWsClients: new Map(),
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     CLAUDE_HOME: tmpClaudeHome,
     logger: { info() {}, warn() {}, error() {}, debug() {} },
@@ -545,7 +545,7 @@ test('WAT-ES-02: ensureSettings does nothing when settings.json already exists',
     config: { get: (k, fb) => fb },
     sessionUtils: { getTokenUsage: async () => ({}) },
     sessionWsClients: new Map(),
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     CLAUDE_HOME: tmpClaudeHome,
     logger: { info() {}, warn() {}, error() {}, debug() {} },
@@ -583,7 +583,7 @@ test('WAT-TPD-04: trustProjectDirs warns on non-SyntaxError, non-ENOENT read fai
     config: { get: (k, fb) => fb },
     sessionUtils: { getTokenUsage: async () => ({}) },
     sessionWsClients: new Map(),
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     CLAUDE_HOME: tmpClaudeHome,
     logger: { info() {}, warn: (msg) => warns.push(msg), error() {}, debug() {} },
@@ -630,7 +630,7 @@ test('WAT-TPD-05: trustProjectDirs logs error on write failure', async () => {
     config: { get: (k, fb) => fb },
     sessionUtils: { getTokenUsage: async () => ({}) },
     sessionWsClients: new Map(),
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     CLAUDE_HOME: tmpClaudeHome,
     logger: { info() {}, warn() {}, error: (msg) => errors.push(msg), debug() {} },
@@ -672,7 +672,7 @@ test('WAT-ES-03: ensureSettings logs error on inner write failure (ENOENT path)'
     config: { get: (k, fb) => fb },
     sessionUtils: { getTokenUsage: async () => ({}) },
     sessionWsClients: new Map(),
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     CLAUDE_HOME: tmpClaudeHome,
     logger: { info() {}, warn() {}, error: (msg) => errors.push(msg), debug() {} },
@@ -711,7 +711,7 @@ test('WAT-ES-04: ensureSettings logs error on non-ENOENT stat failure', async ()
     config: { get: (k, fb) => fb },
     sessionUtils: { getTokenUsage: async () => ({}) },
     sessionWsClients: new Map(),
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     CLAUDE_HOME: tmpClaudeHome,
     logger: { info() {}, warn() {}, error: (msg) => errors.push(msg), debug() {} },

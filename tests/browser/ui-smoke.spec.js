@@ -218,11 +218,11 @@ describe('UI smoke tests (browser)', () => {
   });
 
   it('UI-23: task creation via add-task input and Enter key', async () => {
-    // Use the seed project (bp-seed) — create a tab to set active project context
+    // Use the seed project (wb-seed) — create a tab to set active project context
     await page.evaluate(() => {
       if (typeof createTab === 'function') {
         try {
-          createTab('ui23_tab', 'test_tmux', 'Task Test', 'bp-seed');
+          createTab('ui23_tab', 'test_tmux', 'Task Test', 'wb-seed');
         } catch {}
       }
     });

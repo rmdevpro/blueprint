@@ -55,7 +55,7 @@ function sendWebhook(url, payload) {
       headers: {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body),
-        'User-Agent': 'Blueprint-Webhook/0.1',
+        'User-Agent': 'Workbench-Webhook/0.1',
       },
       timeout: 5000,
     });

@@ -64,7 +64,7 @@ describe('usability (browser)', () => {
 
   it('USR-03: theme setting persists after reload', async () => {
     await page.click('#sidebar-footer button');
-    await page.locator('#setting-theme').selectOption('blueprint-dark');
+    await page.locator('#setting-theme').selectOption('workbench-dark');
     await page.waitForTimeout(600);
     await page.click('.settings-close');
     await page.reload({ waitUntil: 'networkidle' });
@@ -72,7 +72,7 @@ describe('usability (browser)', () => {
     const bg = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim(),
     );
-    assert.ok(bg.includes('081220'), `Expected blueprint-dark theme after reload, got bg: ${bg}`);
+    assert.ok(bg.includes('081220'), `Expected workbench-dark theme after reload, got bg: ${bg}`);
     await page.screenshot({ path: `${SS}/usability--settings-persist.png` });
     assert.equal(errors.length, 0, errors.join(', '));
   });

@@ -19,7 +19,7 @@ module.exports = function createWatchers({
   const jsonlDebounceTimers = new Map();
 
   function startJsonlWatcher(tmuxSession) {
-    const prefix = tmuxSession.replace(/^bp_/, '');
+    const prefix = tmuxSession.replace(/^wb_/, '');
     if (prefix.startsWith('new_') || prefix.startsWith('t_')) return;
 
     const session = db.getSessionByPrefix(prefix);
@@ -161,16 +161,13 @@ module.exports = function createWatchers({
 
     if (!cfg.mcpServers) cfg.mcpServers = {};
     const expectedArgs = [join(__dirname, 'mcp-server.js')];
-    // Drop legacy "blueprint" key if present (renamed to "workbench" in Phase 6).
-    const hadLegacy = 'blueprint' in cfg.mcpServers;
-    if (hadLegacy) delete cfg.mcpServers.blueprint;
     const existing = cfg.mcpServers.workbench;
     const isStale = existing && (
       !existing.command ||
       (existing.args && existing.args[0] !== expectedArgs[0])
     );
 
-    if (!existing || isStale || hadLegacy) {
+    if (!existing || isStale) {
       cfg.mcpServers.workbench = {
         command: 'node',
         args: expectedArgs,
@@ -202,15 +199,13 @@ module.exports = function createWatchers({
 
     if (!cfg.mcpServers) cfg.mcpServers = {};
     const expectedArgs = [join(__dirname, 'mcp-server.js')];
-    const hadLegacy = 'blueprint' in cfg.mcpServers;
-    if (hadLegacy) delete cfg.mcpServers.blueprint;
     const existing = cfg.mcpServers.workbench;
     const isStale = existing && (
       !existing.command ||
       (existing.args && existing.args[0] !== expectedArgs[0])
     );
 
-    if (!existing || isStale || hadLegacy) {
+    if (!existing || isStale) {
       cfg.mcpServers.workbench = {
         command: 'node',
         args: expectedArgs,
@@ -225,21 +220,6 @@ module.exports = function createWatchers({
     }
   }
 
-  // Remove a top-level TOML section block by header line. Line-based: keeps
-  // every line outside [section]…(next-header-or-eof), inclusive of the header.
-  function dropTomlSection(content, header) {
-    const lines = content.split('\n');
-    const out = [];
-    let inTarget = false;
-    for (const line of lines) {
-      const t = line.trim();
-      if (t === header) { inTarget = true; continue; }
-      if (inTarget && t.startsWith('[') && t.endsWith(']')) inTarget = false;
-      if (!inTarget) out.push(line);
-    }
-    return out.join('\n');
-  }
-
   async function registerCodexMcp() {
     const HOME = safe.HOME;
     const codexConfigFile = join(HOME, '.codex', 'config.toml');
@@ -251,18 +231,11 @@ module.exports = function createWatchers({
         if (err.code !== 'ENOENT') throw err;
       }
 
-      const hasLegacy = content.includes('[mcp_servers.blueprint]');
-      const hasNew = content.includes('[mcp_servers.workbench]');
-      if (hasNew && !hasLegacy) return;
+      if (content.includes('[mcp_servers.workbench]')) return;
 
-      let next = content;
-      if (hasLegacy) next = dropTomlSection(next, '[mcp_servers.blueprint]');
-      if (!hasNew) {
-        next += `\n[mcp_servers.workbench]\ncommand = "node"\nargs = ["${join(__dirname, 'mcp-server.js')}"]\n`;
-      }
-
+      const mcpConfig = `\n[mcp_servers.workbench]\ncommand = "node"\nargs = ["${join(__dirname, 'mcp-server.js')}"]\n`;
       await fsp.mkdir(join(HOME, '.codex'), { recursive: true });
-      await fsp.writeFile(codexConfigFile, next);
+      await fsp.appendFile(codexConfigFile, mcpConfig);
       logger.info('Registered Workbench MCP server for Codex', { module: 'watchers' });
     } catch (err) {
       logger.error('Could not write Codex MCP config', { module: 'watchers', err: err.message });
@@ -273,7 +246,7 @@ module.exports = function createWatchers({
   // directories in /data/.codex/config.toml as `[projects."<exact-path>"]`
   // blocks with `trust_level = "trusted"`. Trust is per-exact-path (NOT
   // recursive), so trusting /data/workspace doesn't trust subdirectories —
-  // every Blueprint project needs its own block. Without this, spawning a
+  // every Workbench project needs its own block. Without this, spawning a
   // Codex session in a project that's never been opened in Codex before
   // pops up a trust dialog and blocks the test/automation.
   async function trustCodexProjectDirs() {

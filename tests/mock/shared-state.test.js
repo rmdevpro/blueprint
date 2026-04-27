@@ -45,8 +45,8 @@ test('shared-state: sessionWsClients is a Map', () => {
   assert.ok(ss.sessionWsClients instanceof Map);
   assert.equal(ss.sessionWsClients.size, 0);
   // Verify it's usable as a session → ws client registry
-  ss.sessionWsClients.set('bp_test', { id: 1 });
-  assert.equal(ss.sessionWsClients.get('bp_test').id, 1);
-  ss.sessionWsClients.delete('bp_test');
+  ss.sessionWsClients.set('wb_test', { id: 1 });
+  assert.equal(ss.sessionWsClients.get('wb_test').id, 1);
+  ss.sessionWsClients.delete('wb_test');
   assert.equal(ss.sessionWsClients.size, 0);
 });

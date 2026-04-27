@@ -107,10 +107,8 @@ app.use(express.urlencoded({ extended: true }));
 let authMode = 'open'; // 'template' | 'password' | 'open'
 const sessionTokens = new Set();
 
-// Phase 3 rename: accept WORKBENCH_* canonically, fall back to BLUEPRINT_* for
-// existing deployments that haven't migrated their secrets.env yet.
-const GATE_USER = process.env.WORKBENCH_USER || process.env.BLUEPRINT_USER;
-const GATE_PASS = process.env.WORKBENCH_PASS || process.env.BLUEPRINT_PASS;
+const GATE_USER = process.env.WORKBENCH_USER;
+const GATE_PASS = process.env.WORKBENCH_PASS;
 
 async function detectAuthMode() {
   // Password auth takes priority — if credentials are set, use them regardless of Space visibility
@@ -154,7 +152,7 @@ app.post('/api/gate/login', (req, res) => {
   if (username === GATE_USER && password === GATE_PASS) {
     const token = crypto.randomBytes(32).toString('hex');
     sessionTokens.add(token);
-    res.cookie('bp_session', token, { httpOnly: true, sameSite: 'lax' });
+    res.cookie('wb_session', token, { httpOnly: true, sameSite: 'lax' });
     res.json({ success: true });
   } else {
     res.status(401).json({ error: 'Invalid credentials' });
@@ -171,7 +169,7 @@ app.use((req, res, next) => {
 
   // Password mode: check session cookie
   if (authMode === 'password') {
-    const token = parseCookie(req, 'bp_session');
+    const token = parseCookie(req, 'wb_session');
     if (token && sessionTokens.has(token)) return next();
   }
 
@@ -218,7 +216,7 @@ function handleUpgrade(req, socket, head) {
   if (authMode === 'template') { socket.destroy(); return; }
   if (authMode === 'password') {
     const cookie = req.headers.cookie || '';
-    const match = cookie.match(/bp_session=([a-f0-9]+)/);
+    const match = cookie.match(/wb_session=([a-f0-9]+)/);
     if (!match || !sessionTokens.has(match[1])) { socket.destroy(); return; }
   }
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -267,7 +265,7 @@ if (require.main === module) {
       );
 
       server.listen(PORT, '0.0.0.0', () => {
-        logger.info('Blueprint running', { module: 'server', port: PORT });
+        logger.info('Workbench running', { module: 'server', port: PORT });
         keepalive.start();
         tmux.startPeriodicScan();
         watchers.startSettingsWatcher();

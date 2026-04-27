@@ -131,7 +131,7 @@ async function handleMessage(msg) {
       sendResponse(id, {
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'blueprint', version: '0.2.0' },
+        serverInfo: { name: 'workbench', version: '0.2.0' },
       });
       break;
     case 'notifications/initialized':
@@ -168,9 +168,9 @@ rl.on('line', (line) => {
     if (parseErr instanceof SyntaxError) {
       /* expected: non-JSON lines on stdin */
     } else {
-      process.stderr.write(`[blueprint-mcp] Unexpected parse error: ${parseErr.message}\n`);
+      process.stderr.write(`[workbench-mcp] Unexpected parse error: ${parseErr.message}\n`);
     }
   }
 });
 
-process.stderr.write('[blueprint-mcp] MCP server started (stdio)\n');
+process.stderr.write('[workbench-mcp] MCP server started (stdio)\n');

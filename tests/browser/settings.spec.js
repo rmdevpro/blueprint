@@ -147,7 +147,7 @@ describe('settings (browser)', () => {
 
   it('BRW-15: settings persist after page reload with server verification', async () => {
     await page.click('#sidebar-footer button');
-    await page.locator('#setting-theme').selectOption('blueprint-dark');
+    await page.locator('#setting-theme').selectOption('workbench-dark');
     await page.waitForTimeout(600);
     await page.click('.settings-close');
     const preReloadSettings = await page.evaluate(async () => {
@@ -162,7 +162,7 @@ describe('settings (browser)', () => {
     );
     assert.ok(
       bg.includes('#081220') || bg.includes('081220'),
-      `Expected blueprint-dark bg after reload, got: ${bg}`,
+      `Expected workbench-dark bg after reload, got: ${bg}`,
     );
     await page.screenshot({ path: `${SS}/settings--persist.png` });
     assert.equal(errors.length, 0, errors.join(', '));

@@ -131,7 +131,7 @@ async function handleFiles(args, res) {
 
 async function ensureSessionTmux(session, projectPath) {
   const hash = crypto.createHash('md5').update(session.id).digest('hex').substring(0, 4);
-  const tmux = safe.sanitizeTmuxName(`bp_${session.id.substring(0, 12)}_${hash}`);
+  const tmux = safe.sanitizeTmuxName(`wb_${session.id.substring(0, 12)}_${hash}`);
   if (!(await safe.tmuxExists(tmux))) {
     const cliType = session.cli_type || 'claude';
     let cliArgs = [];
@@ -165,7 +165,7 @@ async function handleSessions(args, res) {
         ? `new_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
         : crypto.randomUUID();
       const hash = crypto.createHash('md5').update(tmpId).digest('hex').substring(0, 4);
-      const tmux = safe.sanitizeTmuxName(`bp_${tmpId.substring(0, 12)}_${hash}`);
+      const tmux = safe.sanitizeTmuxName(`wb_${tmpId.substring(0, 12)}_${hash}`);
       safe.tmuxCreateCLI(tmux, projectPath, cliType);
       db.upsertSession(tmpId, proj.id, args.prompt || 'New Session', cliType);
       if (args.hidden) db.setSessionState(tmpId, 'hidden');
@@ -202,7 +202,7 @@ async function handleSessions(args, res) {
       const session = db.getSessionFull(args.session_id);
       if (!session) return { error: 'session not found' };
       const killHash = crypto.createHash('md5').update(args.session_id).digest('hex').substring(0, 4);
-      const tmux = safe.sanitizeTmuxName(`bp_${args.session_id.substring(0, 12)}_${killHash}`);
+      const tmux = safe.sanitizeTmuxName(`wb_${args.session_id.substring(0, 12)}_${killHash}`);
       // Kill existing tmux session
       await safe.tmuxKill(tmux);
       // Recreate
@@ -338,7 +338,7 @@ async function handleSessions(args, res) {
       if (args.session_id) {
         const session = db.getSessionFull(args.session_id);
         if (session) {
-          const tmux = `bp_${safe.sanitizeTmuxName(args.session_id.substring(0, 12))}`;
+          const tmux = `wb_${safe.sanitizeTmuxName(args.session_id.substring(0, 12))}`;
           await safe.tmuxKill(tmux);
           const projectPath = session.project_path || proj.path;
           await ensureSessionTmux(session, projectPath);
@@ -363,7 +363,7 @@ async function handleSessions(args, res) {
       if (args.session_id) {
         const session = db.getSessionFull(args.session_id);
         if (session) {
-          const tmux = `bp_${safe.sanitizeTmuxName(args.session_id.substring(0, 12))}`;
+          const tmux = `wb_${safe.sanitizeTmuxName(args.session_id.substring(0, 12))}`;
           await safe.tmuxKill(tmux);
           const projectPath = session.project_path || proj.path;
           await ensureSessionTmux(session, projectPath);

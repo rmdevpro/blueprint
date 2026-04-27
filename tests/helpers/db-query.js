@@ -2,12 +2,12 @@
 
 const { execSync } = require('child_process');
 
-const CONTAINER = process.env.TEST_CONTAINER || 'blueprint-test';
+const CONTAINER = process.env.TEST_CONTAINER || 'workbench-test';
 const DB_PATH = process.env.TEST_DB_PATH || '/data/.workbench/workbench.db';
 
 function query(sql) {
   try {
-    return execSync(`docker exec -u blueprint ${CONTAINER} sqlite3 ${DB_PATH} "${sql.replace(/"/g, '\\"')}"`, {
+    return execSync(`docker exec -u workbench ${CONTAINER} sqlite3 ${DB_PATH} "${sql.replace(/"/g, '\\"')}"`, {
       encoding: 'utf-8',
       timeout: 10000,
     }).trim();
@@ -19,7 +19,7 @@ function query(sql) {
 function queryJson(sql) {
   try {
     const out = execSync(
-      `docker exec -u blueprint ${CONTAINER} sqlite3 -json ${DB_PATH} "${sql.replace(/"/g, '\\"')}"`,
+      `docker exec -u workbench ${CONTAINER} sqlite3 -json ${DB_PATH} "${sql.replace(/"/g, '\\"')}"`,
       { encoding: 'utf-8', timeout: 10000 },
     ).trim();
     return out ? JSON.parse(out) : [];

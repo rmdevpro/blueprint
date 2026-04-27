@@ -1,13 +1,13 @@
 services:
-  blueprint:
+  workbench:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: blueprint-test
+    container_name: workbench-test
     ports:
       - '7867:3000'
     volumes:
-      - blueprint_test_data:/data
+      - workbench_test_data:/data
     environment:
       - HOME=/data
       - WORKSPACE=/data/workspace
@@ -18,4 +18,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  blueprint_test_data:
+  workbench_test_data:

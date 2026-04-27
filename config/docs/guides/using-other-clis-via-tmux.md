@@ -94,7 +94,7 @@ Interactive CLIs have startup prompts that MUST be handled before any real promp
 When you launch a Claude sub-session via tmux, it will appear in Workbench's session list in the left sidebar automatically. After launching, update the sub-session to hidden status so it does not clutter the user's session list:
 
 ```
-Use blueprint_set_session_config with session_id="<sub-session-id>" and state="hidden"
+Use workbench_set_session_config with session_id="<sub-session-id>" and state="hidden"
 ```
 
 ## Gemini

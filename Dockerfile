@@ -27,25 +27,25 @@ RUN curl -fsSL https://github.com/qdrant/qdrant/releases/download/v1.17.1/qdrant
 # Install AI CLIs
 RUN npm install -g @anthropic-ai/claude-code @google/gemini-cli @openai/codex
 
-# Reuse the existing 'node' user (UID 1000) — rename to blueprint, home at /data
-RUN usermod -l blueprint -d /data -m node && \
-    groupmod -n blueprint node && \
+# Reuse the existing 'node' user (UID 1000) — rename to workbench, home at /data
+RUN usermod -l workbench -d /data -m node && \
+    groupmod -n workbench node && \
     mkdir -p /data/.claude /data/.workbench /data/workspace && \
-    chown -R blueprint:blueprint /data
+    chown -R workbench:workbench /data
 
 # Copy and install app dependencies
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && chown -R blueprint:blueprint /app
+RUN npm ci --omit=dev && chown -R workbench:workbench /app
 
 # Copy app source
-COPY --chown=blueprint:blueprint . .
+COPY --chown=workbench:workbench . .
 
 # Entrypoint sets up /data structure at runtime (volume may be empty on first run)
-COPY --chown=blueprint:blueprint entrypoint.sh /entrypoint.sh
+COPY --chown=workbench:workbench entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-USER blueprint
+USER workbench
 
 ENV HOME=/data
 ENV WORKBENCH_DATA=/data/.workbench

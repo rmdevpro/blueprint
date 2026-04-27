@@ -230,7 +230,7 @@ function makeApp(overrides = {}) {
       firedEvents.push({ event: e, data: d });
     },
     logger: overrides.logger ?? { info() {}, warn() {}, error() {}, debug() {} },
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: existsFn,
     enforceTmuxLimit: async () => {},
     resolveSessionId: async () => {},
@@ -1368,7 +1368,7 @@ test('SRCH-02: GET /api/search returns 500 when searchSessions throws', async ()
     },
     fireEvent: () => {},
     logger: { info() {}, warn() {}, error() {}, debug() {} },
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     enforceTmuxLimit: async () => {},
     resolveSessionId: async () => {},

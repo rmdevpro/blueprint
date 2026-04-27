@@ -7,7 +7,7 @@ const { connectWs } = require('../helpers/ws-client');
 const { resetBaseline, dockerExec } = require('../helpers/reset-state');
 
 test('WS-01: nonexistent session sends error and closes', async () => {
-  const c = await connectWs('/ws/bp_nonexistent_xyz');
+  const c = await connectWs('/ws/wb_nonexistent_xyz');
   await new Promise((r) => setTimeout(r, 500));
   assert.ok(c.msgs.some((m) => m.includes('No tmux session')));
   c.close();
@@ -25,7 +25,7 @@ test('WS-02/03: bidirectional terminal flow', async () => {
   // Wait for bash prompt to initialize before sending command
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 500));
-    if (c.msgs.join('').includes('$') || c.msgs.join('').includes('blueprint@')) break;
+    if (c.msgs.join('').includes('$') || c.msgs.join('').includes('workbench@')) break;
   }
   c.msgs.length = 0; // Clear prompt output
   c.send('echo test_ws_bidirectional\r');

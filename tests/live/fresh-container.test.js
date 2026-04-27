@@ -10,8 +10,8 @@ test('FRS-01/ENT-03: data directories exist', () => {
   assert.equal(dbExists, 'yes', '/data/.workbench/workbench.db should exist');
 });
 
-test('ENT-02: process runs as blueprint user', () => {
-  assert.equal(dockerExec('whoami'), 'blueprint');
+test('ENT-02: process runs as workbench user', () => {
+  assert.equal(dockerExec('whoami'), 'workbench');
 });
 
 test('ENT-09: onboarding flags set correctly', () => {
@@ -22,9 +22,9 @@ test('ENT-09: onboarding flags set correctly', () => {
   }
 });
 
-test('ENT-10: workbench home owned by blueprint', () => {
+test('ENT-10: workbench home owned by workbench', () => {
   const owner = dockerExec('stat -c %U /data/.workbench');
-  assert.equal(owner, 'blueprint');
+  assert.equal(owner, 'workbench');
 });
 
 test('ENG-13: health returns 200', async () => {
@@ -49,7 +49,7 @@ test('ENG-05: no hardcoded secrets in application code', () => {
 
 test('FRS-07: tmux kill-session actually removes a session', async () => {
   // Create a known session, verify it exists, kill it, verify it's gone
-  const name = 'bp_frs07_test';
+  const name = 'wb_frs07_test';
   dockerExec(`tmux new-session -d -s ${name} -x 200 -y 50`);
   await new Promise((resolve) => setTimeout(resolve, 500));
   const before = dockerExec('tmux ls -F "#{session_name}" 2>/dev/null || true');

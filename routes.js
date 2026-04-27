@@ -407,7 +407,7 @@ function registerCoreRoutes(
   });
 
   // ── GET /api/browse ────────────────────────────────────────────────────────
-  // AD-001: No path containment checks. Blueprint provides full filesystem access.
+  // AD-001: No path containment checks. Workbench provides full filesystem access.
 
   app.get('/api/browse', async (req, res) => {
     try {
@@ -437,7 +437,7 @@ function registerCoreRoutes(
   });
 
   // ── GET /api/file ──────────────────────────────────────────────────────────
-  // AD-001: No path containment checks. Blueprint provides full filesystem access.
+  // AD-001: No path containment checks. Workbench provides full filesystem access.
 
   app.get('/api/file', async (req, res) => {
     try {

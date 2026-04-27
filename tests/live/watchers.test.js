@@ -10,14 +10,14 @@ test('WAT-10: settings.json exists after startup', () => {
   assert.equal(r, 'exists', 'settings.json should exist after startup');
 });
 
-test('WAT-08: Blueprint MCP server registered in settings.json with correct config', () => {
+test('WAT-08: Workbench MCP server registered in settings.json with correct config', () => {
   const raw = dockerExec('cat /data/.claude/settings.json 2>/dev/null || echo "{}"');
   const cfg = JSON.parse(raw);
   if (cfg.mcpServers) {
-    assert.ok(cfg.mcpServers.blueprint, 'Blueprint MCP server should be registered');
+    assert.ok(cfg.mcpServers.workbench, 'Workbench MCP server should be registered');
     // Behavioral: verify the MCP config has required fields (not just that the key exists)
-    const bp = cfg.mcpServers.blueprint;
-    assert.ok(bp.command || bp.url, 'Blueprint MCP server config must have a command or url field');
+    const bp = cfg.mcpServers.workbench;
+    assert.ok(bp.command || bp.url, 'Workbench MCP server config must have a command or url field');
   }
 });
 

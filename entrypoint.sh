@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Workbench entrypoint — runs as non-root blueprint user (UID 1000)
+# Workbench entrypoint — runs as non-root workbench user (UID 1000)
 # All persistent data lives under /data (mounted volume)
 
 CLAUDE="/data/.claude"
@@ -57,8 +57,7 @@ if [ ! -f "$CLAUDE/settings.json" ]; then
   echo "[entrypoint] Created settings.json"
 fi
 
-# Register Workbench MCP server globally (drop legacy "blueprint" entry first)
-claude mcp remove --scope user blueprint 2>/dev/null || true
+# Register Workbench MCP server globally
 claude mcp add-json --scope user workbench '{"command":"node","args":["/app/mcp-server.js"]}' 2>/dev/null || true
 
 # Install Workbench slash commands as global skills

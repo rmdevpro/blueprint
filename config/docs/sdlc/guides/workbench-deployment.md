@@ -203,7 +203,7 @@ Eight tests, ~10 min total:
 | 1 | **GATE-MKT-01** (HF-deploy-specific) | Marketing Space (no creds) | Page loads; `__GATE_MODE__ === 'template'`; `planlogo.png` renders (not broken-image); `workbench-preview.png` background renders; "Duplicate this Space" button present | No login required |
 | 2 | **GATE-LOGIN-01** (HF-deploy-specific) | Test Space (creds set) | Page loads; `__GATE_MODE__ === 'password'`; login form rendered with username + password fields; planlogo visible | No login required |
 | 3 | **GATE-LOGIN-02** (HF-deploy-specific) | Test Space | Submit valid creds → redirected past gate; full app shell visible (sidebar, status bar, panel toggles) | Uses gate creds |
-| 4 | **SMOKE-01** (`tests/workbench-test-runbook.md` Phase 1) | Test Space (post-login) | Page title "Blueprint"; sidebar present; project list populates; settings modal hidden | |
+| 4 | **SMOKE-01** (`tests/workbench-test-runbook.md` Phase 1) | Test Space (post-login) | Page title "Workbench"; sidebar present; project list populates; settings modal hidden | |
 | 5 | **SMOKE-02** (Phase 1) | Test Space | `.project-group` count matches `/api/state` projects; active filter selected by default | |
 | 6 | **SMOKE-03** (Phase 1) | Test Space | `/health` returns ok; `/api/auth/status` returns valid; `/api/mounts` returns array | |
 | 7 | **USR-05** (Phase 7) | Test Space | Open Files panel, expand a mount, click into a directory, file tree renders | |
@@ -313,7 +313,7 @@ wipe avoids the footgun.
    ssh <user>@<incoming-prod> "rsync -aHAX --delete \\
      --exclude='.workbench/qdrant/.lock' \\
      --exclude='*.wal' --exclude='*.shm' \\
-     blueprint@<outgoing-prod>:/srv/workbench/ /srv/workbench/ && \\
+     workbench@<outgoing-prod>:/srv/workbench/ /srv/workbench/ && \\
      sudo chown -R 1000:2001 /srv/workbench"
    ```
    (`--delete` is redundant after the wipe but harmless; keep it as belt-and-suspenders.)
@@ -330,7 +330,7 @@ wipe avoids the footgun.
 9. **Move your browser to incoming-prod and start working there.** Until step 10 fires, both hosts are showing the Prod logo; the URL you load determines which one you're using.
 10. **Demote outgoing-prod to `development`** (live DB write, no container stop — outgoing-prod stays running as the new dev host):
    ```bash
-   ssh blueprint@<outgoing-prod> "sqlite3 /srv/workbench/.workbench/workbench.db \\
+   ssh workbench@<outgoing-prod> "sqlite3 /srv/workbench/.workbench/workbench.db \\
      \"INSERT OR REPLACE INTO settings(key, value) VALUES ('logo_variant', '\\\"development\\\"');\""
    ```
 

@@ -132,7 +132,7 @@ test('WS-01: nonexistent tmux session sends error and closes', async () => {
 test('WS-04: resize message resizes PTY', async () => {
   const env = makeEnv();
   const ws = makeWs();
-  await env.terminal.handleTerminalConnection(ws, 'bp_test');
+  await env.terminal.handleTerminalConnection(ws, 'wb_test');
   ws.trigger('message', Buffer.from(JSON.stringify({ type: 'resize', cols: 120, rows: 40 })));
   assert.deepEqual(env.fakePty.resizeCalls, [[120, 40]]);
 });
@@ -140,7 +140,7 @@ test('WS-04: resize message resizes PTY', async () => {
 test('WS-05: backpressure pauses PTY at high watermark', async () => {
   const env = makeEnv();
   const ws = makeWs();
-  await env.terminal.handleTerminalConnection(ws, 'bp_test');
+  await env.terminal.handleTerminalConnection(ws, 'wb_test');
   ws.bufferedAmount = 2000;
   env.fakePty.emitData('x'.repeat(100));
   assert.equal(env.fakePty.paused, true);
@@ -149,12 +149,12 @@ test('WS-05: backpressure pauses PTY at high watermark', async () => {
 test('WS-07 / WS-11: disconnect kills PTY, updates browser count, schedules cleanup, updates keepalive', async () => {
   const env = makeEnv();
   const ws = makeWs();
-  await env.terminal.handleTerminalConnection(ws, 'bp_test');
+  await env.terminal.handleTerminalConnection(ws, 'wb_test');
   assert.equal(env.getBrowserCount(), 1);
   ws.trigger('close');
   assert.equal(env.fakePty.killed, true);
-  assert.equal(env.stoppedWatcher, 'bp_test');
-  assert.equal(env.scheduled, 'bp_test');
+  assert.equal(env.stoppedWatcher, 'wb_test');
+  assert.equal(env.scheduled, 'wb_test');
   assert.equal(env.getBrowserCount(), 0);
   assert.deepEqual(env.kaCalls, ['connect', ['disconnect', 0]]);
 });
@@ -162,21 +162,21 @@ test('WS-07 / WS-11: disconnect kills PTY, updates browser count, schedules clea
 test('WS-10: PTY spawn failure closes WS without crash', async () => {
   const env = makeEnv({ spawnThrows: true });
   const ws = makeWs();
-  await env.terminal.handleTerminalConnection(ws, 'bp_test');
+  await env.terminal.handleTerminalConnection(ws, 'wb_test');
   assert.equal(ws.readyState, 3);
 });
 
 test('WS-08: token_update forwarded to WS client', async () => {
   const env = makeEnv();
   const ws = makeWs();
-  await env.terminal.handleTerminalConnection(ws, 'bp_test');
-  assert.equal(env.sessionWsClients.get('bp_test'), ws);
+  await env.terminal.handleTerminalConnection(ws, 'wb_test');
+  assert.equal(env.sessionWsClients.get('wb_test'), ws);
 });
 
 test('WS: PTY data forwarded to websocket', async () => {
   const env = makeEnv();
   const ws = makeWs();
-  await env.terminal.handleTerminalConnection(ws, 'bp_test');
+  await env.terminal.handleTerminalConnection(ws, 'wb_test');
   env.fakePty.emitData('hello terminal');
   assert.ok(ws.sent.includes('hello terminal'));
 });
@@ -184,7 +184,7 @@ test('WS: PTY data forwarded to websocket', async () => {
 test('WS: websocket message written to PTY', async () => {
   const env = makeEnv();
   const ws = makeWs();
-  await env.terminal.handleTerminalConnection(ws, 'bp_test');
+  await env.terminal.handleTerminalConnection(ws, 'wb_test');
   ws.trigger('message', Buffer.from('user input'));
   assert.ok(env.fakePty.writeCalls.includes('user input'));
 });
@@ -192,7 +192,7 @@ test('WS: websocket message written to PTY', async () => {
 test('WS: ping message gets pong response', async () => {
   const env = makeEnv();
   const ws = makeWs();
-  await env.terminal.handleTerminalConnection(ws, 'bp_test');
+  await env.terminal.handleTerminalConnection(ws, 'wb_test');
   ws.trigger('message', Buffer.from(JSON.stringify({ type: 'ping' })));
   assert.ok(
     ws.sent.some((s) => {
@@ -209,7 +209,7 @@ test('WS-06: heartbeat ping sent on interval, terminates unresponsive connection
   // pingIntervalMs is 50ms in makeEnv config
   const env = makeEnv();
   const ws = makeWs();
-  await env.terminal.handleTerminalConnection(ws, 'bp_test');
+  await env.terminal.handleTerminalConnection(ws, 'wb_test');
 
   // After one interval, server should ping the client
   await new Promise((r) => setTimeout(r, 70));
@@ -235,7 +235,7 @@ test('WS-06: heartbeat ping sent on interval, terminates unresponsive connection
 test('WS: error event kills PTY', async () => {
   const env = makeEnv();
   const ws = makeWs();
-  await env.terminal.handleTerminalConnection(ws, 'bp_test');
+  await env.terminal.handleTerminalConnection(ws, 'wb_test');
   ws.trigger('error', new Error('test error'));
   assert.equal(env.fakePty.killed, true, 'Error should kill the PTY');
 });

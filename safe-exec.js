@@ -34,7 +34,7 @@ function sanitizeTmuxName(name) {
 function tmuxNameFor(sessionId) {
   const crypto = require('crypto');
   const hash = crypto.createHash('md5').update(sessionId).digest('hex').substring(0, 4);
-  return sanitizeTmuxName(`bp_${sessionId.substring(0, 12)}_${hash}`);
+  return sanitizeTmuxName(`wb_${sessionId.substring(0, 12)}_${hash}`);
 }
 
 function shellEscape(arg) {

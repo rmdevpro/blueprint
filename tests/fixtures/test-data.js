@@ -1,5 +1,5 @@
 /**
- * Shared test fixtures for Blueprint test suite.
+ * Shared test fixtures for Workbench test suite.
  * All test data comes from here — no hardcoded inline data in test bodies.
  * Per test plan §2.4 and §3.4
  */
@@ -111,7 +111,7 @@ const validAssistantEntryOpus = {
 
 const validSummaryEntry = {
   type: 'summary',
-  summary: 'Working on Blueprint test infrastructure',
+  summary: 'Working on Workbench test infrastructure',
   timestamp: '2026-04-01T12:00:00.000Z',
 };
 
@@ -310,7 +310,7 @@ const validDefaultsJson = {
 
 const promptTemplates = {
   summarizeSession: 'Summary for transcript:\n\n{{TRANSCRIPT}}',
-  compactionPrep: '{"blueprint":"ready_to_connect"}',
+  compactionPrep: '{"workbench":"ready_to_connect"}',
   compactionPrepToAgent: 'prepare now',
   compactionGitCommit: 'git commit please',
   compactionResume: 'resume from {{CONVERSATION_TAIL_FILE}}',
@@ -329,20 +329,20 @@ const corruptJson = '{"compaction": {"thresholds": {BROKEN';
 const compaction = {
   ansiString: '\x1b[31mred text\x1b[0m normal \x1b]0;title\x07',
   ansiStripped: 'red text normal ',
-  blueprintJsonLines: {
-    valid: 'noise\n{"blueprint":"ready_to_connect"}\nmore noise',
-    malformed: 'x\n{"blueprint": invalid }\ny',
-    wrongSchema: 'noise\n{"blueprint":{"nested":true}}\nmore',
-    hallucinated: 'Sure, here is my answer:\n{"blueprint":"read_plan_file"}\nI hope that helps.',
-    noBlueprint: 'just regular text\nno json here\nmore text',
+  workbenchJsonLines: {
+    valid: 'noise\n{"workbench":"ready_to_connect"}\nmore noise',
+    malformed: 'x\n{"workbench": invalid }\ny',
+    wrongSchema: 'noise\n{"workbench":{"nested":true}}\nmore',
+    hallucinated: 'Sure, here is my answer:\n{"workbench":"read_plan_file"}\nI hope that helps.',
+    noWorkbench: 'just regular text\nno json here\nmore text',
   },
   prepResponses: {
-    initReady: '{"blueprint":"ready_to_connect"}',
-    askReadPlan: '{"blueprint":"read_plan_file"}',
-    askExitPlan: '{"blueprint":"exit_plan_mode"}',
-    readyToCompact: '{"blueprint":"ready_to_compact"}',
-    resumeComplete: '{"blueprint":"resume_complete"}',
-    error: '{"blueprint":"error"}',
+    initReady: '{"workbench":"ready_to_connect"}',
+    askReadPlan: '{"workbench":"read_plan_file"}',
+    askExitPlan: '{"workbench":"exit_plan_mode"}',
+    readyToCompact: '{"workbench":"ready_to_compact"}',
+    resumeComplete: '{"workbench":"resume_complete"}',
+    error: '{"workbench":"error"}',
     plainAgentMessage: 'Please update the reading list and do not exit plan mode yet.',
   },
   promptVisibleBuffer: '\nfoo\n❯ \n',
@@ -438,10 +438,10 @@ const loggerFixtures = {
 // ── Paths ───────────────────────────────────────────────────────────────────
 
 const paths = {
-  tmpRoot: path.join(os.tmpdir(), 'blueprint-tests'),
-  workspace: path.join(os.tmpdir(), 'blueprint-tests', 'workspace'),
-  claudeHome: path.join(os.tmpdir(), 'blueprint-tests', 'claude-home'),
-  data: path.join(os.tmpdir(), 'blueprint-tests', 'data'),
+  tmpRoot: path.join(os.tmpdir(), 'workbench-tests'),
+  workspace: path.join(os.tmpdir(), 'workbench-tests', 'workspace'),
+  claudeHome: path.join(os.tmpdir(), 'workbench-tests', 'claude-home'),
+  data: path.join(os.tmpdir(), 'workbench-tests', 'data'),
 };
 
 module.exports = {

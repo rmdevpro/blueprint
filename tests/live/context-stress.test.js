@@ -21,7 +21,7 @@ test('CST: prime-test-session.js exists and has valid context-filling logic', ()
   );
   assert.ok(
     content.includes('/api/sessions') || content.includes('api/state'),
-    'Script must interact with Blueprint API to create sessions',
+    'Script must interact with Workbench API to create sessions',
   );
 });
 

@@ -86,7 +86,7 @@ function makeApp() {
     keepalive: { getStatus: async () => ({}), setMode() {}, getMode: () => 'always', isRunning: () => false, start() {}, stop() {} },
     fireEvent: () => {},
     logger: { info() {}, warn() {}, error() {}, debug() {} },
-    tmuxName: (id) => `bp_${id}`,
+    tmuxName: (id) => `wb_${id}`,
     tmuxExists: async () => false,
     enforceTmuxLimit: async () => {},
     resolveSessionId: async () => {},

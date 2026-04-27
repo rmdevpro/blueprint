@@ -9,8 +9,8 @@ Executed by an AI agent using Playwright MCP against any Workbench deployment. O
 The runbook is environment-agnostic. The user specifies the target at execution time and the executor binds these values:
 
 - `${WORKBENCH_URL}` — base URL of the workbench under test (e.g. `${WORKBENCH_URL}`, `${WORKBENCH_URL}`)
-- `${WORKBENCH_CONTAINER}` — Docker container name for `docker exec` / `docker logs` style commands (e.g. `workbench`, `blueprint-test`)
-- `${WORKBENCH_HOST}` — host machine reachable for `ssh` and `docker` commands (e.g. `aristotle9@m5`, `blueprint@hf-space-host`)
+- `${WORKBENCH_CONTAINER}` — Docker container name for `docker exec` / `docker logs` style commands (e.g. `workbench`, `workbench-test`)
+- `${WORKBENCH_HOST}` — host machine reachable for `ssh` and `docker` commands (e.g. `aristotle9@m5`, `workbench@hf-space-host`)
 - `${GATE_USER}` / `${GATE_PASS}` — gate credentials if the deployment uses HF Space password auth; leave blank otherwise
 
 Anywhere a test step says `${WORKBENCH_URL}/api/...`, substitute the actual URL for the run. The executor is responsible for the substitution; the runbook itself never names a specific port or hostname in the runnable steps.
@@ -39,12 +39,12 @@ Historical incident notes (Phase 5 & Phase 8 sections) may reference specific de
 - **Target:** `${WORKBENCH_URL}` (specified per run — see Target section above)
 - **Login:** `${GATE_USER}` / `${GATE_PASS}` if a gate is present; otherwise direct
 - **Tool:** Playwright MCP (local, NOT Malory)
-- **Container user:** `blueprint` (UID 1000)
+- **Container user:** `workbench` (UID 1000)
 - **Workspace path:** `/data/workspace`
 - **MCP Tools:** 3 tools — `workbench_files`, `workbench_sessions`, `workbench_tasks`
 - **Settings tabs:** General, Claude Code, Vector Search, System Prompts
 - **Session types:** Claude, Gemini, Codex (selected via + dropdown)
-- **Test Plan:** See `docs/work-specs/blueprint-test-plan.md`
+- **Test Plan:** See `docs/work-specs/workbench-test-plan.md`
 
 ## IMPORTANT: What changed since the original runbook
 
@@ -55,10 +55,10 @@ These changes affect many test steps. Read before executing.
 3. **Notes tab removed:** `[data-panel="notes"]`, `#panel-notes`, `#notes-editor` no longer exist. Project notes are in the project config modal only.
 4. **Messages tab removed:** `[data-panel="messages"]`, `#panel-messages`, `#message-list` no longer exist. Inter-session messaging replaced by tmux.
 5. **Notes API endpoints removed:** `/api/projects/:name/notes` and `/api/sessions/:id/notes` GET/PUT no longer exist. Notes stored via `/api/projects/:name/config` and `/api/sessions/:id/config`.
-6. **Quorum removed:** No quorum UI, no `/api/quorum/ask`, no `blueprint_ask_quorum`.
-7. **Smart compaction removed:** No `/api/sessions/:id/smart-compact`, no `blueprint_smart_compaction`.
+6. **Quorum removed:** No quorum UI, no `/api/quorum/ask`, no `workbench_ask_quorum`.
+7. **Smart compaction removed:** No `/api/sessions/:id/smart-compact`, no `workbench_smart_compaction`.
 8. **Settings reorganized:** 4 tabs (General, Claude Code, Vector Search, System Prompts). Model/Thinking/Keepalive moved to Claude Code tab. Quorum fields (#14-16) and Tasks checkbox (#17) removed.
-9. **Workspace path:** `/data/workspace` (not `/mnt/workspace`). Container user is `blueprint` (not `hopper`).
+9. **Workspace path:** `/data/workspace` (not `/mnt/workspace`). Container user is `workbench` (not `hopper`).
 10. **CLI type indicator:** `.active-dot` replaced by CLI type label (C/G/X) with per-CLI colors.
 11. **Session creation:** `+` button opens dropdown: C Claude, G Gemini, X Codex, Terminal. `createSession(projectName, cliType)` accepts CLI type.
 12. **MCP tools consolidated:** 17 tools → 3 (`workbench_files`, `workbench_sessions`, `workbench_tasks`). All action-based.
@@ -134,7 +134,7 @@ When a test fails:
 3. **File:** Create a GitHub issue programmatically:
    ```bash
    gh issue create \
-     --repo rmdevpro/blueprint \
+     --repo rmdevpro/workbench \
      --title "[UI Test] TEST-ID: Brief description of failure" \
      --label "bug,ui-test" \
      --body "$(cat <<'ISSUE_EOF'
@@ -145,7 +145,7 @@ When a test fails:
    **Actual:** What happened
    **Screenshot:** (attach via gh issue edit after creation, or paste URL)
    **Branch:** refactor-server-js
-   **Runbook:** blueprint-test-04-09-26/ui-test-runbook.md
+   **Runbook:** workbench-test-04-09-26/ui-test-runbook.md
    ISSUE_EOF
    )"
    ```
@@ -173,7 +173,7 @@ Phase 0 prepares a clean, authenticated test environment for the rest of the run
 A fresh container with an empty `/data` volume must come up cleanly. This is the "Fresh Install Works" regression — by virtue of Phase 0.A succeeding, REG-FRESH-01 PASSes for the run.
 
 **Steps:**
-1. On `${WORKBENCH_HOST}`: `docker run --rm -d --name blueprint-test-fresh -v <ephemeral-volume>:/data -p <free-port>:7860 <image>` (or use a docker-compose entry that creates the ephemeral volume each run).
+1. On `${WORKBENCH_HOST}`: `docker run --rm -d --name workbench-test-fresh -v <ephemeral-volume>:/data -p <free-port>:7860 <image>` (or use a docker-compose entry that creates the ephemeral volume each run).
 2. Bind `${WORKBENCH_URL}` to that container's port for this run.
 3. Wait up to 30s for `/health` to return `{status:'ok'}`.
 4. `browser_navigate` to `${WORKBENCH_URL}` — verify the empty-state UI renders, sidebar shows zero (or default-seeded) projects.
@@ -749,7 +749,7 @@ These 3 tests validate that the app is functional. If any fail, stop and investi
 - Screenshot shows settings with General tab
 
 **Result:** ☒ PASS ☐ FAIL
-**Notes:** Originally FAIL (issue #40). Fix applied: added `switchSettingsTab('general')` call at start of `openSettings()` in `index.html:2101`. Verified via Malory: navigate to Prompts tab, close modal, reopen — General tab now has `.active` class. Fix deployed to container via `docker cp`. rmdevpro/blueprint#40 resolved.
+**Notes:** Originally FAIL (issue #40). Fix applied: added `switchSettingsTab('general')` call at start of `openSettings()` in `index.html:2101`. Verified via Malory: navigate to Prompts tab, close modal, reopen — General tab now has `.active` class. Fix deployed to container via `docker cp`. rmdevpro/workbench#40 resolved.
 
 ---
 
@@ -2032,7 +2032,7 @@ This test enters plan mode AND exits it before concluding, so subsequent tests i
 - Claude reads package.json and reports the project name
 
 **Verify:**
-- Buffer contains "blueprint" (the project name from package.json) -- match `/blueprint/i`
+- Buffer contains "workbench" (the project name from package.json) -- match `/workbench/i`
 
 **Result:** ☒ PASS ☐ FAIL
 **Notes:** Asked Claude to read test-runbook.txt (package.json doesn't exist in empty test dir). Claude used Read tool ("Read 1 file") and returned "hello from runbook". File reading tool call worked correctly.
@@ -2294,7 +2294,7 @@ For each test below, use the standardized terminal I/O pattern:
 - Settings API reflects changes
 
 **Result:** ☒ PASS ☐ FAIL
-**Notes:** 4 themes available: dark/light/blueprint-dark/blueprint-light. Light theme bg=rgb(245,245,245) ✓. Font size 18 set and confirmed. All settings restored to defaults.
+**Notes:** 4 themes available: dark/light/workbench-dark/workbench-light. Light theme bg=rgb(245,245,245) ✓. Font size 18 set and confirmed. All settings restored to defaults.
 
 ---
 
@@ -2378,7 +2378,7 @@ Smart compaction was removed from the codebase. All CST stress tests are permane
 
 #### Stress Tests (CST-01 through CST-20) -- REMOVED
 
-**Incident (2026-04-14):** During EDGE-07 execution, triggering smart compaction caused the blueprint-test container to consume all available memory and be OOM-killed (exit 137). Container was restarted via `docker start ${WORKBENCH_CONTAINER}`. Compaction ran for approximately 460 seconds (Phase 1 only) before the kill. This confirms the feature is unsuitable for production and validates its removal.
+**Incident (2026-04-14):** During EDGE-07 execution, triggering smart compaction caused the workbench-test container to consume all available memory and be OOM-killed (exit 137). Container was restarted via `docker start ${WORKBENCH_CONTAINER}`. Compaction ran for approximately 460 seconds (Phase 1 only) before the kill. This confirms the feature is unsuitable for production and validates its removal.
 
 Context threshold, compaction cycle, and autocompaction stress tests.
 
@@ -3521,7 +3521,7 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 
 **Expected:**
 - docker-compose.yml has generic paths like `/path/to/your/data:/data`
-- Does NOT have `/mnt/workspace/blueprint:/data`
+- Does NOT have `/mnt/workspace/workbench:/data`
 
 **Result:** ☐ PASS ☐ FAIL
 
@@ -3563,14 +3563,14 @@ All 3 CLIs must successfully send AND receive chat messages in ALL 5 rounds. A 4
 **Issue:** #135 — MCP tools not registered for Gemini/Codex
 
 **Steps:**
-1. `browser_evaluate`: `fetch('/api/file?path=/data/.gemini/settings.json').then(r=>r.text())` — check contains "blueprint"
-2. `browser_evaluate`: `fetch('/api/file?path=/data/.codex/config.toml').then(r=>r.text())` — check contains "blueprint"
-3. `browser_evaluate`: `fetch('/api/file?path=/data/.claude/settings.json').then(r=>r.text())` — check contains "blueprint"
+1. `browser_evaluate`: `fetch('/api/file?path=/data/.gemini/settings.json').then(r=>r.text())` — check contains "workbench"
+2. `browser_evaluate`: `fetch('/api/file?path=/data/.codex/config.toml').then(r=>r.text())` — check contains "workbench"
+3. `browser_evaluate`: `fetch('/api/file?path=/data/.claude/settings.json').then(r=>r.text())` — check contains "workbench"
 
 **Expected (ALL 3 CLIs):**
-- Claude: settings.json has blueprint MCP server
-- Gemini: settings.json has blueprint MCP server
-- Codex: config.toml has blueprint MCP server
+- Claude: settings.json has workbench MCP server
+- Gemini: settings.json has workbench MCP server
+- Codex: config.toml has workbench MCP server
 
 **Result:** ☐ PASS ☐ FAIL
 
@@ -4075,12 +4075,12 @@ Then measure:
 **Steps:**
 1. On a fresh dev container, confirm `~/.codex/config.toml` is empty or missing.
 2. Start the workbench (Workbench MCP registration runs at startup).
-3. Cat the config: `cat /data/.codex/config.toml`. Confirm it contains exactly one `[mcp_servers.blueprint]` block with `command = "node"` and `args = ["..."]`. Confirm syntactically valid TOML by running `codex --version` — should print version, not a parse error.
-4. Restart Blueprint (re-runs registration). Re-cat config: should NOT have a duplicate `[mcp_servers.blueprint]` block (the early-return guard prevents double-append).
+3. Cat the config: `cat /data/.codex/config.toml`. Confirm it contains exactly one `[mcp_servers.workbench]` block with `command = "node"` and `args = ["..."]`. Confirm syntactically valid TOML by running `codex --version` — should print version, not a parse error.
+4. Restart Workbench (re-runs registration). Re-cat config: should NOT have a duplicate `[mcp_servers.workbench]` block (the early-return guard prevents double-append).
 5. Negative case: manually pre-populate `/data/.codex/config.toml` with non-MCP content (e.g. a `[notice.foo]` block). Restart. Confirm Workbench appends its block AFTER the existing content without modifying or corrupting it.
 
 **Expected:**
-- Single valid `[mcp_servers.blueprint]` block; rest of file untouched.
+- Single valid `[mcp_servers.workbench]` block; rest of file untouched.
 - `codex --version` prints version (no TOML parse error).
 - Multiple Workbench restarts produce no duplicate registrations.
 
@@ -4121,11 +4121,11 @@ Then measure:
 **Setup:** Container deploy at ${WORKBENCH_URL}. Connect via `docker exec` or SSH.
 
 **Steps:**
-1. `docker exec blueprint-dev ps -o pid,user,stat,cmd -e` — note PID 1 should be `/usr/bin/tini -- /entrypoint.sh`.
+1. `docker exec workbench-dev ps -o pid,user,stat,cmd -e` — note PID 1 should be `/usr/bin/tini -- /entrypoint.sh`.
 2. Open a Claude session in the workbench so a `claude` child exists.
-3. Find the claude PID: `docker exec blueprint-dev pgrep -af claude`.
-4. SIGKILL the claude PID: `docker exec blueprint-dev kill -9 <PID>`.
-5. Wait 5 seconds, then `docker exec blueprint-dev ps -o pid,stat,cmd -e | grep -i defunct`.
+3. Find the claude PID: `docker exec workbench-dev pgrep -af claude`.
+4. SIGKILL the claude PID: `docker exec workbench-dev kill -9 <PID>`.
+5. Wait 5 seconds, then `docker exec workbench-dev ps -o pid,stat,cmd -e | grep -i defunct`.
 
 **Expected:**
 - PID 1 is tini (`/usr/bin/tini`), not `node`.
@@ -4255,8 +4255,8 @@ Then measure:
 
 **Steps:**
 1. Open a Claude session via the UI. Confirm the terminal is attached and showing prompt.
-2. Identify the tmux session name from server logs (`docker logs ${WORKBENCH_CONTAINER} --tail 50 | grep tmux`) — format `bp_<id12>_<hash>`.
-3. From host: `ssh ${WORKBENCH_HOST} 'docker exec workbench tmux kill-session -t bp_xxxxxxxxxxxx_yyyy'`
+2. Identify the tmux session name from server logs (`docker logs ${WORKBENCH_CONTAINER} --tail 50 | grep tmux`) — format `wb_<id12>_<hash>`.
+3. From host: `ssh ${WORKBENCH_HOST} 'docker exec workbench tmux kill-session -t wb_xxxxxxxxxxxx_yyyy'`
 4. In Playwright (or Hymie Firefox), refresh the workbench page.
 5. Wait ~3s. The same session tab should reattach with a fresh terminal — NO "[Session detached]" message, NO need to close/relaunch.
 6. Server log should show `Auto-respawned dead tmux session for reconnecting tab` with the tmuxSession name.

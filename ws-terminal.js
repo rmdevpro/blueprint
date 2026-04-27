@@ -17,7 +17,7 @@ module.exports = function createWsTerminal({
   startJsonlWatcher,
   stopJsonlWatcher,
   spawnPty,
-  // #157: db is needed to look up the blueprint session by tmuxName prefix so we
+  // #157: db is needed to look up the workbench session by tmuxName prefix so we
   // can auto-respawn a dead tmux pane (project_path + cli_type) when a tab tries
   // to reattach after idle-cleanup or container restart killed it.
   db,
@@ -44,9 +44,9 @@ module.exports = function createWsTerminal({
     if (!(await tmuxExists(tmuxSession))) {
       // #157: tab is reconnecting to a session whose tmux pane is gone (idle
       // cleanup, container restart, etc.). Try to respawn instead of forcing
-      // the user to close + relaunch the tab. tmuxName format: bp_<id12>_<hash>
+      // the user to close + relaunch the tab. tmuxName format: wb_<id12>_<hash>
       let respawned = false;
-      if (db && tmuxSession.startsWith('bp_')) {
+      if (db && tmuxSession.startsWith('wb_')) {
         // 3-CLI review concern: dedupe rapid parallel reconnects. If a respawn is
         // already in flight for this tmuxSession, wait on its promise instead of
         // starting a second tmuxCreateCLI race.
