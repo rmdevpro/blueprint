@@ -1727,7 +1727,10 @@ build/**</textarea>
               }
             } catch {}
           }
-          checkForAuthIssue(tabId, event.data);
+          // tabId from connectTab() closure is frozen at the time the WS
+          // opened; tab.id is mutated in place when temp id → real session
+          // id migration happens, so it's the only reliable current id.
+          checkForAuthIssue(tab.id, event.data);
           tab.term.write(event.data);
         } else {
           tab.term.write(new Uint8Array(event.data));
