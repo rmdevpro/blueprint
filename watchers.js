@@ -205,17 +205,33 @@ module.exports = function createWatchers({
       (existing.args && existing.args[0] !== expectedArgs[0])
     );
 
+    let needsWrite = false;
     if (!existing || isStale) {
-      cfg.mcpServers.workbench = {
-        command: 'node',
-        args: expectedArgs,
-      };
+      cfg.mcpServers.workbench = { command: 'node', args: expectedArgs };
+      needsWrite = true;
+    }
+
+    // Seed selectedType so the CLI doesn't open its auth-method menu when
+    // GEMINI_API_KEY is already in env. The CLI gates that menu on
+    // settings.merged.security.auth.selectedType === undefined; just exporting
+    // the env var isn't enough. Only write when undefined — preserve any
+    // manual choice (e.g. user ran /auth and picked oauth-personal).
+    if (process.env.GEMINI_API_KEY) {
+      if (!cfg.security) cfg.security = {};
+      if (!cfg.security.auth) cfg.security.auth = {};
+      if (cfg.security.auth.selectedType === undefined) {
+        cfg.security.auth.selectedType = 'gemini-api-key';
+        needsWrite = true;
+      }
+    }
+
+    if (needsWrite) {
       try {
         await fsp.mkdir(join(HOME, '.gemini'), { recursive: true });
         await fsp.writeFile(geminiSettingsFile, JSON.stringify(cfg, null, 2));
-        logger.info('Registered Workbench MCP server for Gemini', { module: 'watchers' });
+        logger.info('Updated Gemini settings.json', { module: 'watchers' });
       } catch (err) {
-        logger.error('Could not write Gemini MCP config', { module: 'watchers', err: err.message });
+        logger.error('Could not write Gemini config', { module: 'watchers', err: err.message });
       }
     }
   }

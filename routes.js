@@ -75,6 +75,7 @@ function registerCoreRoutes(
     CLAUDE_HOME,
     WORKSPACE,
     ensureSettings,
+    registerGeminiMcp,
     sleep,
   },
 ) {
@@ -1188,6 +1189,11 @@ function registerCoreRoutes(
     // Update process env when API keys change so new CLI sessions get them
     if (key === 'gemini_api_key') {
       process.env.GEMINI_API_KEY = value || '';
+      // Reseed ~/.gemini/settings.json so the CLI doesn't open the auth menu
+      // on the next session. Idempotent; preserves any existing selectedType.
+      registerGeminiMcp().catch(err =>
+        logger.warn('registerGeminiMcp after gemini_api_key save failed', { module: 'routes', err: err.message })
+      );
     }
     if (key === 'codex_api_key') {
       process.env.OPENAI_API_KEY = value || '';
