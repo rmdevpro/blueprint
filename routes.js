@@ -780,7 +780,7 @@ function registerCoreRoutes(
       // Launch the appropriate CLI
       const cliArgs = [];
       if (cliType === 'claude') {
-        const model = db.getSetting('default_model', '"claude-sonnet-4-6"');
+        const model = db.getSetting('default_model', '"sonnet"');
         try {
           const m = JSON.parse(model);
           if (m) cliArgs.push('--model', m);
@@ -1139,7 +1139,7 @@ function registerCoreRoutes(
   app.get('/api/settings', (req, res) => {
     const settings = db.getAllSettings();
     const defaults = {
-      default_model: 'claude-sonnet-4-6',
+      default_model: 'sonnet',
       thinking_level: 'none',
       keepalive_mode: 'always',
       keepalive_idle_minutes: 30,
