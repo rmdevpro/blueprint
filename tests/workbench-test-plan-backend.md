@@ -2949,12 +2949,30 @@ Numbered from most foundational to most complex. Dependencies noted.
 5. **Core routes live tests (sessions, projects, tasks, messages, settings)** — Depends on running container (#1) and foundational modules (#2-4).
 6. **WebSocket terminal** — Depends on sessions (#5) and tmux (#4).
 7. **Browser UI core workflows (primary gate)** — Depends on live routes (#5) and WS (#6).
-8. **MCP tools (3 consolidated), MCP stdio, Qdrant sync** — Depends on routes (#5).
+8. **MCP flat tool catalogue (44 tools), MCP stdio, Qdrant sync** — Depends on routes (#5). One PASS row per tool in the live matrix; coverage gate fails if any tool name lacks live coverage.
 9. **Watchers, keepalive, and hot-reload** — Depends on config (#2) and sessions (#5).
 10. **Compaction stage tests (highest risk)** — Depends on watchers (#9) and session-utils (#4).
 11. **Webhooks** — Depends on routes (#5).
 12. **Context stress multi-cycle** — Depends on compaction (#10) and UTIL-01/02.
 13. **Non-deterministic quality suite** — Last; requires real API keys.
+
+### 17.a Per-branch verification gauntlet (mcp-rework reference run)
+
+When verifying a feature branch end-to-end (the `mcp-rework` branch is the canonical reference), execute the following ordered gates. Each step is its own task; later steps are blocked by earlier ones until the gate passes.
+
+| Step | Gate | Where | Pass criteria |
+|---|---|---|---|
+| 1 | Update this plan with the execution order + gate criteria for the branch | Repo edit | Section landed in §17.a (this section) before any test runs |
+| 2 | Fix every failing mock | `ssh ${WORKBENCH_HOST} 'docker exec -i ${WORKBENCH_CONTAINER} sh -c "cd /app && npm test"'` | 0 failing mocks. If a mock fails because the test asserts the old API, update the test; if it surfaces a real regression, fix the code. |
+| 3 | Build + redeploy branch HEAD to the dev container | `ssh ${WORKBENCH_HOST}` then `cd /tmp/workbench-build && git pull && docker build && docker push && cd /srv/.admin/workbench && docker compose pull && docker compose up -d` | New image running; quick HTTP probe (`/api/mcp/tools` etc.) confirms the branch's contract. |
+| 4 | Mock + c8 coverage inside the container | `ssh ${WORKBENCH_HOST} 'docker exec -i ${WORKBENCH_CONTAINER} sh -c "cd /app && npm run test:coverage"'` | 0 failing tests AND ≥ 85% lines / ≥ 70% branches per §3.9. Save report to `tests/coverage-results-<date>-<branch>.txt`. |
+| 5 | Live integration suite inside the container | `ssh ${WORKBENCH_HOST} 'docker exec -i ${WORKBENCH_CONTAINER} sh -c "cd /app && npm run test:live"'` | 0 failing tests. Every API endpoint and every flat MCP tool that is live-testable must have at least one PASS row. Save output to `tests/live-results-<date>-<branch>.txt`. |
+| 6 | Spawn executor session + drive the runbook | Per `docs/guides/runbook-execution-guide.md` — orchestrator briefs a separate Sonnet session inside the dev container's tmux | Phases 1–15 complete with 100% feature coverage and 0 unscheduled SKIPs. Phase 1 Smoke must pass before any later phase runs. |
+| 7 | Triage + PROC-01 per real bug | Orchestrator triages each FAIL into real-bug / test-bug / removed-feature / feature-gap / test-infra-gap; real bugs get the full PROC-01 (RCA → fix → UI test → permanent REG-* runbook entry → 3-CLI review → re-verify → close) | Every real bug is fixed and re-verified; every issue is filed sequentially (`gh issue create` in series, never parallel) and closed with verification evidence. |
+
+**Coverage gate (per §3.9, restated):** mock ≥ 85% structural, live 100% of features (every API endpoint + every flat MCP tool with a PASS row), UI 100% of features (every UI surface in the UI plan §5 with a PASS row). Don't round; report counts.
+
+**Where tests run (per §2.0, restated):** every gate runs *inside* the deployed dev container or via Playwright MCP against the deployed URL. Never `npm test` / `npm run test:coverage` / `node --test` from the host shell of any workbench-running machine.
 
 ---
 
