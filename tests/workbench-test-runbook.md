@@ -10,12 +10,12 @@ The runbook is environment-agnostic. The user specifies the target at execution 
 
 - `${WORKBENCH_URL}` — base URL of the workbench under test (e.g. `${WORKBENCH_URL}`, `${WORKBENCH_URL}`)
 - `${WORKBENCH_CONTAINER}` — Docker container name for `docker exec` / `docker logs` style commands (e.g. `workbench`, `workbench-test`)
-- `${WORKBENCH_HOST}` — host machine reachable for `ssh` and `docker` commands (e.g. `aristotle9@m5`, `workbench@hf-space-host`)
+- `${WORKBENCH_HOST}` — host machine reachable for `ssh` and `docker` commands (e.g. `user@host`)
 - `${GATE_USER}` / `${GATE_PASS}` — gate credentials if the deployment uses HF Space password auth; leave blank otherwise
 
 Anywhere a test step says `${WORKBENCH_URL}/api/...`, substitute the actual URL for the run. The executor is responsible for the substitution; the runbook itself never names a specific port or hostname in the runnable steps.
 
-Historical incident notes (Phase 5 & Phase 8 sections) may reference specific deployments by name — those are records of what happened, not instructions to repeat.
+Historical incident notes appear in some test sections — those are records of what happened on prior runs, not instructions to repeat. Specific host or deployment names should not appear anywhere in the runnable steps.
 
 ## Progress Tracker
 
@@ -1900,7 +1900,7 @@ function openSessionFromMenu(projectName, cliType) {
 - Buffer contains compaction-related output or acknowledgment (match `/compact|context|summar/i`)
 
 **Result:** ☒ PASS ☐ FAIL
-**Notes:** /compact ran and showed "Conversation compacted (ctrl+o for history)" and "Compacted (ctrl+o to see full summary)". INCIDENT: container exited (code 137) during this test run — manual `docker stop` by someone on M5, not OOM (container has no memory limit, host had 224 GiB available). Restarted via `docker start ${WORKBENCH_CONTAINER}`. CLI /compact itself completed successfully before the stop.
+**Notes:** /compact ran and showed "Conversation compacted (ctrl+o for history)" and "Compacted (ctrl+o to see full summary)". INCIDENT: container exited (code 137) during this test run — manual `docker stop` on the host, not OOM (container has no memory limit, host had 224 GiB available). Restarted via `docker start ${WORKBENCH_CONTAINER}`. CLI /compact itself completed successfully before the stop.
 
 ---
 
@@ -3913,7 +3913,7 @@ If Phase 0.A passes, REG-FRESH-01 inherits PASS. If 0.A fails, REG-FRESH-01 fail
 
 ### REG-178: Gemini key resolves consistently across DB / env / API write
 **Source:** Issue #178 (regression test — must continue to pass).
-**Setup:** Backend deploy (M5 dev container).
+**Setup:** Backend deploy (`${WORKBENCH_CONTAINER}`).
 
 **Steps:**
 1. In Settings → API Keys, set Gemini API Key to a valid key.
@@ -3935,7 +3935,7 @@ If Phase 0.A passes, REG-FRESH-01 inherits PASS. If 0.A fails, REG-FRESH-01 fail
 
 ### REG-179: Indexer skips synthetic API-error chunks
 **Source:** Issue #179 (regression test — must continue to pass).
-**Setup:** Backend deploy (M5 dev container) with at least one Claude session JSONL containing a synthetic API-error chunk. (Sample on irina: `/data/.claude/projects/-data-workspace-repos-agentic-workbench/2ec7b89c-….jsonl:1069`.)
+**Setup:** Backend deploy (`${WORKBENCH_CONTAINER}`) with at least one Claude session JSONL containing a synthetic API-error chunk. (Sample path inside the container: `/data/.claude/projects/-data-workspace-repos-agentic-workbench/<session-id>.jsonl`.)
 
 **Steps:**
 1. Confirm a synthetic chunk exists: `grep -l '"isApiErrorMessage":true' /data/.claude/projects/*/*.jsonl | head -1` returns at least one file.
@@ -3953,7 +3953,7 @@ If Phase 0.A passes, REG-FRESH-01 inherits PASS. If 0.A fails, REG-FRESH-01 fail
 
 ### REG-182: Error messages no longer truncated at 100 chars
 **Source:** Issue #182 (regression test — must continue to pass).
-**Setup:** Backend deploy (M5 dev container).
+**Setup:** Backend deploy (`${WORKBENCH_CONTAINER}`).
 
 **Steps:**
 1. **Keepalive failure path:** force a keepalive query failure. Easiest: stop network egress to anthropic.com briefly during a keepalive cycle, OR temporarily set an invalid Anthropic API key. Watch `docker logs <container> --tail 50 -f` until a `Keepalive Claude query failed` line appears.
@@ -4011,7 +4011,7 @@ If Phase 0.A passes, REG-FRESH-01 inherits PASS. If 0.A fails, REG-FRESH-01 fail
 
 ### REG-176: qdrant-sync survives cold-start race + recovers from later qdrant outages
 **Source:** Issue #176 (regression test — must continue to pass).
-**Setup:** Backend deploy on M5 dev. Need a way to start the workbench with qdrant temporarily unavailable.
+**Setup:** Backend deploy (`${WORKBENCH_CONTAINER}`). Need a way to start the workbench with qdrant temporarily unavailable.
 
 **Steps:**
 1. **Cold-start race**: stop the workbench. Restart it. With normal startup ordering (entrypoint launches qdrant + node concurrently), look at the early logs — should see at most one `Qdrant not available` at WARN/INFO with retries, then `Qdrant sync starting`. Should NOT see `qdrant-sync._running = false` indefinitely.
@@ -4029,7 +4029,7 @@ If Phase 0.A passes, REG-FRESH-01 inherits PASS. If 0.A fails, REG-FRESH-01 fail
 
 ### REG-191: qdrant-sync skips empty-text chunks before embed
 **Source:** Issue #191 (regression test — must continue to pass).
-**Setup:** Backend deploy on M5 dev with Gemini provider configured. Need at least one workspace file the chunker would produce empty chunks for (e.g., empty CLAUDE.md, frontmatter-only .md).
+**Setup:** Backend deploy (`${WORKBENCH_CONTAINER}`) with Gemini provider configured. Need at least one workspace file the chunker would produce empty chunks for (e.g., empty CLAUDE.md, frontmatter-only .md).
 
 **Steps:**
 1. Confirm baseline: `docker logs ${WORKBENCH_CONTAINER} --since 5m | grep "EmpsuptyEmbedContentRequest.content contains an empty Part"` should show OLD entries (pre-fix).
@@ -4289,7 +4289,7 @@ Then measure:
 **Expected:**
 - PID 1 is tini (`/usr/bin/tini`), not `node`.
 - After killing the claude process and waiting, no `<defunct>` entries appear (or any that briefly existed are reaped within 1-2s).
-- Pre-fix baseline (M5 prod 2026-04-24): `[claude] <defunct>` persisted 3+ hours.
+- Pre-fix baseline (prod deployment, 2026-04-24): `[claude] <defunct>` persisted 3+ hours.
 
 **Result:** ☐ PASS ☐ FAIL
 
@@ -4310,7 +4310,7 @@ Then measure:
 1. `curl ${WORKBENCH_URL}/api/state | jq '.sessions[0:3] | map({id,name,model,messageCount,active,cli_type})'` — confirm sessions render with name/model/messageCount/active populated for both Claude and non-Claude.
 2. Pick an active session id, `curl '${WORKBENCH_URL}/api/sessions/<id>/tokens?project=<project>' | jq` — confirm `{input_tokens, model, max_tokens}` shape unchanged.
 3. Same id again immediately — should return same numbers (cache hit).
-4. Sidebar in Hymie Firefox: open M5 dev, confirm session list renders identically to before (names, message counts, active dot, model labels for non-Claude).
+4. Sidebar in Hymie Firefox: open `${WORKBENCH_URL}`, confirm session list renders identically to before (names, message counts, active dot, model labels for non-Claude).
 5. Status bar (active session bar): open a Claude session, confirm Model/Tokens populate correctly within 1-2 polls.
 
 **Expected:**
@@ -4344,7 +4344,7 @@ Then measure:
 5. `since` parser: try `?since=15m`, `?since=24h`, `?since=2026-04-26T00:00:00Z` — all should return valid responses.
 
 **UI steps (Hymie):**
-1. Open M5 dev workbench in Hymie Firefox.
+1. Open `${WORKBENCH_URL}` in Hymie Firefox.
 2. Confirm a red error banner appears at the top within ~60s of the test errors above (or refresh).
 3. Click the banner → modal opens listing recent errors (time / module / message columns).
 4. Close the modal; banner remains visible until the 1h window passes.
@@ -4393,7 +4393,7 @@ Then measure:
 **Setup:** Deploy to ${WORKBENCH_URL}. Have a Claude session creation flow ready.
 
 **Steps:**
-1. From a fresh page load on M5 dev, create a new Claude session via the UI's + button (any project) with a prompt.
+1. From a fresh page load on `${WORKBENCH_URL}`, create a new Claude session via the UI's + button (any project) with a prompt.
 2. Within the next ~30s, hit `/api/state` repeatedly: `for i in $(seq 1 30); do curl -sS ${WORKBENCH_URL}/api/state | jq -r '[.projects[].sessions[] | select(.cli_type == "claude")] | length' ; sleep 1; done`
 3. Expected: count never doubles around the resolution time. Pre-fix could see a 1-2s window where the same session appeared twice (one with new_<ts> id, one with the real UUID).
 4. Sidebar visual check: only one entry per session through the resolution.
@@ -4442,7 +4442,7 @@ Then measure:
 **Setup:** Deploy to ${WORKBENCH_URL}. Have a known-valid Gemini API key already saved (so you can confirm rollback).
 
 **Steps (Playwright):**
-1. Navigate to M5 dev workbench. Click Settings (bottom of sidebar) → Settings modal opens.
+1. Navigate to `${WORKBENCH_URL}`. Click Settings (bottom of sidebar) → Settings modal opens.
 2. Snapshot the current Gemini API Key field (it should be the masked existing key).
 3. Type a deliberately invalid value into `#setting-gemini-key` and dispatch a `change` event.
 4. Wait ~2.5s for the validation round-trip.
@@ -4470,7 +4470,7 @@ Then measure:
 
 | Symptom | Likely Cause | Action |
 |---------|-------------|--------|
-| `browser_navigate` times out or returns blank page | Container is down or not listening on its expected port | Verify container is running: `docker ps` on M5. Restart if needed: `docker restart ${WORKBENCH_CONTAINER}`. Retry after 10s. |
+| `browser_navigate` times out or returns blank page | Container is down or not listening on its expected port | Verify container is running: `ssh ${WORKBENCH_HOST} docker ps`. Restart if needed: `ssh ${WORKBENCH_HOST} docker restart ${WORKBENCH_CONTAINER}`. Retry after 10s. |
 | `/health` returns non-200 or fetch fails | Server process crashed inside container | Check container logs: `docker logs ${WORKBENCH_CONTAINER} --tail 50`. Restart container. |
 | `/api/auth/status` returns `{valid:false}` | Auth token expired | Complete the auth flow: show `#auth-modal`, follow the link, paste the code. All tests requiring Claude responses will fail without valid auth. |
 | WebSocket `readyState` stays 0 or 3 | WebSocket endpoint unreachable or server overloaded | Wait 5s and recheck. If persistent, `browser_refresh` and reopen the session tab. |
