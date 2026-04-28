@@ -212,6 +212,24 @@ function makeApp(overrides = {}) {
         model: 'claude-sonnet-4-6',
         max_tokens: 200000,
       }),
+      // #156: getSessionInfo + invalidateSessionInfoCache became part of the
+      // routes.js contract. Mocks must stub them or routes return 500 on
+      // any path that touches the cache (config PUT, tokens, list, delete).
+      getSessionInfo: async (sessionId) => ({
+        id: sessionId,
+        cli_type: 'claude',
+        name: 'mock session',
+        state: 'active',
+        active: false,
+        input_tokens: 50000,
+        max_tokens: 200000,
+        message_count: 0,
+        timestamp: new Date().toISOString(),
+        model: 'claude-sonnet-4-6',
+      }),
+      invalidateSessionInfoCache: () => {},
+      discoverGeminiSessions: () => [],
+      discoverCodexSessions: () => [],
     },
     keepalive: {
       getStatus: async () => ({
@@ -1357,6 +1375,12 @@ test('SRCH-02: GET /api/search returns 500 when searchSessions throws', async ()
       getTokenUsage: async () => {
         throw new Error('token exploded');
       },
+      getSessionInfo: async () => {
+        throw new Error('info exploded');
+      },
+      invalidateSessionInfoCache: () => {},
+      discoverGeminiSessions: () => [],
+      discoverCodexSessions: () => [],
     },
     keepalive: {
       getStatus: async () => ({ running: false, mode: 'always' }),

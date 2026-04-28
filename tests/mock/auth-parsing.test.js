@@ -25,10 +25,12 @@ const indexHtml = fs.readFileSync(indexHtmlPath, 'utf-8');
  * then create an isolated executable sandbox.
  */
 function buildSandbox() {
-  // Extract the OAUTH_URL_START constant
-  const oauthConstMatch = indexHtml.match(/const\s+OAUTH_URL_START\s*=\s*(['"])([^'"]+)\1/);
-  assert.ok(oauthConstMatch, 'index.html must define OAUTH_URL_START constant');
-  const oauthUrlStart = oauthConstMatch[2];
+  // Extract the OAUTH_URL_PATTERNS array source from the file (the function
+  // iterates over it). The legacy OAUTH_URL_START scalar was replaced by a
+  // per-CLI patterns array — bring the literal source into the sandbox.
+  const patternsMatch = indexHtml.match(/const\s+OAUTH_URL_PATTERNS\s*=\s*(\[[\s\S]*?\]);/);
+  assert.ok(patternsMatch, 'index.html must define OAUTH_URL_PATTERNS array');
+  const oauthPatternsSource = patternsMatch[1];
 
   // Extract the full checkForAuthIssue function body from the source.
   // The function starts at 'function checkForAuthIssue' and ends at the next
@@ -58,11 +60,17 @@ function buildSandbox() {
   // Build a minimal sandbox with the exact dependencies the function uses.
   // Use 'var' so declarations become properties on the sandbox object,
   // accessible from the host. 'const'/'let' are block-scoped in vm contexts.
+  // checkForAuthIssue depends on: OAUTH_URL_PATTERNS (per-CLI URL recipes),
+  // authModalVisible (gate flag), tabs (Map<tabId, {cli_type}>),
+  // oauthDetection ({claude/gemini/codex: bool} per-CLI enable),
+  // ptyOutputBuffer (Map<tabId, string>), and showAuthModal.
   const capturedModals = [];
   const code = `
-    var OAUTH_URL_START = '${oauthUrlStart}';
+    var OAUTH_URL_PATTERNS = ${oauthPatternsSource};
     var authModalVisible = false;
     var ptyOutputBuffer = new Map();
+    var tabs = new Map();
+    var oauthDetection = { claude: true, gemini: true, codex: true };
     function showAuthModal(url, tabId) {
       authModalVisible = true;
       _capturedModals.push(url);
