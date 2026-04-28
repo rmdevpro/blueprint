@@ -27,6 +27,8 @@
       --text-muted: #484f58;
       --accent: #58a6ff;
       --accent-hover: #79c0ff;
+      --btn-primary: #1f6feb;
+      --btn-primary-hover: #388bfd;
       --border: #30363d;
       --success: #3fb950;
       --warning: #d29922;
@@ -365,11 +367,11 @@
     #auth-modal p { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5; }
 
     #auth-modal .auth-link {
-      display: inline-block; padding: 10px 24px; background: var(--accent);
+      display: inline-block; padding: 10px 24px; background: var(--btn-primary);
       color: #fff; text-decoration: none; border-radius: 6px; font-size: 14px;
       font-weight: 500; margin-bottom: 20px;
     }
-    #auth-modal .auth-link:hover { background: var(--accent-hover); }
+    #auth-modal .auth-link:hover { background: var(--btn-primary-hover); }
 
     #auth-modal .code-input-group {
       display: flex; gap: 8px; margin-top: 16px;
@@ -1312,7 +1314,7 @@ build/**</textarea>
           </div>
           <div style="display:flex;justify-content:flex-end;gap:8px">
             <button onclick="document.getElementById('${overlayId}').remove()" style="padding:6px 16px;background:var(--bg-tertiary);color:var(--text-secondary);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:13px">Cancel</button>
-            <button id="new-session-submit" style="padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px">Start Session</button>
+            <button id="new-session-submit" style="padding:6px 16px;background:var(--btn-primary);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px">Start Session</button>
           </div>
         </div>
       `;
@@ -3627,7 +3629,7 @@ build/**</textarea>
             <input id="picker-path" type="text" readonly placeholder="Click a folder above" style="flex:1;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace">
             <input id="picker-name" type="text" placeholder="Name" style="width:120px;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px">
             <button style="padding:6px 12px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);cursor:pointer;font-size:12px" onclick="pickerNewFolder()">+ Folder</button>
-            <button style="padding:6px 16px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px" onclick="pickerSelect('${overlayId}')">Add</button>
+            <button style="padding:6px 16px;background:var(--btn-primary);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px" onclick="pickerSelect('${overlayId}')">Add</button>
           </div>
         </div>
       `;
