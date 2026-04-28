@@ -388,7 +388,19 @@ These self-tests gate the threshold and stress suites. If priming is inaccurate,
 
 ### 3.9 Coverage Gating
 
-Minimum structural coverage threshold: **80% line coverage, 70% branch coverage** measured by running the full mock test suite through `c8`. The engineering gate does not pass if coverage is below threshold. Structural coverage is the primary mechanism for verifying that all programmatic logic has corresponding test coverage (WPR-103 §2.6).
+Three thresholds, applied independently. **All three must pass for the gate to clear.**
+
+| Layer | Threshold | Measurement |
+|---|---|---|
+| Mock (structural) | **≥ 85% lines, ≥ 70% branches** | `c8` over `tests/mock/*.test.js`, run inside the deployed container. Tracks how much of the codebase is exercised by the unit suite. |
+| Live (feature) | **100% of features** | Every API endpoint, every MCP tool (currently 45), every backend feature in §15 must have at least one PASS row in `tests/live/`. Functional coverage, not line coverage. |
+| UI (feature) | **100% of features** | Every UI surface in §5 of the UI plan, every user-visible feature, every settings field, every dialog must have at least one PASS row in `tests/browser/` (or runbook UI phase). |
+
+**The "100% feature coverage" gate is not negotiable.** A feature without a live AND a UI test (where each layer applies) is a coverage failure. Don't ship features without both.
+
+The 85% mock threshold reflects that some defensive branches and trivial error paths aren't worth dedicated unit tests. The 100% feature thresholds reflect repeated incidents (most cited: a 785-test suite that caught zero of 38 filed bugs — see §0) where line coverage was high but features still shipped broken because the tests covered the easy paths and skipped user-visible ones.
+
+Reporting rule: report the actual count, not a rounded percentage. "44 of 45 MCP tools have a live PASS row, 1 outstanding" beats "~98% covered" — the gate fails the moment you can name an untested feature.
 
 ### 3.10 Baseline Reset Protocol
 

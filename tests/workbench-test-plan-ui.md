@@ -240,10 +240,22 @@ The rubric file is version-controlled so future reviewers use identical criteria
 
 ### 3.7 Coverage Gating
 
+Two thresholds, both applied independently — **both must pass.**
+
+**Structural coverage (client-side JS):**
 - Client-side JS coverage via `page.coverage.startJSCoverage()` / `stopJSCoverage()`
-- Threshold: >= 90% line / 80% branch on client-side JS
+- Threshold: ≥ 90% line / 80% branch on client-side JS
 - Coverage gate file (`z-coverage-gate.spec.js`) aggregates all reports and asserts thresholds
 - All 54 registered JS functions must be exercised
+
+**Feature coverage (UI surfaces): 100%, no exceptions.**
+- Every UI element listed in §5 (sidebar, main area, status bar, right panel, settings modal, auth modal, dynamic overlays — 139 elements) must have at least one PASS row in a Playwright spec or in the runbook's UI phases.
+- Every JS function in §6 (54 functions) must be exercised by name in at least one spec.
+- Every workflow in §8 must have at least one passing end-to-end test.
+- Every CLI category in §9 must have at least one terminal-mediated test that exercises the actual category.
+- A UI surface without a UI test is a gate failure. "Mostly covered", "almost all elements", "~95%" are NOT acceptable wording — report the count of uncovered surfaces explicitly. The gate fails the moment any surface from the inventories has no PASS row.
+
+The structural-coverage threshold (90/80) and the feature-coverage threshold (100%) are independent. A spec can boost structural coverage without hitting any new UI surface; it can hit a UI surface without raising structural coverage. The gate cares about both.
 
 ---
 
