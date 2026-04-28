@@ -71,7 +71,20 @@ module.exports = function createWsTerminal({
               // Re-check just before spawn (race against another reconnect that
               // might have created the pane between our first check and this one).
               if (await tmuxExists(tmuxSession)) return true;
-              safe.tmuxCreateCLI(tmuxSession, sessRow.project_path, sessRow.cli_type || 'claude', []);
+              // CRITICAL: must pass --resume <id> (or codex resume <id>) so the
+              // respawned CLI continues writing into the SAME JSONL the workbench
+              // tracks. Empty args here was the bug that silently re-keyed
+              // session af3c11be → 1649f318 across the M5 cutover (no --resume,
+              // Claude minted a new UUID, status bar/qdrant/sidebar all started
+              // measuring the dead JSONL instead of the live one).
+              const { args: resumeArgs, missing, expectedPath } = safe.buildResumeArgs(sessRow, sessRow.project_path);
+              if (missing) {
+                logger.warn('Refusing to auto-respawn session — JSONL missing on disk', {
+                  module: 'ws-terminal', tmuxSession, sessionId: sessRow.id.substring(0, 12), expectedPath,
+                });
+                return false;
+              }
+              safe.tmuxCreateCLI(tmuxSession, sessRow.project_path, sessRow.cli_type || 'claude', resumeArgs);
               // Confirm pane is up before attaching (tmuxCreateCLI uses execFileSync
               // but tmux server may need a beat to register).
               for (let i = 0; i < 10; i++) {

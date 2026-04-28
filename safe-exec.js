@@ -2,6 +2,7 @@
 
 const childProcess = require('child_process');
 const { execFileSync } = childProcess;
+const fs = require('fs');
 const { writeFile: writeFileAsync, unlink: unlinkAsync } = require('fs/promises');
 const { resolve, join } = require('path');
 const os = require('os');
@@ -97,6 +98,52 @@ async function tmuxExists(name) {
     /* any tmux error (session not found, server not running) means session doesn't exist */
     return false;
   }
+}
+
+// Build the per-CLI args to resume an existing session. Single source of truth
+// for both explicit resume (POST /api/sessions/:id/resume) and the auto-respawn
+// path in ws-terminal.js — those two MUST behave identically. Returns
+// { args, missing } where `missing: true` means we expected a session file
+// to exist for resume but it doesn't (caller should refuse to spawn rather
+// than silently start a fresh session keyed under the same workbench row).
+function buildResumeArgs(session, projectPath) {
+  const cliType = session.cli_type || 'claude';
+  const sessionId = session.id;
+
+  // Temporary IDs are pre-resume by definition (session was just created and
+  // has no JSONL yet) — fresh launch is correct.
+  if (sessionId.startsWith('new_') || sessionId.startsWith('t_')) {
+    return { args: [], missing: false };
+  }
+
+  if (cliType === 'claude') {
+    // For Claude the workbench session id IS the JSONL filename. Refuse to
+    // spawn if the file is gone (e.g., wiped /data after a rebuild without
+    // restored backup). Otherwise --resume <id> is required so a respawn
+    // continues writing into the same JSONL the workbench is tracking.
+    const jsonlPath = join(findSessionsDir(projectPath), `${sessionId}.jsonl`);
+    if (!fs.existsSync(jsonlPath)) {
+      return { args: null, missing: true, expectedPath: jsonlPath };
+    }
+    return { args: ['--resume', sessionId], missing: false };
+  }
+
+  if (cliType === 'gemini') {
+    // Gemini doesn't support resume-by-ID reliably — fresh launch reads its
+    // own state files and reconstructs context from the project. cli_session_id
+    // is not used here. Same behavior as routes.js previously had.
+    return { args: [], missing: false };
+  }
+
+  if (cliType === 'codex') {
+    // Codex resumes via its rollout id (codex --session-id), stored as
+    // cli_session_id in the workbench DB. If we don't have one yet, launch
+    // fresh — codex will record a rollout on first run.
+    const cliSessId = session.cli_session_id;
+    return { args: cliSessId ? ['resume', cliSessId] : [], missing: false };
+  }
+
+  return { args: [], missing: false };
 }
 
 function tmuxCreateCLI(sessionName, cwd, cliType, args = []) {
@@ -337,6 +384,7 @@ module.exports = {
   claudeExecAsync,
   tmuxExecAsync,
   tmuxExists,
+  buildResumeArgs,
   tmuxCreateCLI,
   tmuxCreateClaude,
   tmuxCreateGemini,
