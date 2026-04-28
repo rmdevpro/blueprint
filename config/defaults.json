@@ -24,5 +24,21 @@
   },
   "debug": {
     "tabSwitching": false
+  },
+  "embeddings": {
+    "providers": {
+      "huggingface": {
+        "url": "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction",
+        "model": "hf-free"
+      },
+      "gemini": {
+        "url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "model": "gemini-embedding-001"
+      },
+      "openai": {
+        "url": "https://api.openai.com/v1",
+        "model": "text-embedding-3-small"
+      }
+    }
   }
 }

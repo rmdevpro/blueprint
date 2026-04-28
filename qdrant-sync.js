@@ -17,6 +17,7 @@ const { createHash } = require('crypto');
 const logger = require('./logger');
 const db = require('./db');
 const safe = require('./safe-exec');
+const config = require('./config');
 
 // ── Configuration ──────────────────────────────────────────────────────────
 
@@ -70,6 +71,14 @@ function _readCodexKey() {
   } catch { return ''; }
 }
 
+// Provider URLs and model identifiers live in config/defaults.json under
+// `embeddings.providers.<name>`. Hot-reloads via the config module, so a
+// vendor endpoint move (HF moved theirs in April 2025) is fixed by editing
+// the config file rather than the code.
+function _providerCfg(name) {
+  return config.get(`embeddings.providers.${name}`, {});
+}
+
 function getEmbeddingConfig() {
   const provider = _parseSetting('vector_embedding_provider', 'huggingface');
 
@@ -84,12 +93,14 @@ function getEmbeddingConfig() {
         || process.env.GEMINI_API_KEY
         || process.env.GOOGLE_API_KEY
         || '';
-      return { url: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-embedding-001', key };
+      const c = _providerCfg('gemini');
+      return { url: c.url, model: c.model, key };
     }
     case 'openai': {
       // Try Codex CLI auth file first, then DB setting (legacy), then env var
       let key = _readCodexKey() || _parseSetting('codex_api_key', '') || process.env.OPENAI_API_KEY || '';
-      return { url: 'https://api.openai.com/v1', model: 'text-embedding-3-small', key };
+      const c = _providerCfg('openai');
+      return { url: c.url, model: c.model, key };
     }
     case 'custom': {
       const url = _parseSetting('vector_custom_url', '');
@@ -99,10 +110,8 @@ function getEmbeddingConfig() {
     case 'huggingface':
     default: {
       const hfToken = process.env.HF_TOKEN || '';
-      // HF deprecated api-inference.huggingface.co (April 2025) and moved
-      // serverless inference behind router.huggingface.co/hf-inference. The
-      // pipeline/feature-extraction suffix is required for embeddings models.
-      return { url: 'https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction', model: 'hf-free', key: hfToken, isHF: true };
+      const c = _providerCfg('huggingface');
+      return { url: c.url, model: c.model, key: hfToken, isHF: true };
     }
   }
 }
@@ -288,13 +297,15 @@ function buildCandidateConfig(overrideKey, overrideValue) {
       const key = overrideKey === 'gemini_api_key'
         ? (overrideValue || '')
         : (_parseSetting('gemini_api_key', '') || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '');
-      return { url: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-embedding-001', key };
+      const c = _providerCfg('gemini');
+      return { url: c.url, model: c.model, key };
     }
     case 'openai': {
       const key = overrideKey === 'codex_api_key'
         ? (overrideValue || '')
         : (_readCodexKey() || _parseSetting('codex_api_key', '') || process.env.OPENAI_API_KEY || '');
-      return { url: 'https://api.openai.com/v1', model: 'text-embedding-3-small', key };
+      const c = _providerCfg('openai');
+      return { url: c.url, model: c.model, key };
     }
     case 'custom': {
       const url = overrideKey === 'vector_custom_url' ? (overrideValue || '') : _parseSetting('vector_custom_url', '');
@@ -304,10 +315,8 @@ function buildCandidateConfig(overrideKey, overrideValue) {
     case 'huggingface':
     default: {
       const hfToken = process.env.HF_TOKEN || '';
-      // HF deprecated api-inference.huggingface.co (April 2025) and moved
-      // serverless inference behind router.huggingface.co/hf-inference. The
-      // pipeline/feature-extraction suffix is required for embeddings models.
-      return { url: 'https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction', model: 'hf-free', key: hfToken, isHF: true };
+      const c = _providerCfg('huggingface');
+      return { url: c.url, model: c.model, key: hfToken, isHF: true };
     }
   }
 }
