@@ -157,17 +157,24 @@ handlers.file_delete = async (args) => {
 handlers.file_grep = async (args) => {
   require_(args, 'pattern');
   const ctx = args.context_lines || 2;
-  const grepArgs = ['-rn', '--color=never', `-C${ctx}`];
+  // -m 50: cap matches per file. Without this a common pattern like
+  // "deployment" overflows execSync's maxBuffer in seconds on a busy
+  // workspace. We post-slice to 200 lines anyway, so matches beyond
+  // that aren't useful.
+  const grepArgs = ['-rn', '--color=never', `-C${ctx}`, '-m', '50'];
   if (args.file_type) grepArgs.push(`--include=*.${args.file_type}`);
   grepArgs.push('--', safe.shellEscape(args.pattern), safe.shellEscape(WORKSPACE));
   try {
     const out = execSync(`grep ${grepArgs.join(' ')}`, {
-      encoding: 'utf-8', timeout: 10000, maxBuffer: 1024 * 1024,
+      encoding: 'utf-8', timeout: 10000, maxBuffer: 16 * 1024 * 1024,
     }).trim();
     const lines = out.split('\n').slice(0, 200);
     return { pattern: args.pattern, matches: lines.map(l => l.replace(WORKSPACE + '/', '')) };
   } catch (e) {
     if (e.status === 1) return { pattern: args.pattern, matches: [] };
+    if (e.code === 'ENOBUFS') {
+      throw new ToolError('grep output exceeded 16 MB — narrow your pattern or use file_type filter', 413);
+    }
     throw e;
   }
 };
