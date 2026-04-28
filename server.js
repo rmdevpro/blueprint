@@ -282,6 +282,10 @@ if (require.main === module) {
           if (codexKey) {
             try { process.env.OPENAI_API_KEY = JSON.parse(codexKey); } catch { process.env.OPENAI_API_KEY = codexKey; }
           }
+          const hfKey = db.getSetting('huggingface_api_key', '');
+          if (hfKey) {
+            try { process.env.HF_TOKEN = JSON.parse(hfKey); } catch { process.env.HF_TOKEN = hfKey; }
+          }
         } catch (err) {
           logger.warn('Failed to load API keys from settings', { module: 'server', err: err.message });
         }

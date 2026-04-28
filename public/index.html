@@ -594,7 +594,7 @@
 
       <div class="settings-group">
         <h3>API Keys</h3>
-        <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px">API keys for Gemini and Codex. Claude uses OAuth (<code>/login</code> in a session). Keys are passed to CLI sessions automatically.</p>
+        <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px">API keys for Gemini, Codex, and HuggingFace. Claude uses OAuth (<code>/login</code> in a session). Keys are passed to CLI sessions automatically; HuggingFace is used for the embeddings provider.</p>
         <div class="setting-row">
           <label>Gemini API Key</label>
           <input id="setting-gemini-key" type="password" placeholder="Enter key..." style="flex:1;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace"
@@ -604,6 +604,11 @@
           <label>OpenAI / Codex API Key</label>
           <input id="setting-codex-key" type="password" placeholder="Enter key..." style="flex:1;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace"
             onchange="saveSetting('codex_api_key', this.value, this)">
+        </div>
+        <div class="setting-row">
+          <label>HuggingFace API Key</label>
+          <input id="setting-huggingface-key" type="password" placeholder="Enter key..." style="flex:1;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace"
+            onchange="saveSetting('huggingface_api_key', this.value, this)">
         </div>
       </div>
 
@@ -3781,6 +3786,7 @@ build/**</textarea>
         if (s.font_family) document.getElementById('setting-font-family').value = s.font_family;
         if (s.gemini_api_key) document.getElementById('setting-gemini-key').value = s.gemini_api_key;
         if (s.codex_api_key) document.getElementById('setting-codex-key').value = s.codex_api_key;
+        if (s.huggingface_api_key) document.getElementById('setting-huggingface-key').value = s.huggingface_api_key;
       } catch {}
       // Global CLAUDE.md now viewed via file tab (read-only) — no textarea to load
       loadMcpServers();

@@ -109,7 +109,7 @@ function getEmbeddingConfig() {
     }
     case 'huggingface':
     default: {
-      const hfToken = process.env.HF_TOKEN || '';
+      const hfToken = _parseSetting('huggingface_api_key', '') || process.env.HF_TOKEN || '';
       const c = _providerCfg('huggingface');
       return { url: c.url, model: c.model, key: hfToken, isHF: true };
     }
@@ -289,6 +289,7 @@ function buildCandidateConfig(overrideKey, overrideValue) {
   if (overrideKey === 'vector_embedding_provider') provider = overrideValue;
   else if (overrideKey === 'gemini_api_key') provider = 'gemini';
   else if (overrideKey === 'codex_api_key') provider = 'openai';
+  else if (overrideKey === 'huggingface_api_key') provider = 'huggingface';
   else if (overrideKey === 'vector_custom_url' || overrideKey === 'vector_custom_key') provider = 'custom';
   else provider = _parseSetting('vector_embedding_provider', 'huggingface');
 
@@ -314,7 +315,9 @@ function buildCandidateConfig(overrideKey, overrideValue) {
     }
     case 'huggingface':
     default: {
-      const hfToken = process.env.HF_TOKEN || '';
+      const hfToken = overrideKey === 'huggingface_api_key'
+        ? (overrideValue || '')
+        : (_parseSetting('huggingface_api_key', '') || process.env.HF_TOKEN || '');
       const c = _providerCfg('huggingface');
       return { url: c.url, model: c.model, key: hfToken, isHF: true };
     }
@@ -328,7 +331,9 @@ function buildCandidateConfig(overrideKey, overrideValue) {
 const VALIDATE_TIMEOUT_MS = 8000;
 async function validateProviderConfig(cfg) {
   try {
-    if (!cfg.key && !cfg.isHF) {
+    if (!cfg.key) {
+      // Both OpenAI-compat providers and HF require a key now (HF moved to
+      // router.huggingface.co which 401s without auth — see issue thread).
       return { ok: false, error: `No API key configured for ${cfg.model || 'provider'}` };
     }
     await Promise.race([

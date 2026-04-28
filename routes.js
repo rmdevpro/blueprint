@@ -1172,8 +1172,8 @@ function registerCoreRoutes(
     // so a bad key doesn't leave the runtime silently broken. Skip validation when
     // the user is clearing the setting (empty value) — that's a deliberate reset.
     const VALIDATED_KEYS = new Set([
-      'gemini_api_key', 'codex_api_key', 'vector_embedding_provider',
-      'vector_custom_url', 'vector_custom_key',
+      'gemini_api_key', 'codex_api_key', 'huggingface_api_key',
+      'vector_embedding_provider', 'vector_custom_url', 'vector_custom_key',
     ]);
     if (VALIDATED_KEYS.has(key) && value) {
       const qdrant = require('./qdrant-sync');
@@ -1204,6 +1204,10 @@ function registerCoreRoutes(
       registerCodexProvider().catch(err =>
         logger.warn('registerCodexProvider after codex_api_key save failed', { module: 'routes', err: err.message })
       );
+    }
+    if (key === 'huggingface_api_key') {
+      // qdrant-sync's HF embedding provider reads process.env.HF_TOKEN
+      process.env.HF_TOKEN = value || '';
     }
 
     if (key === 'keepalive_mode') {
@@ -1246,7 +1250,7 @@ function registerCoreRoutes(
     if ([
       'vector_embedding_provider',
       'vector_custom_url', 'vector_custom_key',
-      'gemini_api_key', 'codex_api_key',
+      'gemini_api_key', 'codex_api_key', 'huggingface_api_key',
     ].includes(key)) {
       const qdrant = require('./qdrant-sync');
       qdrant.restart().catch(err =>
