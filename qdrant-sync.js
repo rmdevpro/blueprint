@@ -79,8 +79,13 @@ function _providerCfg(name) {
   return config.get(`embeddings.providers.${name}`, {});
 }
 
+function getEmbeddingProvider() {
+  return _parseSetting('vector_embedding_provider', 'none');
+}
+
 function getEmbeddingConfig() {
-  const provider = _parseSetting('vector_embedding_provider', 'huggingface');
+  const provider = getEmbeddingProvider();
+  if (provider === 'none') return { provider: 'none' };
 
   switch (provider) {
     case 'gemini': {
@@ -976,6 +981,13 @@ async function start() {
   if (_running || _starting) return;
   _starting = true;
   try {
+    // Embedding provider explicitly disabled — skip without warning.
+    if (getEmbeddingProvider() === 'none') {
+      logger.info('Vector sync disabled (vector_embedding_provider = "none")', { module: 'qdrant-sync' });
+      _starting = false;
+      return;
+    }
+
     // Check if Qdrant is reachable (with bounded inline retry for cold-start race)
     if (!(await _waitForQdrant())) {
       logger.warn('Qdrant not available after inline retries — scheduling background re-attempt', { module: 'qdrant-sync' });
@@ -1066,6 +1078,11 @@ async function restart() {
 }
 
 async function search(query, collections = null, limit = 10) {
+  if (getEmbeddingProvider() === 'none') {
+    const err = new Error('Vector search is disabled. Configure an embedding provider in Settings → Vector Search to enable semantic search.');
+    err.code = 'EMBEDDINGS_DISABLED';
+    throw err;
+  }
   if (!(await qdrantHealthy())) throw new Error('Qdrant not available');
 
   // Search specified collections (default: all enabled)
@@ -1146,4 +1163,4 @@ async function status() {
   return { available: true, running: _running, url: QDRANT_URL, collections };
 }
 
-module.exports = { start, stop, restart, search, status, embed, qdrantHealthy, reindexCollection, buildCandidateConfig, validateProviderConfig };
+module.exports = { start, stop, restart, search, status, embed, qdrantHealthy, reindexCollection, buildCandidateConfig, validateProviderConfig, getEmbeddingProvider };

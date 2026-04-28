@@ -1150,7 +1150,7 @@ function registerCoreRoutes(
       keepalive_mode: 'always',
       keepalive_idle_minutes: 30,
       oauth_detection: { claude: true, gemini: false, codex: false },
-      vector_embedding_provider: 'huggingface',
+      vector_embedding_provider: 'none',
       vector_custom_url: '',
       vector_custom_key: '',
       vector_collection_documents: { enabled: true, dims: 384, patterns: ['*.md', '*.txt', '*.pdf', '*.rst', '*.adoc'] },
@@ -1176,12 +1176,16 @@ function registerCoreRoutes(
       'vector_embedding_provider', 'vector_custom_url', 'vector_custom_key',
     ]);
     if (VALIDATED_KEYS.has(key) && value) {
-      const qdrant = require('./qdrant-sync');
-      const cfg = qdrant.buildCandidateConfig(key, value);
-      const result = await qdrant.validateProviderConfig(cfg);
-      if (!result.ok) {
-        logger.warn('Settings validation failed', { module: 'routes', settingKey: key, provider: cfg.model, err: result.error });
-        return res.status(400).json({ error: `API key validation failed: ${result.error}`, provider: cfg.model });
+      // 'none' means "disable embeddings entirely" — no live config to validate
+      const skipValidation = key === 'vector_embedding_provider' && value === 'none';
+      if (!skipValidation) {
+        const qdrant = require('./qdrant-sync');
+        const cfg = qdrant.buildCandidateConfig(key, value);
+        const result = await qdrant.validateProviderConfig(cfg);
+        if (!result.ok) {
+          logger.warn('Settings validation failed', { module: 'routes', settingKey: key, provider: cfg.model, err: result.error });
+          return res.status(400).json({ error: `API key validation failed: ${result.error}`, provider: cfg.model });
+        }
       }
     }
 
@@ -1283,7 +1287,10 @@ function registerCoreRoutes(
       } catch { /* no auth file */ }
     }
 
-    res.json({ gemini: hasGemini, openai: hasOpenai });
+    // HuggingFace: env var or DB setting
+    const hasHuggingface = !!process.env.HF_TOKEN || !!db.getSetting('huggingface_api_key', '');
+
+    res.json({ gemini: hasGemini, openai: hasOpenai, huggingface: hasHuggingface });
   });
 
   // ── Logs (#181) ───────────────────────────────────────────────────────────

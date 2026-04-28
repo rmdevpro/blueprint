@@ -695,7 +695,8 @@
         <div class="setting-row">
           <label>Provider</label>
           <select id="setting-vector-provider" onchange="onVectorProviderChange(this.value)">
-            <option value="huggingface">Hugging Face Free</option>
+            <option value="none">None — disabled</option>
+            <option value="huggingface">Hugging Face</option>
             <option value="gemini">Gemini</option>
             <option value="openai">OpenAI</option>
             <option value="custom">Custom</option>
@@ -3813,22 +3814,26 @@ build/**</textarea>
         }
 
         // Provider
-        const provider = s.vector_embedding_provider || 'huggingface';
+        const provider = s.vector_embedding_provider || 'none';
         const providerEl = document.getElementById('setting-vector-provider');
         providerEl.value = provider;
-        // Check CLI credentials for embedding providers
+        // Disable provider options whose credentials aren't configured.
+        // 'none' and 'custom' are always available; everything else needs a key.
         try {
           const credRes = await fetch('/api/cli-credentials');
           const creds = await credRes.json();
-          const geminiOpt = providerEl.querySelector('option[value="gemini"]');
-          const openaiOpt = providerEl.querySelector('option[value="openai"]');
-          if (geminiOpt) {
-            geminiOpt.disabled = !creds.gemini;
-            if (!creds.gemini) geminiOpt.textContent = 'Gemini (no credentials — authenticate in a Gemini session first)';
-          }
-          if (openaiOpt) {
-            openaiOpt.disabled = !creds.openai;
-            if (!creds.openai) openaiOpt.textContent = 'OpenAI (no credentials — authenticate in a Codex session first)';
+          const cred = { gemini: creds.gemini, openai: creds.openai, huggingface: creds.huggingface };
+          const labels = {
+            gemini: ['Gemini', 'Gemini (no key — set in Settings → API Keys)'],
+            openai: ['OpenAI', 'OpenAI (no key — set in Settings → API Keys)'],
+            huggingface: ['Hugging Face', 'Hugging Face (no key — set in Settings → API Keys)'],
+          };
+          for (const [name, [okLabel, missLabel]] of Object.entries(labels)) {
+            const opt = providerEl.querySelector(`option[value="${name}"]`);
+            if (!opt) continue;
+            const have = !!cred[name];
+            opt.disabled = !have;
+            opt.textContent = have ? okLabel : missLabel;
           }
         } catch {}
         document.getElementById('vector-custom-fields').style.display = provider === 'custom' ? '' : 'none';

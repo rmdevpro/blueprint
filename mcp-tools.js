@@ -27,6 +27,28 @@ function validateTaskId(taskId) {
   return taskId != null && Number.isFinite(Number(taskId));
 }
 
+// Wrap qdrant.search so MCP callers get a helpful structured response when the
+// embeddings provider is disabled or qdrant isn't reachable, instead of a
+// generic error. Used by every search_* action across files/sessions.
+async function _semanticSearch(collections, query, limit) {
+  const qdrant = require('./qdrant-sync');
+  if (qdrant.getEmbeddingProvider() === 'none') {
+    return {
+      configured: false,
+      message: 'Vector search is disabled. Open Workbench Settings → Vector Search and pick an embedding provider (Gemini, OpenAI, HuggingFace, or Custom) — a matching API key in Settings → API Keys is required.',
+      results: [],
+    };
+  }
+  try {
+    return await qdrant.search(query, collections, limit);
+  } catch (err) {
+    if (err.code === 'EMBEDDINGS_DISABLED') {
+      return { configured: false, message: err.message, results: [] };
+    }
+    throw err;
+  }
+}
+
 /**
  * Resolve a workspace-relative path and validate it stays within the workspace.
  */
@@ -113,14 +135,12 @@ async function handleFiles(args, res) {
     case 'search_documents': {
       if (!args.query || args.query.length < 2)
         return res.status(400).json({ error: 'query must be at least 2 characters' });
-      const qdrant = require('./qdrant-sync');
-      return await qdrant.search(args.query, ['documents'], args.limit || 10);
+      return await _semanticSearch(['documents'], args.query, args.limit || 10);
     }
     case 'search_code': {
       if (!args.query || args.query.length < 2)
         return res.status(400).json({ error: 'query must be at least 2 characters' });
-      const qdrant = require('./qdrant-sync');
-      return await qdrant.search(args.query, ['code'], args.limit || 10);
+      return await _semanticSearch(['code'], args.query, args.limit || 10);
     }
     default:
       return res.status(400).json({ error: `invalid action: ${args.action}` });
@@ -303,10 +323,9 @@ async function handleSessions(args, res) {
     case 'search_semantic': {
       if (!args.query || args.query.length < 2)
         return res.status(400).json({ error: 'query must be at least 2 characters' });
-      const qdrant = require('./qdrant-sync');
       const cliFilter = args.cli ? args.cli.split(',').map(c => c.trim()) : ['claude', 'gemini', 'codex'];
       const collections = cliFilter.map(c => c + '_sessions');
-      return await qdrant.search(args.query, collections, args.limit || 10);
+      return await _semanticSearch(collections, args.query, args.limit || 10);
     }
     // MCP server management
     case 'mcp_list_available':
