@@ -1,9 +1,7 @@
 .git
 node_modules
 docs
-tests
 test-results
-scripts
 docker-compose*.yml
 LICENSE
 *.png
