@@ -2544,22 +2544,29 @@ build/**</textarea>
           // direct link the user can open in a new browser tab. Default
           // browser behavior was a tiny broken-image icon with no clue why.
           const rawUrl = `/api/file-raw?path=${encodeURIComponent(filePath)}`;
-          paneEl.innerHTML = `<div class="image-viewer"><img src="${rawUrl}"></div>`;
-          const imgEl = paneEl.querySelector('img');
+          const wrapper = document.createElement('div');
+          wrapper.className = 'image-viewer';
+          const imgEl = document.createElement('img');
+          // Attach error/load listeners BEFORE setting src so the listeners
+          // fire even if the request returns synchronously from the browser
+          // cache.
           imgEl.addEventListener('error', async () => {
             let detail = 'image failed to load';
             try {
               const r = await fetch(rawUrl);
               if (!r.ok) detail = `HTTP ${r.status} — ${(await r.text()).slice(0, 200)}`;
-              else detail = `Browser declined to render the response (Content-Type: ${r.headers.get('content-type')}, ${r.headers.get('content-length')} bytes). The file may be a corrupt or unsupported image.`;
+              else detail = `Browser declined to render the response (Content-Type: ${r.headers.get('content-type')}, ${r.headers.get('content-length')} bytes). The file may be a corrupt or unsupported image format.`;
             } catch (fetchErr) { detail = `network error: ${fetchErr.message}`; }
             paneEl.innerHTML = `<div style="padding:24px;color:var(--danger);font-size:13px;line-height:1.6">
               <div style="margin-bottom:8px;font-weight:bold">Couldn't display image</div>
               <div style="margin-bottom:8px">${escHtml(detail)}</div>
-              <div><a href="${rawUrl}" target="_blank" rel="noopener" style="color:var(--accent)">Open raw bytes in a new tab</a></div>
+              <div><a href="${rawUrl}" target="_blank" rel="noopener" style="color:var(--accent)">Open raw bytes in a new browser tab</a></div>
               <div style="margin-top:8px;color:var(--text-muted);font-size:11px">Path: ${escHtml(filePath)}</div>
             </div>`;
           });
+          imgEl.src = rawUrl;
+          wrapper.appendChild(imgEl);
+          paneEl.appendChild(wrapper);
         } else if (editorType === 'pdf') {
           paneEl.innerHTML = `<iframe class="pdf-viewer" src="/api/file-raw?path=${encodeURIComponent(filePath)}"></iframe>`;
         } else {
