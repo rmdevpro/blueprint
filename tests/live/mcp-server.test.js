@@ -3,16 +3,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('child_process');
+const fs = require('fs');
+
+const _IN_CONTAINER = fs.existsSync('/.dockerenv');
+const CONTAINER = process.env.TEST_CONTAINER || 'workbench-test';
 
 test('MCS-01: initialize returns protocol version', async () => {
   return new Promise((resolve, reject) => {
-    const cp = spawn('docker', [
-      'exec',
-      '-i',
-      'workbench-test',
-      'node',
-      '/app/mcp-server.js',
-    ]);
+    // Inside the container: spawn node directly. Outside: docker exec wrapper.
+    const cp = _IN_CONTAINER
+      ? spawn('node', ['/app/mcp-server.js'])
+      : spawn('docker', ['exec', '-i', CONTAINER, 'node', '/app/mcp-server.js']);
     let out = '';
     const timer = setTimeout(() => {
       cp.kill();

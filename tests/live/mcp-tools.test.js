@@ -12,7 +12,7 @@ test('MCP-01: GET /api/mcp/tools lists 44 flat tools', async () => {
   assert.equal(r.data.tools.length, 44, `expected 44 tools, got ${r.data.tools.length}`);
   // Spot-check that the names are flat (no double-prefix) and grouped by domain
   for (const name of r.data.tools) {
-    assert.ok(/^(file|session|project|task)_/.test(name), `tool name not flat: ${name}`);
+    assert.ok(/^(file|session|project|task|log)_/.test(name), `tool name not flat: ${name}`);
   }
 });
 

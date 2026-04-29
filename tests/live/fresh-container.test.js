@@ -39,9 +39,13 @@ test('ENG-13: health returns 200', async () => {
 });
 
 test('ENG-05: no hardcoded secrets in application code', () => {
+  // Look for API_KEY=<literal-secret-looking-value> rather than every
+  // occurrence of API_KEY=. Previous version false-positived on
+  // `export GEMINI_API_KEY=${shellEscape(process.env.GEMINI_API_KEY)}`
+  // in safe-exec.js — that's a plumbing line, not a hardcoded secret.
   const count = parseInt(
     dockerExec(
-      "grep -rn 'API_KEY=' /app/*.js 2>/dev/null | grep -v 'api_key_env' | grep -v 'node_modules' | wc -l",
+      `grep -rnE "API_KEY=['\\\"]?[a-zA-Z0-9_-]{12,}['\\\"]?" /app/*.js 2>/dev/null | grep -v 'process.env' | grep -v 'shellEscape' | grep -v 'api_key_env' | grep -v 'node_modules' | wc -l`,
     ) || '0',
   );
   assert.equal(count, 0, 'No hardcoded API keys should exist');
