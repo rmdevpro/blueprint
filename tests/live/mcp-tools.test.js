@@ -33,8 +33,9 @@ test('MCP-06: task_add increments DB row count and task_list surfaces it', async
     `DB task count must increment by 1 after task_add (before: ${countBefore}, after: ${countAfter})`,
   );
 
+  // task_list was consolidated into task_find in 980bb6c
   const listed = await post('/api/mcp/call', {
-    tool: 'task_list',
+    tool: 'task_find',
     args: { folder_path: '/' },
   });
   assert.ok(listed.data.result.tasks.some((t) => t.title === 'mcp-task-test'));
