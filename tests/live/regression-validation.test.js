@@ -52,8 +52,8 @@ test('REGVAL: malformed input regression — overlong names rejected', async () 
   );
 
   // Overlong session name must be rejected
-  const longName = 'Y'.repeat(5000);
-  const r2 = await post('/api/sessions', { project: 'test', name: longName });
+  const longSessName = 'Y'.repeat(5000);
+  const r2 = await post('/api/sessions', { project: 'test', name: longSessName });
   assert.ok(
     r2.status >= 400,
     `Overlong session name (5000 chars) must be rejected, got ${r2.status}`,
