@@ -2521,7 +2521,7 @@ Context threshold, compaction cycle, and autocompaction stress tests.
 
 ### NF-19: Settings Shows API Keys Section
 **Action:** Open settings.
-**Verify:** "API Keys" heading exists. Gemini, Codex, and Deepgram fields are present.
+**Verify:** "API Keys" heading exists. Gemini, Codex, and HuggingFace fields are present.
 
 ### NF-20: Settings Old Quorum Fields Gone
 **Action:** Open settings.
@@ -2534,8 +2534,8 @@ Context threshold, compaction cycle, and autocompaction stress tests.
 ### NF-22: Settings Save Codex Key
 **Action:** Same as NF-21 for Codex field.
 
-### NF-23: Settings Save Deepgram Key
-**Action:** Same as NF-21 for Deepgram field.
+### NF-23: Settings Save HuggingFace Key
+**Action:** Same as NF-21 for HuggingFace field (`#setting-huggingface-key`).
 
 ### NF-24: Settings Keys Load on Open
 **Action:** Save all three keys via API. Open settings modal.

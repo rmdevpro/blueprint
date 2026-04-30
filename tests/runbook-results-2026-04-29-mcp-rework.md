@@ -953,13 +953,13 @@
 
 ---
 
-### NF-23: Settings Save Deepgram Key
+### NF-23: Settings Save HuggingFace Key
 **Phase:** 8
-**Action:** Looked for `#setting-deepgram-key` and any input matching /deep|gram/ in any settings tab.
-**Verify:** No Deepgram field exists in any tab.
-**Result:** FAIL
-**Issue:** #234
-**Notes:** Deepgram field removed from Settings (voice feature removed per REG-VOICE-01). Runbook NF-23 references a removed feature. The replacement HuggingFace key save flow is already covered by VEC-09. No code regression — runbook needs update (issue #234).
+**Action:** Re-verified against the corrected runbook (commit pending — Deepgram→HuggingFace) by cross-reference to VEC-09 (PUT valid HF key returns 200, cli-credentials.huggingface=true).
+**Verify:** HuggingFace API key save flow operational; field `#setting-huggingface-key` present (per NF-19 above) and saves end-to-end.
+**Result:** PASS
+**Issue:** #234 (closed)
+**Verified:** 2026-04-30. Runbook drift fixed; the test now exercises the field that actually exists.
 
 ---
 
