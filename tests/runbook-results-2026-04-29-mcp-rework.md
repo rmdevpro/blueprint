@@ -1135,11 +1135,11 @@
 
 ### VEC-01: Default Provider on Fresh `/data`
 **Phase:** 9
-**Action:** `curl http://localhost:7861/api/settings` → check `vector_embedding_provider`
-**Verify:** Expected `"none"` (fresh-install default). Actual: `"gemini"` — irina is a long-running stateful container with provider configured to gemini.
-**Result:** FAIL
-**Issue:** #232
-**Notes:** Precondition mismatch (irina stateful, not fresh /data) per issue #232 — not a code regression. The settings field exists and is set to a valid enum value; the system invariant holds. A meaningful re-run of this fresh-default check needs a freshly-provisioned host.
+**Action:** Re-verified on fresh HF Space deploy (aristotle9/agentic-workbench-test, sha 6c3b92fc, no persistent storage). `curl /api/settings` → check `vector_embedding_provider`.
+**Verify:** `vector_embedding_provider === "none"` on fresh /data.
+**Result:** PASS
+**Issue:** #232 (closed)
+**Verified:** 2026-04-30 against the HF test Space's fresh-deploy state. Value was exactly `"none"`.
 
 ---
 
@@ -1154,11 +1154,11 @@
 
 ### VEC-03: Fresh Deploy Logs One INFO, Zero ERRORs
 **Phase:** 9
-**Action:** `curl 'http://localhost:7861/api/logs?module=qdrant-sync&since=5m&limit=20'`
-**Verify:** Expected exactly one INFO `"Vector sync disabled"` AND zero ERROR/WARN entries in last 5m. Actual: 0 rows total (steady-state, no recent restart cycle).
-**Result:** FAIL
-**Issue:** #232
-**Notes:** Precondition mismatch (no fresh deploy / no recent restart on irina) per issue #232 — not a code regression. The endpoint works; the test specifically verifies fresh-deploy log behavior which can't be observed mid-run on a long-running container. The 0-ERROR sub-clause is satisfied.
+**Action:** Re-verified on fresh HF Space deploy. After Space reached RUNNING, queried `/api/logs?module=qdrant-sync&since=10m&limit=30`.
+**Verify:** Exactly one INFO `"Vector sync disabled (vector_embedding_provider = "none")"` AND zero ERROR/WARN.
+**Result:** PASS
+**Issue:** #232 (closed)
+**Verified:** 2026-04-30. 1 row total, 1 INFO match, 0 ERROR/WARN.
 
 ---
 
@@ -1191,11 +1191,11 @@
 
 ### VEC-07: Switch to `gemini` Provider Starts Sync, No Per-File Errors
 **Phase:** 9
-**Action:** PUT vector_embedding_provider=gemini, wait 18s, GET /api/logs?module=qdrant-sync&since=2m&limit=30.
-**Verify:** Exactly one "Qdrant sync starting", four "Created Qdrant collection" (documents/claude_sessions/gemini_sessions/codex_sessions), one "Qdrant initial sync complete", ERROR count == 0.
-**Result:** FAIL
-**Issue:** #232
-**Notes:** PUT itself succeeded (`{saved:true}`, HTTP=200, 288ms). After 18s post-switch: "Qdrant sync starting"=1 ✓, "Created Qdrant collection"=5 (5 collections actually created — documents/code/claude_sessions/gemini_sessions/codex_sessions; runbook's "4" is stale, since 'code' is now a real collection that NF-52 confirms is healthy with 3483 points), ERROR count=0 ✓. The "Qdrant initial sync complete" line was NOT observed in 18s — irina has 7333 docs + 3483 code chunks + 11k+ session points to embed; on a long-running container, "initial sync complete" is buried hours/days back in the qdrant-sync log and a fresh switch must re-embed the corpus before that line reappears. Same precondition class as VEC-01/03 (issue #232) — fresh-deploy/wait-for-fresh-event signal not observable in a reasonable window on irina. The new-cycle invariants that ARE observable (start, collections created, zero errors) all pass.
+**Action:** Re-verified on fresh HF Space deploy with valid Gemini key saved. PUT `vector_embedding_provider=gemini`, wait 18s, GET `/api/logs?module=qdrant-sync&since=2m&limit=30`.
+**Verify:** Exactly one "Qdrant sync starting", ≥4 "Created Qdrant collection", one "Qdrant initial sync complete", 0 ERROR/WARN.
+**Result:** PASS
+**Issue:** #232 (closed)
+**Verified:** 2026-04-30. start=1, created=5 (documents/code/claude_sessions/gemini_sessions/codex_sessions — runbook's "4" is stale; `code` is a real collection now), complete=1, errors=0. Fresh corpus is small enough that "initial sync complete" landed within 18s.
 
 ---
 
