@@ -28,10 +28,15 @@ RUN curl -fsSL https://github.com/qdrant/qdrant/releases/download/v1.17.1/qdrant
 RUN npm install -g @anthropic-ai/claude-code @google/gemini-cli @openai/codex
 
 # Reuse the existing 'node' user (UID 1000) — rename to workbench, home at /data
+# Also hand ownership of the CLI packages to workbench so npm auto-updates work.
 RUN usermod -l workbench -d /data -m node && \
     groupmod -n workbench node && \
     mkdir -p /data/.claude /data/.workbench /data/workspace && \
-    chown -R workbench:workbench /data
+    chown -R workbench:workbench /data && \
+    chown -R workbench:workbench \
+        /usr/local/lib/node_modules/@anthropic-ai \
+        /usr/local/lib/node_modules/@google \
+        /usr/local/lib/node_modules/@openai
 
 # Copy and install app dependencies
 WORKDIR /app
