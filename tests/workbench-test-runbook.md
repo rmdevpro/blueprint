@@ -5019,6 +5019,35 @@ for (const p of projects) assert(trust[p] === 'TRUST_FOLDER');
 **Pre-fix behavior:** Only `CLAUDE_HOME/settings.json` was watched; edits to `~/.gemini/settings.json` or `~/.codex/config.toml` required server restart to be picked up.
 
 ---
+### REG-212: qdrant upsertPoints + deletePointsByFilter retry transient failures
+**Issue:** #212 (extends retry coverage from embeds to Qdrant-side calls).
+**Setup:** A workbench with a configured embedding provider and at least one collection that's actively syncing.
+**Steps:**
+1. While a sync is in progress, briefly make Qdrant unreachable — restart the qdrant container, OR mock the Qdrant URL to return 503 / connection-reset for the next request, OR pause the qdrant process for ~3 seconds.
+2. Watch `/api/logs?module=qdrant-sync&since=2m`.
+**Verify:**
+- WARN `Qdrant upsertPoints transient error, retrying` appears with `attempt=1`, `backoffMs=500`. Up to 3 retries (500/1000/2000ms backoff).
+- If qdrant comes back within the retry window, the operation eventually succeeds — NO ERROR is logged.
+- The sync row for the affected file does not wedge.
+**Programmatic verification:** Mock `fetch` to `${QDRANT_URL}/collections/.../points` to throw `{cause:{code:'ECONNRESET'}}` on the first call, succeed on the second. `assert(retryWarnLogged === true && upsertSucceeded === true)`. Same pattern for `deletePointsByFilter` against `/points/delete`.
+**Pre-fix behavior:** Bare `fetch` with no retry — a single Qdrant blip threw `Qdrant upsert failed: …` straight to the caller, the file was marked failed, and the sync row stayed broken until the next bg scan.
+
+---
+### REG-262: Embed retry helper classifies HTTP 5xx + 429 as transient
+**Issue:** #262 (filed earlier this session after a live 503 wedged a file sync).
+**Setup:** A configured embedding provider that can be made to return 503 / 429 (or mocked).
+**Steps:**
+1. Trigger a file sync.
+2. Force the embed provider to return 503 (or 502/504) on the first call. Allow it to succeed on the second.
+3. Watch `/api/logs?module=qdrant-sync&since=2m`.
+**Verify:**
+- WARN `Embedding API transient error, retrying` appears with `attempt=1` AND `status=503` (or whatever 5xx code triggered).
+- The retry succeeds; NO ERROR is logged for this file.
+- Repeat with 429 (rate-limited) — same retry behavior, status=429 in the WARN context.
+**Programmatic verification:** Mock `fetch` to `_embedOnce`'s POST URL to return `{ok:false, status:503, text: async ()=>'Service Unavailable'}` on first call, normal embedding response on the second. `assert(WARN.status === 503 && embedSucceeded === true)`.
+**Pre-fix behavior:** Provider 5xx + 429 were thrown as plain `Error('Embedding API error 503: ...')` with no `.status` field; the retry predicate only checked socket-level `code` values, so the error skipped the retry path entirely. Single un-retried ERROR + wedged sync row (observed in this container as `qdrant-sync File sync error / Embedding API error 503: UNAVAILABLE` on tests/workbench-test-runbook.md at 2026-05-03T19:02:00Z — see #262 body).
+
+---
 ### REG-247: Task list checkbox + index top-aligned, not middle-aligned
 **Issue:** #247 (fixed).
 **Setup:** A task whose title wraps to two or more lines (long title or narrow panel).

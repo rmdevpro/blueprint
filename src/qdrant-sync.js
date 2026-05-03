@@ -209,27 +209,46 @@ async function embedWithConfig(cfg, texts, dims) {
     return out;
   }
 
-  // Retry transient network failures with exponential backoff. The provider
-  // (Gemini in particular) occasionally drops connections via TCP reset under
-  // sustained concurrent load — surfaces as 'fetch failed' / EPIPE /
-  // ECONNRESET / UND_ERR_BODY_TIMEOUT etc. Per-batch isolated reproductions
-  // of the failing data succeed; the failure mode only appears under
-  // concurrent file-watcher-driven load. Retry handles it cleanly.
+  // #212 / #262: retry transient failures via shared helper. Covers both
+  // socket-level errors (EPIPE / ECONNRESET / etc — surface under sustained
+  // concurrent load) and HTTP 5xx + 429 from the provider (provider overload
+  // and rate limits — both retryable per HTTP semantics; previously dropped
+  // straight to ERROR with a wedged sync row).
+  return retryTransient(() => _embedOnce(cfg, texts, dims), 'Embedding API');
+}
+
+// #262: classify HTTP 5xx + 429 as transient alongside socket-level errors.
+// _embedOnce / upsertPoints / deletePointsByFilter all attach response.status
+// to thrown Error objects so this predicate can read it. HTTP 4xx other than
+// 429 stays fatal (bad request, auth, etc — retry won't help).
+function _isTransientError(err) {
+  const code = err?.cause?.code;
+  const status = err?.status;
+  if (code === 'EPIPE' || code === 'ECONNRESET' || code === 'ETIMEDOUT' ||
+      code === 'UND_ERR_SOCKET' || code === 'UND_ERR_BODY_TIMEOUT') return true;
+  if (/fetch failed|socket hang up|network/i.test(err?.message || '')) return true;
+  if (status === 429) return true;
+  if (status >= 500 && status <= 599) return true;
+  return false;
+}
+
+// #212: shared retry-with-backoff helper. Extracted from embedWithConfig so
+// upsertPoints / deletePointsByFilter (the Qdrant-side calls) can also wrap.
+// MAX_ATTEMPTS=4 with 500ms / 1000ms / 2000ms backoff matches the prior
+// embed-only policy. opName labels the WARN entry so log readers can tell
+// embed retries from Qdrant retries.
+async function retryTransient(fn, opName) {
   const MAX_ATTEMPTS = 4;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      return await _embedOnce(cfg, texts, dims);
+      return await fn();
     } catch (err) {
-      const code = err?.cause?.code;
-      const transient =
-        code === 'EPIPE' || code === 'ECONNRESET' || code === 'ETIMEDOUT' ||
-        code === 'UND_ERR_SOCKET' || code === 'UND_ERR_BODY_TIMEOUT' ||
-        /fetch failed|socket hang up|network/i.test(err?.message || '');
-      if (!transient || attempt === MAX_ATTEMPTS) throw err;
-      const backoffMs = 500 * Math.pow(2, attempt - 1); // 500, 1000, 2000
-      logger.warn('Embedding API transient error, retrying', {
+      if (!_isTransientError(err) || attempt === MAX_ATTEMPTS) throw err;
+      const backoffMs = 500 * Math.pow(2, attempt - 1);
+      logger.warn(`${opName} transient error, retrying`, {
         module: 'qdrant-sync', attempt, backoffMs,
-        cause: err?.cause?.message || err.message, code,
+        cause: err?.cause?.message || err.message,
+        code: err?.cause?.code, status: err?.status,
       });
       await new Promise(r => setTimeout(r, backoffMs));
     }
@@ -250,7 +269,10 @@ async function _embedOnce(cfg, texts, dims) {
     });
     if (!response.ok) {
       const body = await response.text();
-      throw new Error(`HF Embedding API error ${response.status}: ${body}`);
+      // #262: attach status so retryTransient can classify HTTP 5xx + 429.
+      const err = new Error(`HF Embedding API error ${response.status}: ${body}`);
+      err.status = response.status;
+      throw err;
     }
     return await response.json();
   }
@@ -274,7 +296,10 @@ async function _embedOnce(cfg, texts, dims) {
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Embedding API error ${response.status}: ${body}`);
+    // #262: attach status so retryTransient can classify HTTP 5xx + 429.
+    const err = new Error(`Embedding API error ${response.status}: ${body}`);
+    err.status = response.status;
+    throw err;
   }
 
   const data = await response.json();
@@ -380,13 +405,23 @@ async function ensureCollection(name, dims) {
 
 async function upsertPoints(collection, points) {
   if (!points.length) return;
-
-  const r = await fetch(`${QDRANT_URL}/collections/${collection}/points`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ points }),
-  });
-  if (!r.ok) throw new Error(`Qdrant upsert failed: ${await r.text()}`);
+  // #212: wrap the Qdrant write in retryTransient so a transient blip on the
+  // qdrant side (restart, OOM kill, brief network failure, 5xx) doesn't wedge
+  // the sync row with a single un-retried ERROR. Same predicate covers
+  // socket-level + HTTP 5xx + 429.
+  return retryTransient(async () => {
+    const r = await fetch(`${QDRANT_URL}/collections/${collection}/points`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ points }),
+    });
+    if (!r.ok) {
+      const body = await r.text();
+      const err = new Error(`Qdrant upsert failed (${r.status}): ${body}`);
+      err.status = r.status;
+      throw err;
+    }
+  }, 'Qdrant upsertPoints');
 }
 
 // Qdrant rejects POST bodies > 32 MiB by default. Batch by serialized request
@@ -412,12 +447,21 @@ async function upsertPointsBatched(collection, points) {
 }
 
 async function deletePointsByFilter(collection, filter) {
-  const r = await fetch(`${QDRANT_URL}/collections/${collection}/points/delete`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filter }),
-  });
-  if (!r.ok) throw new Error(`Qdrant delete failed: ${await r.text()}`);
+  // #212: same retry rationale as upsertPoints — Qdrant blips shouldn't
+  // single-shot wedge the operation.
+  return retryTransient(async () => {
+    const r = await fetch(`${QDRANT_URL}/collections/${collection}/points/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filter }),
+    });
+    if (!r.ok) {
+      const body = await r.text();
+      const err = new Error(`Qdrant delete failed (${r.status}): ${body}`);
+      err.status = r.status;
+      throw err;
+    }
+  }, 'Qdrant deletePointsByFilter');
 }
 
 async function searchPoints(collection, vector, limit = 10, filter = null) {
