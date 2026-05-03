@@ -4869,6 +4869,86 @@ Tests for the user-facing fixes shipped in the canonical branch but not yet in t
 **Pre-fix behavior:** Tasks created via MCP (or another tab) were invisible in the task panel until full page reload — no in-panel refresh control existed.
 
 ---
+### REG-218: OAuth code paste-back delivers via server-side tmux paste, not client WS
+**Issue:** #218 (fixed by `c0aed48`).
+**Setup:** A live Claude session whose terminal needs `/login` re-auth. `${WORKBENCH_URL}` reachable.
+**Steps:**
+1. Send `/login` into the active tab.
+2. The auth modal opens. Click "Authenticate with Claude" — opens auth URL in a new tab.
+3. Wait 60+ seconds before returning to the workbench tab (long enough for the terminal WebSocket to idle-close on the proxy).
+4. Paste the OAuth code into the modal. Click Submit.
+**Verify:** The CLI receives the code and continues past `Paste code here if prompted >`. The submission goes through `POST /api/sessions/:id/send_text` + `POST /api/sessions/:id/send_key {key:"Enter"}` — server-side tmux paste, independent of the client's WS state.
+**Programmatic verification:** `curl -X POST ${WORKBENCH_URL}/api/sessions/<id>/send_text -d '{"text":"abc123"}'` returns `{ok:true}`; `curl ${WORKBENCH_URL}/api/sessions/<id>/send_key -d '{"key":"Enter"}'` returns `{ok:true}`. The pane shows the pasted text + Enter.
+**Pre-fix behavior:** `submitAuthCode()` delivered via `tab.ws.send()`; if the WS had idled-closed (common after 30+ s on the auth tab), the send was silently skipped, modal closed, CLI dangled.
+
+---
+### REG-256: session_read_screen returns the captured pane content
+**Issue:** #256 (verified — code at `mcp-tools.js:425` returns `{ tmux, lines, screen: stdout }`).
+**Setup:** Any live tmux session in the workbench; have its `session_id`.
+**Steps:**
+1. Call MCP `session_read_screen {session_id, lines: 50}`.
+**Verify:** Response object contains a non-empty `screen` field with the visible pane text — not just `{tmux, lines}`.
+**Programmatic verification:** `assert(typeof result.screen === 'string' && result.screen.length > 0)` — covers the bug exactly. Compare against `tmux capture-pane -p -t <tmux> -S -50` for content equality.
+**Pre-fix behavior (older containers):** `{tmux, lines}` only — no screen field — forced orchestrators to fall back to direct `tmux capture-pane` via Bash.
+
+---
+### REG-253: session_send_text declares its size limit in the tool definition
+**Issue:** #253 (fixed).
+**Setup:** Read the tool catalogue (e.g. via MCP introspection or `mcp_list`).
+**Steps:**
+1. Inspect the `session_send_text` tool definition.
+**Verify:**
+- `description` mentions a SIZE LIMIT and the file-pointer recommendation for larger input.
+- The `text` parameter schema has `maxLength: 32768`.
+**Programmatic verification:** `tool.parameters.properties.text.maxLength === 32768` AND `/SIZE LIMIT|maxLength|32768/i.test(tool.description)` AND `/file/i.test(tool.parameters.properties.text.description)`.
+**Pre-fix behavior:** No `maxLength` and no description note — callers discovered the limit at failure time.
+
+---
+### REG-252: session_resume_post_compact tail enforces max_chars cap
+**Issue:** #252 (fixed).
+**Setup:** A Claude session with at least 60 JSONL lines and total transcript >50 KiB.
+**Steps:**
+1. Call MCP `session_resume_post_compact {session_id}` with no `tail_lines` and no `max_chars`.
+2. Call again with `{session_id, tail_lines: 100, max_chars: 8192}`.
+**Verify:**
+- First call returns a result whose injected tail is ≤16384 chars (default cap).
+- Second call returns a result whose injected tail is ≤8192 chars (caller cap honored).
+- The kept lines are the MOST RECENT lines (trim from the start).
+**Programmatic verification:** Find the resume-prompt block, extract the `SESSION_TAIL` substitution range, count chars. `assert(tailChars <= max_chars)`. Confirm the last line of the tail equals the last line of the JSONL on disk.
+**Pre-fix behavior:** No size cap; default `tail_lines: 60` produced ~131k chars on a single call, exceeding the Read tool's max-tokens cap and forcing multi-call file reconstruction.
+
+---
+### REG-254: Context bar denominator reflects the active model's actual context window
+**Issue:** #254 (fixed).
+**Setup:** Live sessions for at least two models with different context windows — e.g. one Claude session on `sonnet` (or `opus[1m]`), one on `haiku`.
+**Steps:**
+1. Call MCP `session_info {session_id}` for the larger-context session.
+2. Repeat for the smaller-context session.
+3. Open each in the UI and read the context bar's "max" denominator.
+**Verify:**
+- Larger model returns `tokens.max_tokens` consistent with `modelMaxTokens(model)` — e.g. `claude-opus-4-7[1m]` → 1000000, `claude-sonnet-4-6` → 200000, `gemini-2.5-pro` → 2000000.
+- Smaller model returns the appropriate smaller cap (e.g. `claude-haiku-4-5-20251001` → 200000).
+- Context bar UI denominator matches `info.tokens.max_tokens` (no longer hardcoded to 200000 for non-Haiku models).
+**Programmatic verification:** `const info = await session_info(...); assert(info.tokens.max_tokens === modelMaxTokens(info.tokens.model))` — hits the same lookup the bar consumes.
+**Pre-fix behavior:** `session-utils.js:841` seeded `tokens.max_tokens = 200000` and the per-CLI helpers never overrode it — the bar overstated fill and fired warning thresholds early on any model with a larger window.
+
+---
+### REG-213: Keepalive backs off + emits single WARN when Claude OAuth is persistently broken
+**Issue:** #213 (fixed).
+**Setup:** A workbench whose `~/.claude/.credentials.json` is intentionally invalid (e.g. truncate/scramble the OAuth blob). Keepalive running.
+**Steps:**
+1. Wait through three keepalive check cycles (or trigger them manually). Each Claude query should return 401 / "Invalid authentication credentials".
+2. Inspect the workbench logs (`/api/logs?module=keepalive&since=2h`).
+3. Wait through several more cycles (≥30 min apart) without changing the credentials file.
+4. Replace the credentials file with a valid one (or `touch` it to bump mtime — verifies the watcher logic; for end-to-end, re-run `/login`).
+5. Wait the creds-watch interval (default 60s) and check logs again.
+**Verify:**
+- After the third consecutive auth failure, exactly ONE WARN appears: `Keepalive disabled: OAuth credentials invalid — re-run /login. Will resume when ~/.claude/.credentials.json is updated.` (No further ERRORs are logged for the same cause.)
+- After step 4, an INFO appears: `Keepalive credentials file changed — re-enabling refresh attempts` and a normal `Keepalive check — refreshing` follows on the next scheduled tick.
+**Programmatic verification:** `await log_find({module:'keepalive',level:'WARN',since:'2h'})` — count of "Keepalive disabled" entries equals 1, not N. `await log_find({module:'keepalive',level:'INFO',pattern:'credentials file changed',since:'2h'})` — non-empty after the creds rotation.
+**Pre-fix behavior:** Every check (~30 min) logged an identical ERROR ("Keepalive Claude query failed") with the 401 stderr — 5+ duplicate entries observed on M5 before OAuth was renewed.
+
+---
 ### REG-247: Task list checkbox + index top-aligned, not middle-aligned
 **Issue:** #247 (fixed).
 **Setup:** A task whose title wraps to two or more lines (long title or narrow panel).

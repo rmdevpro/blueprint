@@ -125,9 +125,10 @@ const TOOLS = [
     session_id: P.session_id, project: P.project,
   }, ['session_id']),
   T('session_prepare_pre_compact', 'Return the pre-compact checklist prompt — call before /compact in a long session.', {}),
-  T('session_resume_post_compact', 'Return the resume prompt for after a /compact, with the last N JSONL lines injected as context.', {
+  T('session_resume_post_compact', 'Return the resume prompt for after a /compact, with the last N JSONL lines injected as context. Output is hard-capped at max_chars (default 16384) to stay readable in a single tool result; if the requested tail exceeds the cap, only the most recent lines that fit are kept.', {
     session_id: P.session_id,
-    tail_lines: { type: 'number', description: 'Lines of session tail to inject (default 60).' },
+    tail_lines: { type: 'number', description: 'Lines of session tail to consider (default 15). Each Claude JSONL line can be 1-3 KiB after stripping; large defaults blow past the Read cap. Use a small number for long sessions.' },
+    max_chars: { type: 'number', description: 'Hard cap on injected-tail char count (default 16384). The tail is trimmed line-by-line from the start to fit; the cap takes precedence over tail_lines.' },
   }, ['session_id']),
   T('session_export', 'Export a session — raw JSONL for Claude, structured summary for Gemini/Codex.', {
     session_id: P.session_id, project: P.project,
@@ -145,8 +146,8 @@ const TOOLS = [
   }, ['query']),
 
   // session_* — tmux interaction
-  T('session_send_text', 'Paste text into a session via tmux load-buffer + paste-buffer (no Enter). Use this for prompts and long input — handles special characters safely. Follow with session_send_key {key:"Enter"} to submit.', {
-    session_id: P.session_id, text: { type: 'string', description: 'Text to paste. No trailing Enter is appended.' },
+  T('session_send_text', 'Paste text into a session via tmux load-buffer + paste-buffer (no Enter). Use this for prompts and long input — handles special characters safely. Follow with session_send_key {key:"Enter"} to submit. SIZE LIMIT: 32 KiB (32768 chars). For larger input, write to a file and reference it (e.g. "Read /tmp/briefing.md") instead.', {
+    session_id: P.session_id, text: { type: 'string', maxLength: 32768, description: 'Text to paste. No trailing Enter is appended. Hard cap 32768 chars — for larger input, write to a file and reference it.' },
   }, ['session_id', 'text']),
   T('session_send_keys', 'Send raw text via tmux send-keys. Short commands only — special characters get shell-interpreted. For prompts, prefer session_send_text.', {
     session_id: P.session_id, text: { type: 'string' },

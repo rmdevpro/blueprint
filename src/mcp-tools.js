@@ -314,11 +314,29 @@ handlers.session_resume_post_compact = async (args) => {
   const projectPath = session?.project_path || '';
   const sessDir = sessionUtils.sessionsDir(projectPath);
   const sessionFile = join(sessDir, `${args.session_id}.jsonl`);
+  // #252: tail_lines default lowered from 60 → 15 because each Claude JSONL
+  // line can be 1-3 KiB after stripping (thinking signatures, cache stats,
+  // tool_use payloads). 60 lines blew past the Read tool's max-tokens cap and
+  // forced multi-call file reconstruction. max_chars is the authoritative
+  // size guard — if even 15 lines exceed it, we trim from the start one line
+  // at a time until the tail fits, preserving the most recent context.
+  const tailLines = Math.max(1, Number.isFinite(args.tail_lines) ? args.tail_lines : 15);
+  const maxChars = Math.max(512, Number.isFinite(args.max_chars) ? args.max_chars : 16384);
   let tail = '';
   try {
     const content = fs.readFileSync(sessionFile, 'utf-8');
     const lines = content.trim().split('\n').filter(Boolean);
-    tail = lines.slice(-(args.tail_lines || 60)).join('\n');
+    let kept = lines.slice(-tailLines);
+    let joined = kept.join('\n');
+    while (joined.length > maxChars && kept.length > 1) {
+      kept = kept.slice(1);
+      joined = kept.join('\n');
+    }
+    if (joined.length > maxChars) {
+      // even the single most-recent line exceeds the cap — truncate mid-line.
+      joined = joined.slice(-maxChars);
+    }
+    tail = joined;
   } catch {
     tail = '(could not read session file)';
   }

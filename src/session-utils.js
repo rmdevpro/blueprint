@@ -14,6 +14,24 @@ function sessionsDir(projectPath) {
   return safe.findSessionsDir(projectPath);
 }
 
+// #254: per-model max-tokens lookup. The context bar previously hardcoded
+// 200000 as the denominator; that's wrong for Claude 4.x [1m] variants,
+// modern Gemini, and large-context GPT-5 — overstates fill, fires warning
+// thresholds early. This table reflects publicly-documented context windows
+// at time of writing; the [1m] suffix in the model id is the trigger for
+// the 1M extended-context variants that Anthropic added in late 2025.
+function modelMaxTokens(model) {
+  if (!model) return 200000;
+  const m = String(model).toLowerCase();
+  if (m.includes('[1m]')) return 1000000;
+  if (m.includes('gemini-2.5-pro')) return 2000000;
+  if (m.includes('gemini-2.5') || m.includes('gemini-2.0') || m.includes('gemini-1.5')) return 1000000;
+  if (m.includes('gpt-5')) return 400000;
+  if (m.includes('gpt-4o') || m.includes('gpt-4-turbo')) return 128000;
+  if (m.includes('claude-opus') || m.includes('claude-sonnet') || m.includes('claude-haiku')) return 200000;
+  return 200000;
+}
+
 async function parseSessionFile(filepath) {
   try {
     const sessionId = basename(filepath, '.jsonl');
@@ -838,6 +856,9 @@ async function getSessionInfo(sessionId, opts = {}) {
 
   const cliType = dbRow.cli_type || 'claude';
   let fileMeta = null;
+  // #254: max_tokens seed is overwritten below once the per-CLI helper
+  // returns a model. If no model can be determined, modelMaxTokens(null)
+  // returns 200000 — same as the prior hardcoded default.
   let tokens = { input_tokens: 0, model: null, max_tokens: 200000 };
 
   if (cliType === 'claude') {
@@ -879,6 +900,16 @@ async function getSessionInfo(sessionId, opts = {}) {
       }
     }
     if (includeTokens) tokens = _getCodexTokenUsage(sessionId);
+  }
+
+  // #254: override the per-CLI helper's max_tokens with a model-aware value.
+  // The per-CLI helpers historically defaulted to 200000 regardless of model;
+  // here we look up the actual context window for the resolved model id so
+  // the context bar denominator matches reality (Claude [1m] gets 1M, Gemini
+  // gets the right large window, etc.).
+  const modelForMax = tokens.model || fileMeta?.model;
+  if (modelForMax) {
+    tokens = { ...tokens, max_tokens: modelMaxTokens(modelForMax) };
   }
 
   const tmux = safe.tmuxNameFor(sessionId);
@@ -925,5 +956,6 @@ module.exports = {
   getSessionInfo,
   invalidateSessionInfoCache,
   getSessionSlug,
+  modelMaxTokens,
   CLAUDE_HOME,
 };
