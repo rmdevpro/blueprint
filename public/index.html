@@ -641,6 +641,28 @@
       </div>
 
       <div class="settings-group">
+        <h3>Knowledge Base</h3>
+        <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px">Repository cloned to <code>/data/knowledge-base</code>. Point this at your organisation's fork to customise roles and process docs.</p>
+        <div class="setting-row">
+          <label>Repository URL</label>
+          <input type="text" id="setting-kb-repo-url" placeholder="https://github.com/rmdevpro/workbench-kb" style="flex:1;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace"
+            onchange="saveSetting('kb_repo_url', this.value, this)">
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h3>Git Accounts</h3>
+        <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px">Personal access tokens for git operations. Designate one account as the Knowledge Base account for auto-sync.</p>
+        <div id="git-accounts-list"></div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <input type="text" id="git-account-name" placeholder="Name (e.g. Work GitHub)" style="flex:1;min-width:100px;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px">
+          <input type="text" id="git-account-host" placeholder="github.com" value="github.com" style="width:120px;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace">
+          <input type="password" id="git-account-token" placeholder="Personal access token" style="flex:2;min-width:140px;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace">
+          <button onclick="addGitAccount()" style="padding:4px 10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;cursor:pointer">Add</button>
+        </div>
+      </div>
+
+      <div class="settings-group">
         <h3>MCP Servers</h3>
         <div id="mcp-server-list"></div>
         <div id="add-mcp-form">
@@ -4004,6 +4026,8 @@ build/**</textarea>
         if (s.gemini_api_key) document.getElementById('setting-gemini-key').value = s.gemini_api_key;
         if (s.codex_api_key) document.getElementById('setting-codex-key').value = s.codex_api_key;
         if (s.huggingface_api_key) document.getElementById('setting-huggingface-key').value = s.huggingface_api_key;
+        document.getElementById('setting-kb-repo-url').value = s.kb_repo_url || 'https://github.com/rmdevpro/workbench-kb';
+        renderGitAccounts(s.git_accounts || []);
       } catch {}
       // Global CLAUDE.md now viewed via file tab (read-only) — no textarea to load
       loadMcpServers();
@@ -4160,6 +4184,64 @@ build/**</textarea>
       paths.splice(idx, 1);
       await saveSetting('vector_additional_paths', paths);
       renderVectorPaths(paths);
+    }
+
+    // ── Git Accounts ─────────────────────────────────────────────────────────
+
+    function renderGitAccounts(accounts) {
+      const el = document.getElementById('git-accounts-list');
+      if (!accounts.length) {
+        el.innerHTML = '<p style="font-size:11px;color:var(--text-muted);margin:4px 0">No git accounts configured.</p>';
+        return;
+      }
+      el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="color:var(--text-muted);text-align:left">
+          <th style="padding:3px 6px">Name</th>
+          <th style="padding:3px 6px">Host</th>
+          <th style="padding:3px 6px">Token</th>
+          <th style="padding:3px 6px;text-align:center">KB</th>
+          <th style="padding:3px 6px"></th>
+        </tr></thead>
+        <tbody>${accounts.map(a => `
+          <tr style="border-top:1px solid var(--border)">
+            <td style="padding:4px 6px">${a.name}</td>
+            <td style="padding:4px 6px;font-family:monospace">${a.host}</td>
+            <td style="padding:4px 6px;font-family:monospace;color:var(--text-muted)">••••••••</td>
+            <td style="padding:4px 6px;text-align:center"><input type="radio" name="kb-account" ${a.isKB ? 'checked' : ''} onchange="setKbAccount('${a.id}')"></td>
+            <td style="padding:4px 6px"><button onclick="deleteGitAccount('${a.id}')" style="padding:2px 8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:var(--text-muted);cursor:pointer;font-size:11px">✕</button></td>
+          </tr>`).join('')}
+        </tbody></table>`;
+    }
+
+    async function addGitAccount() {
+      const name = document.getElementById('git-account-name').value.trim();
+      const host = document.getElementById('git-account-host').value.trim();
+      const token = document.getElementById('git-account-token').value.trim();
+      if (!name || !host || !token) return;
+      const res = await fetch('/api/settings');
+      const s = await res.json();
+      const accounts = s.git_accounts || [];
+      accounts.push({ id: crypto.randomUUID(), name, host, token, isKB: accounts.length === 0 });
+      await saveSetting('git_accounts', accounts);
+      document.getElementById('git-account-name').value = '';
+      document.getElementById('git-account-token').value = '';
+      renderGitAccounts(accounts);
+    }
+
+    async function deleteGitAccount(id) {
+      const res = await fetch('/api/settings');
+      const s = await res.json();
+      const accounts = (s.git_accounts || []).filter(a => a.id !== id);
+      await saveSetting('git_accounts', accounts);
+      renderGitAccounts(accounts);
+    }
+
+    async function setKbAccount(id) {
+      const res = await fetch('/api/settings');
+      const s = await res.json();
+      const accounts = (s.git_accounts || []).map(a => ({ ...a, isKB: a.id === id }));
+      await saveSetting('git_accounts', accounts);
+      renderGitAccounts(accounts);
     }
 
     function closeSettings() {
