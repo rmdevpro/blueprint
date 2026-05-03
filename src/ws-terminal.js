@@ -116,6 +116,23 @@ module.exports = function createWsTerminal({
       }
     }
 
+    // #241: replay the tmux pane's scrollback BEFORE attaching the PTY so a
+    // reconnecting browser sees history above the visible viewport. tmux
+    // attach-session only redraws the visible pane on its own; without this
+    // the user loses everything they could previously scroll up to. We send
+    // the captured bytes first so they land in xterm's scrollback, then the
+    // PTY's tmux attach-session redraws the visible pane on top.
+    try {
+      const replayLines = config ? config.get('ws.scrollbackReplayLines', 10000) : 10000;
+      const captured = safe.tmuxCaptureScrollback(tmuxSession, replayLines);
+      if (captured && ws.readyState === ws.OPEN) {
+        ws.send(captured);
+      }
+    } catch (err) {
+      // Capture failure is non-fatal — log and proceed with the live attach.
+      logger.warn('Scrollback replay capture failed', { module: 'ws-terminal', tmuxSession, err: err.message });
+    }
+
     // NOTE: node-pty.spawn() is synchronous by design (native addon fork).
     // This is the standard pattern used by VS Code terminal, xterm.js, and all
     // major Node.js terminal emulators. The spawn is fast (fork+exec) and does

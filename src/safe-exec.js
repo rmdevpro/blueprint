@@ -53,7 +53,26 @@ function tmuxExecSync(args, options = {}) {
     stdio: options.stdio || 'pipe',
     timeout: options.timeout || 10000,
     env: process.env,
+    maxBuffer: options.maxBuffer || 10 * 1024 * 1024,
   });
+}
+
+/**
+ * #241: capture a tmux pane's full scrollback buffer (preserving ANSI escape
+ * sequences for color/style) so a reconnecting WebSocket can replay history
+ * before the live PTY attach starts streaming. Returns the captured bytes as
+ * a string; returns '' if the session doesn't exist or capture fails.
+ */
+function tmuxCaptureScrollback(tmuxSession, lines = 10000) {
+  const safeName = sanitizeTmuxName(tmuxSession);
+  try {
+    return tmuxExecSync(
+      ['capture-pane', '-p', '-e', '-J', '-S', `-${lines}`, '-t', safeName],
+      { timeout: 5000 },
+    );
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -391,6 +410,7 @@ module.exports = {
   sanitizeErrorForClient,
   claudeExecAsync,
   tmuxExecAsync,
+  tmuxCaptureScrollback,
   tmuxExists,
   buildResumeArgs,
   tmuxCreateCLI,
