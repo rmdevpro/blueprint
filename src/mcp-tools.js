@@ -439,8 +439,12 @@ handlers.session_read_screen = async (args) => {
   const tmux = safe.tmuxNameFor(args.session_id);
   if (!(await safe.tmuxExists(tmux))) throw new ToolError(`tmux session not running: ${tmux}`, 410);
   const lines = Math.max(1, Math.min(args.lines || 200, 1000));
-  const { stdout } = await safe.tmuxExecAsync(['capture-pane', '-p', '-S', `-${lines}`, '-t', tmux]);
-  return { tmux, lines, screen: stdout };
+  // #256: safe.tmuxExecAsync returns the captured stdout string directly, not
+  // a {stdout} object. The previous destructuring `const {stdout} = ...` made
+  // stdout undefined, which JSON.stringify then dropped — callers saw only
+  // {tmux, lines}, never the actual screen content.
+  const screen = await safe.tmuxExecAsync(['capture-pane', '-p', '-S', `-${lines}`, '-t', tmux]);
+  return { tmux, lines, screen };
 };
 
 handlers.session_read_output = async (args) => {
