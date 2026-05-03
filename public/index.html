@@ -1435,8 +1435,10 @@ build/**</textarea>
         fastScrollSensitivity: 5,
         scrollSensitivity: 3,
         // #240: route OSC 8 clicks for file:// or workspace paths to the file
-        // viewer; let real external URLs go to a new tab.
+        // viewer; let real external URLs go to a new tab. allowNonHttpProtocols
+        // is required so xterm activates file:// links (default rejects them).
         linkHandler: {
+          allowNonHttpProtocols: true,
           activate(event, uri) {
             let path = null;
             if (uri.startsWith('file://')) {
