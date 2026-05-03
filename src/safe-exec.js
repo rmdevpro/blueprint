@@ -125,7 +125,7 @@ async function tmuxExists(name) {
 // { args, missing } where `missing: true` means we expected a session file
 // to exist for resume but it doesn't (caller should refuse to spawn rather
 // than silently start a fresh session keyed under the same workbench row).
-function buildResumeArgs(session, projectPath) {
+async function buildResumeArgs(session, projectPath) {
   const cliType = session.cli_type || 'claude';
   const sessionId = session.id;
 
@@ -148,10 +148,22 @@ function buildResumeArgs(session, projectPath) {
   }
 
   if (cliType === 'gemini') {
-    // Gemini doesn't support resume-by-ID reliably — fresh launch reads its
-    // own state files and reconstructs context from the project. cli_session_id
-    // is not used here. Same behavior as routes.js previously had.
-    return { args: [], missing: false };
+    const cliSessId = session.cli_session_id;
+    if (!cliSessId) return { args: ['--resume', 'latest'], missing: false };
+    try {
+      const { execFile } = require('child_process');
+      const { promisify } = require('util');
+      const execFileAsync = promisify(execFile);
+      const { stdout } = await execFileAsync('gemini', ['--list-sessions'], { cwd: projectPath });
+      // Line format: "  <index>. <title> (<time>) [<session-id>]"
+      for (const line of stdout.split('\n')) {
+        const m = line.match(/^\s+(\d+)\.\s+.*\[([^\]]+)\]/);
+        if (m && m[2] === cliSessId) {
+          return { args: ['--resume', m[1]], missing: false };
+        }
+      }
+    } catch (_err) { /* fall through to latest */ }
+    return { args: ['--resume', 'latest'], missing: false };
   }
 
   if (cliType === 'codex') {

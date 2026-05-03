@@ -1064,7 +1064,7 @@ function registerCoreRoutes(
       if (!(await safe.tmuxExists(tmux))) {
         await ensureSettings();
         const session = db.getSession(sessionId) || { id: sessionId, cli_type: 'claude' };
-        const { args: resumeArgs, missing, expectedPath } = safe.buildResumeArgs(session, projectPath);
+        const { args: resumeArgs, missing, expectedPath } = await safe.buildResumeArgs(session, projectPath);
         if (missing) {
           logger.warn('Refusing to resume session — JSONL missing', {
             module: 'routes', sessionId: sessionId.substring(0, 12), expectedPath,
@@ -1728,17 +1728,8 @@ function registerCoreRoutes(
       if (!session) return res.status(404).json({ error: 'session not found' });
       const cwd = session.project_path || WORKSPACE;
       const cliType = session.cli_type || 'claude';
-      let restartArgs = [];
-      if (cliType === 'claude' && !sessionId.startsWith('new_')) restartArgs = ['--resume', sessionId];
-      if (cliType === 'gemini') {
-        // Gemini doesn't support resume-by-ID reliably — launch fresh
-        restartArgs = [];
-      }
-      if (cliType === 'codex') {
-        const cliSessId = session.cli_session_id;
-        restartArgs = cliSessId ? ['resume', cliSessId] : [];
-      }
-      safe.tmuxCreateCLI(tmux, cwd, cliType, restartArgs);
+      const { args: restartArgs } = await safe.buildResumeArgs(session, cwd);
+      safe.tmuxCreateCLI(tmux, cwd, cliType, restartArgs || []);
       res.json({ ok: true, sessionId, tmux });
     } catch (err) {
       res.status(500).json({ error: err.message });
