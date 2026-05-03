@@ -4839,16 +4839,16 @@ Tests for the user-facing fixes shipped in the canonical branch but not yet in t
 8. Paste into any text input — clipboard contains the absolute folder path with no trailing slash.
 **Verify:** Both menus expose Copy Path; clipboard contents match each row's `data-path` attribute (with any trailing `/` stripped).
 
-### REG-241: Browser close + reopen preserves session scrollback (Phase 3, future)
-**Issue:** #241.
-**Status:** Pending implementation in Phase 3 of the terminal-overhaul bundle. Test scaffold below; mark FAIL until #241 is closed.
+### REG-241: Browser close + reopen preserves session scrollback
+**Issue:** #241 (fixed).
 **Setup:** Any active session with at least 50 lines of prior output.
 **Steps:**
 1. With output in the session, fully close the browser tab/window for the workbench.
 2. Reopen `${WORKBENCH_URL}`.
 3. Click the same session in the sidebar to attach.
 4. Wheel up in the terminal pane.
-**Verify:** Scroll up reveals lines that were emitted *before* the close. The full tmux scrollback (or up to xterm's 10000-line cap) is replayed into the buffer.
+**Verify:** Scroll up reveals lines that were emitted *before* the close. The full tmux scrollback (up to `ws.scrollbackReplayLines`, default 10000) is replayed into xterm's buffer at the start of the WS connection.
+**Programmatic verification (alternative):** Open a fresh WebSocket to `/ws/<tmuxName>` for an existing session that has known marker lines in its scrollback. The first chunk(s) received before any new live output should contain those marker lines — including ones that are no longer visible in the pane viewport.
 **Pre-fix behavior:** Only the visible pane bytes were replayed; everything above the viewport was inaccessible.
 
 ---
