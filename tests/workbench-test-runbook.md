@@ -4877,18 +4877,39 @@ Tests for the user-facing fixes shipped in the canonical branch but not yet in t
 2. The auth modal opens. Click "Authenticate with Claude" — opens auth URL in a new tab.
 3. Wait 60+ seconds before returning to the workbench tab (long enough for the terminal WebSocket to idle-close on the proxy).
 4. Paste the OAuth code into the modal. Click Submit.
-**Verify:** The CLI receives the code and continues past `Paste code here if prompted >`. The submission goes through `POST /api/sessions/:id/send_text` + `POST /api/sessions/:id/send_key {key:"Enter"}` — server-side tmux paste, independent of the client's WS state.
-**Programmatic verification:** `curl -X POST ${WORKBENCH_URL}/api/sessions/<id>/send_text -d '{"text":"abc123"}'` returns `{ok:true}`; `curl ${WORKBENCH_URL}/api/sessions/<id>/send_key -d '{"key":"Enter"}'` returns `{ok:true}`. The pane shows the pasted text + Enter.
-**Pre-fix behavior:** `submitAuthCode()` delivered via `tab.ws.send()`; if the WS had idled-closed (common after 30+ s on the auth tab), the send was silently skipped, modal closed, CLI dangled.
+**Verify:** The CLI receives the code and continues past `Paste code here if prompted >`. Subsequent `/login` confirmation messages appear in the pane; the OAuth modal closes.
+**Programmatic verification (mandatory — endpoint return is NOT sufficient):**
+1. POST `/api/sessions/<id>/send_text` with body `{"text":"REG218_MARKER_<timestamp>"}` — capture response, expect `{ok:true}`.
+2. Wait 500ms, then call MCP `session_read_screen {session_id, lines: 50}`. Response MUST contain a `screen` field whose value INCLUDES the `REG218_MARKER_<timestamp>` literal sent. If it does not, FAIL — the send did not reach the pane regardless of the HTTP response.
+3. POST `/api/sessions/<id>/send_key` with `{"key":"Enter"}` — expect `{ok:true}`.
+4. Wait 1500ms, call `session_read_screen` again. Response MUST show that the marker line was processed by the underlying shell/CLI (e.g. for a bash session: a new prompt line appears AFTER the marker; for a Claude session: the CLI's response begins below the marker). Just seeing the marker text in the screen is not enough — verify the CLI ACTED on the Enter.
+5. Negative path: kill the terminal WebSocket while keeping the modal open, then send a marker. Both the screen-content check (step 2) AND the act-on-Enter check (step 4) must still pass — proving the endpoint is independent of the client WS state.
+**Pre-fix behavior:** `submitAuthCode()` delivered via `tab.ws.send()`; if the WS had idled-closed (common after 30+ s on the auth tab), the send was silently skipped, modal closed, CLI dangled. The `{ok:true}` of the new endpoints proves only that the HTTP handler accepted the body — the screen-content + CLI-action checks above are what actually verify the fix.
 
 ---
 ### REG-256: session_read_screen returns the captured pane content
-**Issue:** #256 (verified — code at `mcp-tools.js:425` returns `{ tmux, lines, screen: stdout }`).
-**Setup:** Any live tmux session in the workbench; have its `session_id`.
+**Issue:** #256 (fixed — root cause was `const {stdout} = await safe.tmuxExecAsync(...)` destructuring a string, making `stdout` undefined; JSON dropped the `screen` field. Fix: bind directly: `const screen = await safe.tmuxExecAsync(...)`).
+**Setup:** A live bash session in the workbench (no Claude OAuth needed for this test); have its `session_id`. To create one programmatically: `POST /api/mcp/call {tool:"session_new", args:{project:"<any>", cli:"bash"}}`.
 **Steps:**
-1. Call MCP `session_read_screen {session_id, lines: 50}`.
-**Verify:** Response object contains a non-empty `screen` field with the visible pane text — not just `{tmux, lines}`.
-**Programmatic verification:** `assert(typeof result.screen === 'string' && result.screen.length > 0)` — covers the bug exactly. Compare against `tmux capture-pane -p -t <tmux> -S -50` for content equality.
+1. Pick a unique marker string, e.g. `REG256_<timestamp>`.
+2. POST `/api/sessions/<id>/send_text` with `{"text":"echo REG256_<timestamp>"}`.
+3. POST `/api/sessions/<id>/send_key` with `{"key":"Enter"}`.
+4. Wait ~1500ms.
+5. Call MCP `session_read_screen {session_id, lines: 50}`.
+**Verify:**
+- Response object contains a `screen` key — not just `{tmux, lines}`.
+- The `screen` value is a non-empty string.
+- `screen` INCLUDES the marker `REG256_<timestamp>` (proves end-to-end: send reached pane → bash received Enter → echoed marker → capture returned actual content).
+- `screen` includes a fresh shell prompt AFTER the marker line (proves the Enter caused command completion).
+**Programmatic verification:**
+```js
+assert('screen' in result.result);
+assert(typeof result.result.screen === 'string' && result.result.screen.length > 0);
+assert(result.result.screen.includes(marker));
+const lines = result.result.screen.split('\n');
+const markerIdx = lines.findIndex(l => l.includes(marker));
+assert(lines.slice(markerIdx + 1).some(l => l.endsWith('$') || l.endsWith('# ')));
+```
 **Pre-fix behavior (older containers):** `{tmux, lines}` only — no screen field — forced orchestrators to fall back to direct `tmux capture-pane` via Bash.
 
 ---
