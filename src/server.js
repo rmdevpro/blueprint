@@ -271,6 +271,8 @@ if (require.main === module) {
         keepalive.start();
         tmux.startPeriodicScan();
         watchers.startSettingsWatcher();
+        watchers.startGeminiSettingsWatcher();
+        watchers.startCodexSettingsWatcher();
 
         // Load API keys from DB settings into process env for CLI sessions
         try {
@@ -326,6 +328,12 @@ if (require.main === module) {
             err: err.message,
           }),
         );
+        watchers.trustGeminiProjectDirs().catch((err) =>
+          logger.error('Post-startup trust Gemini project dirs failed', {
+            module: 'server',
+            err: err.message,
+          }),
+        );
 
         // Start Qdrant vector sync (non-blocking — skips if Qdrant unavailable)
         require('./qdrant-sync').start().catch((err) =>
@@ -366,6 +374,9 @@ if (require.main === module) {
             try {
               await fsStat(join(KB_PATH, '.git'));
             } catch (_e) { return; }
+          let accounts = [];
+            try { accounts = JSON.parse(db.getSetting('git_accounts', '[]')); } catch (_e) {}
+            if (!accounts.find(a => a.isKB)) return;
             try {
               await execFileAsync('git', ['-C', KB_PATH, 'fetch', 'origin']);
               await execFileAsync('git', ['-C', KB_PATH, 'merge', '--ff-only', 'origin/main']);
