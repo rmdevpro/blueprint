@@ -640,6 +640,11 @@
         <h3>Knowledge Base</h3>
         <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px">Cloned to <code>/data/knowledge-base</code>. Designate a Git Account as the KB account to use your organisation's fork automatically.</p>
         <div class="setting-row">
+          <label>Repo Name</label>
+          <input type="text" id="setting-kb-repo-name" value="blueprint_workbench_kb" style="width:220px;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace"
+            onchange="saveSetting('kb_repo_name', this.value, this); refreshKbRepoUrl()">
+        </div>
+        <div class="setting-row">
           <label>Repository URL</label>
           <span id="setting-kb-repo-url" style="flex:1;padding:4px 8px;font-size:12px;font-family:monospace;color:var(--text-muted)">https://github.com/rmdevpro/workbench-kb</span>
         </div>
@@ -3992,6 +3997,7 @@ build/**</textarea>
         if (s.gemini_api_key) document.getElementById('setting-gemini-key').value = s.gemini_api_key;
         if (s.codex_api_key) document.getElementById('setting-codex-key').value = s.codex_api_key;
         if (s.huggingface_api_key) document.getElementById('setting-huggingface-key').value = s.huggingface_api_key;
+        document.getElementById('setting-kb-repo-name').value = s.kb_repo_name || 'blueprint_workbench_kb';
         renderGitAccounts(s.git_accounts || []);
       } catch {}
       // Global CLAUDE.md now viewed via file tab (read-only) — no textarea to load
@@ -4153,17 +4159,30 @@ build/**</textarea>
 
     // ── Git Accounts ─────────────────────────────────────────────────────────
 
-    const KB_REPO_NAME = 'blueprint_workbench_kb';
     const KB_REPO_DEFAULT = 'https://github.com/rmdevpro/workbench-kb';
 
+    function kbRepoName() {
+      return (document.getElementById('setting-kb-repo-name')?.value.trim()) || 'blueprint_workbench_kb';
+    }
+
     function kbUrlForAccount(account) {
-      return `https://${account.host}/${account.username}/${KB_REPO_NAME}`;
+      return `https://${account.host}/${account.username}/${kbRepoName()}`;
     }
 
     function renderKbRepoUrl(accounts) {
-      const kb = accounts.find(a => a.isKB);
+      const kb = (accounts || []).find(a => a.isKB);
       const url = kb ? kbUrlForAccount(kb) : KB_REPO_DEFAULT;
       document.getElementById('setting-kb-repo-url').textContent = url;
+    }
+
+    async function refreshKbRepoUrl() {
+      const res = await fetch('/api/settings');
+      const s = await res.json();
+      const accounts = s.git_accounts || [];
+      const kb = accounts.find(a => a.isKB);
+      const url = kb ? kbUrlForAccount(kb) : KB_REPO_DEFAULT;
+      await saveSetting('kb_repo_url', url);
+      renderKbRepoUrl(accounts);
     }
 
     function renderGitAccounts(accounts) {

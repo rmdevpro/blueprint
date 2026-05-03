@@ -1227,6 +1227,7 @@ function registerCoreRoutes(
       vector_ignore_patterns: 'node_modules/**\n.git/**\n*.lock\n*.min.js\ndist/**\nbuild/**',
       vector_additional_paths: [],
       kb_repo_url: 'https://github.com/rmdevpro/workbench-kb',
+      kb_repo_name: 'blueprint_workbench_kb',
     };
     res.json({ ...defaults, ...settings });
   });
