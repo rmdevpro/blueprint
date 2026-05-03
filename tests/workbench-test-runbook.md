@@ -4970,6 +4970,55 @@ assert(lines.slice(markerIdx + 1).some(l => l.endsWith('$') || l.endsWith('# '))
 **Pre-fix behavior:** Every check (~30 min) logged an identical ERROR ("Keepalive Claude query failed") with the 401 stderr — 5+ duplicate entries observed on M5 before OAuth was renewed.
 
 ---
+### REG-143-AUTOTRUST-GEMINI: Gemini auto-trust writes trustedFolders.json for every workbench project
+**Issue:** #143 (Gemini parity).
+**Setup:** Workbench fresh start with at least 2 projects. `~/.gemini/trustedFolders.json` either absent or missing some project paths.
+**Steps:**
+1. Restart the workbench (or wait for `trustGeminiProjectDirs` to fire on startup).
+2. `cat ~/.gemini/trustedFolders.json`.
+**Verify:** File contains an entry `"<project.path>": "TRUST_FOLDER"` for every project returned by `db.getProjects()`. Content is valid JSON.
+**Programmatic verification:**
+```js
+const trust = JSON.parse(fs.readFileSync(`${HOME}/.gemini/trustedFolders.json`, 'utf-8'));
+const projects = await fetch('/api/state').then(r=>r.json()).then(d=>d.projects.map(p=>p.path));
+for (const p of projects) assert(trust[p] === 'TRUST_FOLDER');
+```
+**End-to-end behavior check:** Spawn a Gemini session in a NEWLY-added project. The Gemini CLI starts straight into the chat prompt — no "Would you like to trust this folder?" dialog blocks the session.
+**Pre-fix behavior:** Only Codex auto-trust existed (`trustCodexProjectDirs`). Gemini sessions in new projects always hit the trust dialog and required manual operator response, breaking automation.
+
+---
+### REG-143-WATCH-GEMINI: Gemini session-file watcher fires token_update on chat changes
+**Issue:** #143 (Gemini parity).
+**Setup:** A live Gemini workbench session that has written at least one message (so `cli_session_id` is bound and the session file exists at `~/.gemini/tmp/<cwd-hash>/chats/<cli_session_id>.json`).
+**Steps:**
+1. Open the session in the workbench UI; observe the WebSocket frames in DevTools (or `wscat`).
+2. Send a prompt via the CLI (so the session file mtime changes).
+3. Watch the WS for a `{type:"token_update", data:{...}}` frame within ~3 seconds of the file change.
+**Verify:** The `token_update` frame arrives without requiring the page to refresh. The status bar context-bar updates live as Gemini emits tokens — same reactive feel as Claude.
+**Programmatic verification:** Connect a WS to `/ws/<tmuxName>` for the Gemini session. After the next chat turn, the WS receives at least one `token_update` message. `assert(frame.type === 'token_update' && typeof frame.data.input_tokens === 'number')`.
+**Pre-fix behavior:** `startJsonlWatcher` hardcoded `.jsonl` extension and Claude's sessions dir — never watched Gemini's `.json` file. Gemini sessions appeared frozen in the UI; status bar only updated on tab switch / page reload.
+
+---
+### REG-143-WATCH-CODEX: Codex rollout-file watcher fires token_update on chat changes
+**Issue:** #143 (Codex parity).
+**Setup:** A live Codex workbench session that has written at least one message (so `cli_session_id` is bound and the rollout file exists under `~/.codex/sessions/<rollup>/<rollout>.jsonl`).
+**Steps:** Same as REG-143-WATCH-GEMINI substituting Codex.
+**Verify:** Same as REG-143-WATCH-GEMINI — `token_update` arrives within ~3s of the rollout file change.
+**Pre-fix behavior:** Same as Gemini — Codex sessions appeared frozen in the UI.
+
+---
+### REG-143-HOTRELOAD: Gemini/Codex settings hot-reload broadcasts cli_settings_changed
+**Issue:** #143 (settings hot-reload parity).
+**Setup:** Workbench up; at least one open WS client (any session tab).
+**Steps:**
+1. From a shell inside the container: `touch ~/.gemini/settings.json` (bumps mtime; no content change required).
+2. Wait ~6 seconds (interval is 5s).
+3. Repeat with `touch ~/.codex/config.toml`.
+**Verify:** The open WS receives `{type:"cli_settings_changed", cli:"gemini"}` after step 1 and `{type:"cli_settings_changed", cli:"codex"}` after step 3.
+**Programmatic verification:** Open a WS to any session tab. Run the touches via `Bash`. Expect at least one frame matching each `cli` value within ~6 seconds.
+**Pre-fix behavior:** Only `CLAUDE_HOME/settings.json` was watched; edits to `~/.gemini/settings.json` or `~/.codex/config.toml` required server restart to be picked up.
+
+---
 ### REG-247: Task list checkbox + index top-aligned, not middle-aligned
 **Issue:** #247 (fixed).
 **Setup:** A task whose title wraps to two or more lines (long title or narrow panel).

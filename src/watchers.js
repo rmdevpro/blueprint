@@ -18,25 +18,18 @@ module.exports = function createWatchers({
   const jsonlWatchPaths = new Map();
   const jsonlDebounceTimers = new Map();
 
-  function startJsonlWatcher(tmuxSession) {
-    const prefix = tmuxSession.replace(/^wb_/, '');
-    if (prefix.startsWith('new_') || prefix.startsWith('t_')) return;
-
-    const session = db.getSessionByPrefix(prefix);
-    if (!session) return;
-
-    const project = db.getProjectById(session.project_id);
-    if (!project) return;
-
-    const jsonlPath = join(safe.findSessionsDir(project.path), `${session.id}.jsonl`);
+  // #143: shared file-attach helper. Used for Claude (file path is deterministic
+  // from session id) and Gemini/Codex (file path is resolved via discover-*
+  // helpers once cli_session_id is set).
+  function _attachJsonlWatcher(tmuxSession, filePath, session, project) {
     jsonlWatchPaths.set(tmuxSession, {
-      jsonlPath,
+      jsonlPath: filePath,
       sessionId: session.id,
       projectPath: project.path,
       projectName: project.name,
     });
 
-    fs.watchFile(jsonlPath, { persistent: false, interval: 2000 }, () => {
+    fs.watchFile(filePath, { persistent: false, interval: 2000 }, () => {
       const entry = jsonlWatchPaths.get(tmuxSession);
       if (!entry) return;
 
@@ -71,6 +64,72 @@ module.exports = function createWatchers({
         }, 500),
       );
     });
+  }
+
+  // #143: Gemini/Codex don't write a JSONL with a deterministic name — their
+  // session file is at ~/.gemini/tmp/<cwd-hash>/chats/<cli_session_id>.json or
+  // ~/.codex/sessions/<rollup>/<rollout>.jsonl, and cli_session_id isn't set
+  // until the CLI writes its first message and the discoverer binds it to the
+  // workbench session row. Poll up to 60s for both cli_session_id AND the file
+  // to appear, then attach the watcher. Without this, Gemini/Codex sessions
+  // appear frozen in the UI (no live token updates).
+  function _resolveAndWatchNonClaude(tmuxSession, sessionId, project, cliType, attempt) {
+    const fresh = db.getSession(sessionId);
+    if (!fresh) return;
+    let filePath = null;
+    if (fresh.cli_session_id) {
+      try {
+        if (cliType === 'gemini') {
+          const found = sessionUtils.discoverGeminiSessions().find(s => s.sessionId === fresh.cli_session_id);
+          filePath = found?.filePath || null;
+        } else if (cliType === 'codex') {
+          const found = sessionUtils.discoverCodexSessions().find(s => {
+            const rolloutName = basename(s.filePath, '.jsonl');
+            const m = rolloutName.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+            return (m ? m[1] : rolloutName) === fresh.cli_session_id;
+          });
+          filePath = found?.filePath || null;
+        }
+      } catch (err) {
+        logger.debug('Non-Claude session file resolution error', { module: 'watchers', err: err.message });
+      }
+    }
+    if (filePath) {
+      _attachJsonlWatcher(tmuxSession, filePath, fresh, project);
+      return;
+    }
+    if (attempt >= 20) {
+      logger.debug('JSONL watcher gave up resolving non-Claude session file', {
+        module: 'watchers', sessionId: sessionId.substring(0, 8), cliType,
+      });
+      return;
+    }
+    setTimeout(() => _resolveAndWatchNonClaude(tmuxSession, sessionId, project, cliType, attempt + 1), 3000);
+  }
+
+  function startJsonlWatcher(tmuxSession) {
+    const prefix = tmuxSession.replace(/^wb_/, '');
+    if (prefix.startsWith('new_') || prefix.startsWith('t_')) return;
+
+    const session = db.getSessionByPrefix(prefix);
+    if (!session) return;
+
+    const project = db.getProjectById(session.project_id);
+    if (!project) return;
+
+    const cliType = session.cli_type || 'claude';
+
+    if (cliType === 'claude') {
+      const jsonlPath = join(safe.findSessionsDir(project.path), `${session.id}.jsonl`);
+      _attachJsonlWatcher(tmuxSession, jsonlPath, session, project);
+      return;
+    }
+
+    if (cliType === 'gemini' || cliType === 'codex') {
+      _resolveAndWatchNonClaude(tmuxSession, session.id, project, cliType, 0);
+      return;
+    }
+    // bash and others — no session-file watcher needed (no token tracking).
   }
 
   function stopJsonlWatcher(tmuxSession) {
@@ -308,6 +367,92 @@ module.exports = function createWatchers({
     }
   }
 
+  // #143: mirror of trustProjectDirs but for Gemini. Gemini stores trusted
+  // directories in ~/.gemini/trustedFolders.json as a flat object:
+  // `{"<exact-path>": "TRUST_FOLDER" | "TRUST_PARENT" | "DO_NOT_TRUST"}`.
+  // Without this, spawning a Gemini session in a workbench project that's
+  // never been opened in Gemini before pops up a trust dialog and blocks the
+  // automation. Trust is per-exact-path (NOT recursive), so every Workbench
+  // project needs its own entry.
+  async function trustGeminiProjectDirs() {
+    const HOME = safe.HOME;
+    const trustFile = join(HOME, '.gemini', 'trustedFolders.json');
+    let cfg = {};
+    try {
+      cfg = JSON.parse(await fsp.readFile(trustFile, 'utf-8'));
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        /* expected: first run — file does not exist yet, will be created */
+      } else if (err instanceof SyntaxError) {
+        logger.error(
+          'trustedFolders.json is corrupt JSON — skipping trustGeminiProjectDirs to preserve file for inspection',
+          { module: 'watchers', op: 'trustGeminiProjectDirs' },
+        );
+        return;
+      } else {
+        logger.warn('Failed to read Gemini trustedFolders.json', {
+          module: 'watchers', op: 'trustGeminiProjectDirs', err: err.message,
+        });
+      }
+    }
+
+    let changed = false;
+    let addedCount = 0;
+    for (const project of db.getProjects()) {
+      const p = project.path;
+      if (cfg[p] !== 'TRUST_FOLDER') {
+        cfg[p] = 'TRUST_FOLDER';
+        changed = true;
+        addedCount++;
+      }
+    }
+    if (!changed) return;
+    try {
+      await fsp.mkdir(join(HOME, '.gemini'), { recursive: true });
+      await fsp.writeFile(trustFile, JSON.stringify(cfg, null, 2));
+      logger.info('Trusted Gemini project directories', { module: 'watchers', count: addedCount });
+    } catch (err) {
+      logger.error('Failed to update Gemini trust', {
+        module: 'watchers', op: 'trustGeminiProjectDirs', err: err.message,
+      });
+    }
+  }
+
+  // #143: settings hot-reload for Gemini. Mirrors startSettingsWatcher (Claude)
+  // but watches ~/.gemini/settings.json. On change, broadcasts a generic
+  // cli_settings_changed message so the UI can react. Without this, edits to
+  // Gemini settings (e.g. via the workbench Settings panel writing
+  // gemini_api_key, or external `gemini config` runs) don't propagate to
+  // running workbench tabs until the next page reload.
+  let geminiSettingsWatcherActive = false;
+  function startGeminiSettingsWatcher() {
+    if (geminiSettingsWatcherActive) return;
+    const HOME = safe.HOME;
+    const path = join(HOME, '.gemini', 'settings.json');
+    fs.watchFile(path, { persistent: false, interval: 5000 }, () => {
+      const update = JSON.stringify({ type: 'cli_settings_changed', cli: 'gemini' });
+      for (const ws of sessionWsClients.values()) {
+        if (ws.readyState === 1) ws.send(update);
+      }
+    });
+    geminiSettingsWatcherActive = true;
+  }
+
+  // #143: settings hot-reload for Codex. Watches ~/.codex/config.toml.
+  let codexSettingsWatcherActive = false;
+  function startCodexSettingsWatcher() {
+    if (codexSettingsWatcherActive) return;
+    const HOME = safe.HOME;
+    const path = join(HOME, '.codex', 'config.toml');
+    fs.watchFile(path, { persistent: false, interval: 5000 }, () => {
+      const update = JSON.stringify({ type: 'cli_settings_changed', cli: 'codex' });
+      for (const ws of sessionWsClients.values()) {
+        if (ws.readyState === 1) ws.send(update);
+      }
+    });
+    codexSettingsWatcherActive = true;
+  }
+
   // #204: mirror of trustProjectDirs but for Codex. Codex stores trusted
   // directories in /data/.codex/config.toml as `[projects."<exact-path>"]`
   // blocks with `trust_level = "trusted"`. Trust is per-exact-path (NOT
@@ -437,11 +582,14 @@ module.exports = function createWatchers({
     startJsonlWatcher,
     stopJsonlWatcher,
     startSettingsWatcher,
+    startGeminiSettingsWatcher,
+    startCodexSettingsWatcher,
     registerMcpServer,
     registerGeminiMcp,
     registerCodexMcp,
     registerCodexProvider,
     trustProjectDirs,
+    trustGeminiProjectDirs,
     trustCodexProjectDirs,
     ensureSettings,
   };
