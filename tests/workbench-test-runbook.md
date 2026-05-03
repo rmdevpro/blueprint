@@ -4756,6 +4756,87 @@ Tests for the user-facing fixes shipped in the canonical branch but not yet in t
 **Steps:** Spawn `mcp-server.js` and read `tools/list`.
 **Verify:** No tool name contains `workbench_` (the inner prefix). All names are `<domain>_<verb>`. Server name is `workbench` (single outer prefix).
 
+### REG-238: Scrollbar reaches the top of buffered content on a fresh session
+**Issue:** #238 (xterm 5.5 → 6.0 viewport rewrite via #239).
+**Setup:** Active workbench at `${WORKBENCH_URL}`. Any project.
+**Steps:**
+1. Open a new Terminal session in any project (`+ → Terminal`).
+2. In the terminal, run: `for i in $(seq 1 500); do echo "L$i"; done` and press Enter.
+3. Wait for all 500 lines to print (~3s).
+4. Mouse-wheel up inside the terminal pane until the scrollbar slider reaches the top of its track.
+5. Inspect the visible top row.
+**Verify:**
+- Slider's `top` is 0 within the track (compute `scrollFraction = sliderTop / (trackHeight - sliderHeight)`; expect ≤ 0.005).
+- The top-most rendered row in `.terminal-pane.active .xterm-rows > div:first-child` shows the earliest line still in xterm's buffer (typically `L<small_number>` followed by a chunk that fits in the 10000-line scrollback). The scrollbar must not stop short of the actual buffer top.
+**Pre-fix behavior:** Slider could not reach `top: 0`; the first ~N rows of the buffer were unreachable until more content arrived.
+
+### REG-173: Scrollbar reaches the bottom after buffer grows while scrolled up
+**Issue:** #173 (xterm 5.5 → 6.0 viewport rewrite via #239).
+**Setup:** Same Terminal session from REG-238 (or a fresh one).
+**Steps:**
+1. With session producing output (or with prior 500-line dump in scrollback), wheel-up to the top.
+2. From the terminal prompt at the bottom, run: `for i in $(seq 501 700); do echo "L$i"; done` and Enter.
+3. Wait ~3s for the new 200 lines to flush.
+4. Mouse-wheel down until the slider reaches the bottom of its track.
+5. Inspect the bottom rows.
+**Verify:**
+- Slider's `top` reaches `(trackHeight - sliderHeight)` (`scrollFraction ≥ 0.995`).
+- The bottom-most rendered rows include `L700` and the shell prompt that follows.
+**Pre-fix behavior:** Scrollbar would run out of track before reaching the actual buffer end; user had to press Ctrl+End or down-arrow to recover.
+
+### REG-240-A: Bare workspace path in terminal output is clickable into file viewer
+**Issue:** #240.
+**Setup:** Any session (Claude / Gemini / Codex / Terminal).
+**Steps:**
+1. Make the active session emit a plain workspace path. Easiest: in a Terminal session, run `echo /data/workspace/repos/agentic-workbench/README.md`.
+2. Move mouse over the printed path; cursor should change to pointer and the path should be underlined.
+3. Click on the path.
+**Verify:** A new file tab labeled `README.md` opens to the right of the session tabs and renders the file's content.
+
+### REG-240-B: OSC 8 hyperlink in terminal output is clickable into file viewer
+**Issue:** #240.
+**Setup:** Any session.
+**Steps:**
+1. In a Terminal session, run:
+   `printf '\e]8;;file:///data/workspace/repos/agentic-workbench/package.json\aCLICK_ME\e]8;;\a\n'`
+2. Confirm the printed `CLICK_ME` text has an underline decoration (xterm applies the link decoration only when tmux is forwarding OSC 8 — requires tmux 3.4+ and the per-session `terminal-features ',*:hyperlinks'` set in `safe-exec.js`).
+3. Click on `CLICK_ME`.
+**Verify:** A new file tab labeled `package.json` opens.
+**Negative:** Clicking should NOT open a browser popup with `file://...` (the `linkHandler` must intercept and route to the file viewer).
+
+### REG-240-C: External https URL in terminal output opens in new tab
+**Issue:** #240 (no regression of WebLinksAddon behavior).
+**Setup:** Any session.
+**Steps:**
+1. In a Terminal session, run: `echo https://example.com/foo`.
+2. Click the printed URL.
+**Verify:**
+- A new browser tab opens to `https://example.com/foo`.
+- The active session does NOT change (no file tab created, no terminal switch).
+
+### REG-246: File drag from sidebar/file tree pastes path into terminal prompt
+**Issue:** #246 (regression after the file-tree refactor).
+**Setup:** Active session of any CLI type. Files panel open and at least one file visible in the tree.
+**Steps:**
+1. With a Claude/Gemini/Codex/Terminal session active, click+hold a file row in the file tree.
+2. Drag it over the terminal pane (terminal area should outline with the accent color).
+3. Release.
+**Verify:**
+- The terminal receives the absolute file path as if typed (e.g. `/data/workspace/repos/agentic-workbench/README.md` appears at the prompt).
+- The session WebSocket sent the path bytes — confirmable by inspecting `tabs.get(activeTabId).ws` send log if instrumented, or by checking the path appears in the running CLI's input area.
+
+### REG-241: Browser close + reopen preserves session scrollback (Phase 3, future)
+**Issue:** #241.
+**Status:** Pending implementation in Phase 3 of the terminal-overhaul bundle. Test scaffold below; mark FAIL until #241 is closed.
+**Setup:** Any active session with at least 50 lines of prior output.
+**Steps:**
+1. With output in the session, fully close the browser tab/window for the workbench.
+2. Reopen `${WORKBENCH_URL}`.
+3. Click the same session in the sidebar to attach.
+4. Wheel up in the terminal pane.
+**Verify:** Scroll up reveals lines that were emitted *before* the close. The full tmux scrollback (or up to xterm's 10000-line cap) is replayed into the buffer.
+**Pre-fix behavior:** Only the visible pane bytes were replayed; everything above the viewport was inaccessible.
+
 ---
 ## Troubleshooting
 
