@@ -11,13 +11,6 @@ WB_DATA="/data/.workbench"
 # Ensure /data structure exists (volume may be empty on first run)
 mkdir -p "$WORK" "$WB_DATA" "$CLAUDE/projects" 2>/dev/null || true
 
-# Ensure docs library exists with standard structure
-mkdir -p "$WORK/docs/guides" "$WORK/docs/processes" "$WORK/docs/reference" "$WORK/docs/system-prompts"
-if [ -d /app/config/docs ]; then
-  cp -rn /app/config/docs/* "$WORK/docs/" 2>/dev/null || true
-  echo "[entrypoint] Synced docs from config/docs (new files only)"
-fi
-
 # Seed default system prompts if not present
 # #197: use -s (file exists AND non-empty) instead of -f (file exists). Empty
 # 0-byte prompt files left over from earlier deploys would otherwise survive
