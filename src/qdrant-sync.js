@@ -1298,4 +1298,11 @@ async function status() {
   return { available: true, running: _running, url: QDRANT_URL, collections };
 }
 
-module.exports = { start, stop, restart, reapplyConfig, search, status, embed, qdrantHealthy, reindexCollection, dropAllCollections, buildCandidateConfig, validateProviderConfig, getEmbeddingProvider };
+module.exports = {
+  start, stop, restart, reapplyConfig, search, status, embed,
+  qdrantHealthy, reindexCollection, dropAllCollections,
+  buildCandidateConfig, validateProviderConfig, getEmbeddingProvider,
+  // #212: exported so the retry behavior can be exercised by fault-injection
+  // tests without setting up a full reindex pipeline.
+  upsertPoints, deletePointsByFilter, retryTransient,
+};
