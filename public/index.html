@@ -3057,7 +3057,11 @@ build/**</textarea>
           const row = e.target.closest('.ft-row');
           if (!row || !el.contains(row)) return;
           e.dataTransfer.setData('text/plain', row.dataset.path);
-          e.dataTransfer.effectAllowed = 'move';
+          // copyMove so the same drag can be 'move' onto a folder (file-tree
+          // reorganize) and 'copy' onto the terminal pane (paste path into
+          // prompt). 'move' alone causes the terminal-area drop to be blocked
+          // by the browser since that target advertises dropEffect: copy. (#246)
+          e.dataTransfer.effectAllowed = 'copyMove';
         });
       }
       if (onDrop) {
