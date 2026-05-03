@@ -251,7 +251,7 @@
     .task-folder.selected > .task-folder-label { color:var(--accent); font-weight:bold; }
 
     .task-node {
-      display:flex; align-items:center; gap:4px; padding:0 2px; font-size:11px; line-height:18px; cursor:grab;
+      display:flex; align-items:flex-start; gap:4px; padding:0 2px; font-size:11px; line-height:18px; cursor:grab;
     }
     .task-node:hover { background:var(--bg-hover); }
     .task-node.done .task-label { text-decoration:line-through; color:var(--text-muted); }
@@ -556,6 +556,7 @@
       <button class="panel-home-btn" id="panel-home-files" onclick="autoNavigateFileTree()" title="Navigate to active session's directory">&#8962;</button>
       <button class="panel-home-btn" id="panel-refresh-files" onclick="refreshFileTree()" title="Refresh file tree">&#8635;</button>
       <button class="panel-home-btn" id="panel-home-tasks" onclick="autoNavigateTaskTree()" title="Navigate to active session's directory" style="display:none">&#8962;</button>
+      <button class="panel-home-btn" id="panel-refresh-tasks" onclick="loadTaskTree()" title="Refresh task tree" style="display:none">&#8635;</button>
     </div>
     <div id="panel-content">
       <div id="panel-tasks" class="panel-section" style="display:none">
@@ -2047,6 +2048,7 @@ build/**</textarea>
       document.getElementById('panel-home-files').style.display = panel === 'files' ? '' : 'none';
       document.getElementById('panel-refresh-files').style.display = panel === 'files' ? '' : 'none';
       document.getElementById('panel-home-tasks').style.display = panel === 'tasks' ? '' : 'none';
+      document.getElementById('panel-refresh-tasks').style.display = panel === 'tasks' ? '' : 'none';
       loadPanelData();
     }
 

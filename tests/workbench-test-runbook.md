@@ -4854,6 +4854,35 @@ Tests for the user-facing fixes shipped in the canonical branch but not yet in t
 **Pre-fix behavior:** Only the visible pane bytes were replayed; everything above the viewport was inaccessible.
 
 ---
+### REG-242: Task panel refresh button re-fetches tasks without page reload
+**Issue:** #242 (fixed).
+**Setup:** Workbench loaded; switch right panel to Tasks (`switchPanel('tasks')`).
+**Steps:**
+1. With the Tasks panel active, confirm the ↻ button (`#panel-refresh-tasks`) is visible in the panel header.
+2. Switch to the Files panel — confirm `#panel-refresh-tasks` is hidden, `#panel-refresh-files` is visible.
+3. Switch back to Tasks — confirm `#panel-refresh-tasks` is visible again.
+4. Note the task count in the active filter (e.g. `document.querySelectorAll('#task-tree .task-node').length`).
+5. From a separate context (MCP `task_add` or another browser tab POSTing to `/api/tasks`), create a new task in a folder visible in the current tree.
+6. Without reloading the page, click `#panel-refresh-tasks`.
+**Verify:** The task count updates to include the newly-added task (count + 1). No page reload required.
+**Programmatic verification:** `await fetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({folder_path: '/data/workspace/repos/agentic-workbench', title: 'REG-242 marker'})}); const before = document.querySelectorAll('#task-tree .task-node').length; document.getElementById('panel-refresh-tasks').click(); await new Promise(r=>setTimeout(r,1500)); const after = document.querySelectorAll('#task-tree .task-node').length; assert(after >= before + 1)`.
+**Pre-fix behavior:** Tasks created via MCP (or another tab) were invisible in the task panel until full page reload — no in-panel refresh control existed.
+
+---
+### REG-247: Task list checkbox + index top-aligned, not middle-aligned
+**Issue:** #247 (fixed).
+**Setup:** A task whose title wraps to two or more lines (long title or narrow panel).
+**Steps:**
+1. Open the Tasks panel.
+2. Locate a multi-line task row — `.task-node` whose `.task-label` wraps to ≥2 visual lines.
+3. Inspect the row's `align-items` computed style: `getComputedStyle(document.querySelector('.task-node')).alignItems` should be `flex-start`.
+4. Visually confirm the checkbox and `.task-index` element pin to the top of the row, aligned with the FIRST line of the wrapped title text — not floating to the vertical middle of the row.
+5. Verify single-line task rows look identical to before — no visible shift.
+**Verify:** Checkbox + index align with first line of title for multi-line rows. Single-line rows unchanged.
+**Programmatic verification:** `const node = document.querySelector('.task-node'); const cs = getComputedStyle(node); assert(cs.alignItems === 'flex-start')` — covers the CSS rule itself. For visual: take a screenshot of the Tasks panel with at least one multi-line task and compare checkbox top-edge to label first-line top-edge.
+**Pre-fix behavior:** `.task-node` had `align-items:center`, which centered the checkbox vertically in the row — so on multi-line titles it floated halfway down instead of staying aligned with the first line.
+
+---
 ## Troubleshooting
 
 | Symptom | Likely Cause | Action |
