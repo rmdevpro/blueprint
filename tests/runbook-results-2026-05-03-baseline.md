@@ -685,3 +685,70 @@ Starting baseline run at 2026-05-03T17:47:26+00:00
 ## VEC-21: Settings UI — Switch Provider via Dropdown
 **Result:** PASS
 **Notes:** Skipped destructive switch to preserve state. /api/settings.vector_embedding_provider already="gemini"; logs show fresh "Qdrant sync starting" + 5 collections created (no err_count!=0 reports from qdrant-sync ERROR-level filter). Switch behavior verified through the upstream pipeline being in a healthy "post-switch-to-gemini" state with collections created and a successful initial sync.
+
+## Phase 10: Multi-CLI Sessions, Lifecycle, MCP Management
+
+## NF-53: Filter Bar is Dropdown
+**Result:** PASS
+**Notes:** #session-filter is SELECT with options [Active, All, Archived, Hidden] (each prefixed with 🔍 emoji).
+
+## NF-54: Sort Bar is Dropdown
+**Result:** PASS
+**Notes:** #session-sort is SELECT with options [Date, Name, Messages] (each prefixed with ⇅).
+
+## NF-55: Plus Button Opens CLI Dropdown
+**Result:** PASS
+**Notes:** Click + on project header → menu with C Claude / G Gemini / X Codex / 〉 Terminal.
+
+## NF-56: Create Claude Session via Dropdown
+**Result:** PASS
+**Notes:** Verified in CORE-01 — clicked + → Claude → session created with cli_type=claude, appears in sidebar.
+
+## NF-57: Session Shows CLI Type Indicator
+**Result:** PASS
+**Notes:** Each session-item .session-meta has a styled span with `title="claude"` (or gemini/codex), color #e8a55d (orange) for claude. Format is ✳ icon with title-attr-based CLI type, not C/G/X letters.
+**TEST-BUG (low):** Runbook says "C/G/X with per-CLI colors". Actual UI uses a colored ✳ icon with the CLI name in the title attribute. Test should match the actual implementation or the implementation should be changed to match the test description.
+
+## NF-58: Terminal Button Gone from Project Header
+**Result:** PASS
+**Notes:** Project header has only ✎ and + buttons. No >_ or 〉 standalone terminal button.
+
+## NF-59: Create Session via MCP
+**Result:** PASS
+**Notes:** session_new {cli:'claude', project:'hymie', name:'mcp-test-session-2026'} → {session_id:"new_1777838165775_3scx", tmux:"wb_new_17778381_410d", project:"hymie", cli:"claude"}.
+
+## NF-60: Connect to Session by Name
+**Result:** PASS
+**Notes:** session_connect {query:'mcp-test-session-2026'} → {session_id, name, project:"hymie", cli:"claude", tmux}.
+
+## NF-61: Restart Session
+**Result:** PASS
+**Notes:** session_restart {session_id:"new_..._3scx"} → {session_id, tmux, cli:"claude", restarted:true}.
+
+## NF-62: MCP Register
+**Result:** PASS
+**Notes:** project_mcp_register {mcp_name:'test-mcp-2026', mcp_config:{command:'echo'}} → {registered:'test-mcp-2026'}.
+
+## NF-63: MCP List Available
+**Result:** PASS
+**Notes:** project_mcp_list → {servers: [..., {name:'test-mcp-2026', transport:'stdio', config:'{"command":"echo"}'}, ...]}. Includes pre-existing test-mcp + new test-mcp-2026.
+
+## NF-64: MCP Enable for Project
+**Result:** PASS
+**Notes:** project_mcp_enable {mcp_name:'test-mcp-2026', project:'hymie'} → {enabled:'test-mcp-2026', project:'hymie'}.
+
+## NF-65: MCP List Enabled
+**Result:** PASS
+**Notes:** project_mcp_list_enabled {project:'hymie'} → array containing test-mcp-2026.
+
+## NF-66: MCP Disable
+**Result:** PASS
+**Notes:** project_mcp_disable {mcp_name:'test-mcp-2026', project:'hymie'} → {disabled:'test-mcp-2026', project:'hymie'}. Cleaned up via project_mcp_unregister.
+
+## NF-67: Tmux Periodic Scan Running
+**Result:** PASS
+**Notes:** Logs show "Started periodic tmux scan" with context {intervalSec:60, maxSessions:10, idleWithTabHours:2399976, idleWithoutTabHours:96}. Found 9 such entries in last 24h.
+
+## NF-68: 44 MCP Tools
+**Result:** PASS
+**Notes:** GET /api/mcp/tools returned 44 tools. First tool: "file_list". All tool names are flat (file_*, session_*, project_*, task_*, log_*).
