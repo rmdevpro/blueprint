@@ -73,9 +73,11 @@ These changes affect many test steps. Read before executing.
 
 A test result of "unknown", "empty", "0", "null", "not found", "expected behavior", "will populate later", or any non-positive outcome is a **FAIL**. If the user would see something broken, blank, missing, or wrong — it is a FAIL. There are no partial passes. There is no "works but shows wrong data." There is no "expected on first load." If it doesn't show the correct value, it failed.
 
-**The executor must NEVER choose SKIP on its own.** Every test in this runbook is runnable on the standard Workbench executor (Playwright MCP for UI, curl for API, ssh + docker exec for infra, real CLI sessions for terminal flows, Hymie Firefox if a headed browser is required). If a test appears unrunnable: investigate why, file an issue, and mark the test FAIL — do NOT skip on your own initiative. "I don't have the tool" is wrong: you do. "It's blocked by a prior failure" means fix the blocker (or fail the blocker test and the dependent ones).
+**SKIP is not a valid result.** Per PROC-004 (Test Execution Policy), every in-scope test runs and is recorded as PASS or FAIL. Phases excluded by the test scope matrix for the current change type **do not appear in the executor briefing** — they are out of scope, not skipped at runtime. Neither the executor nor the orchestrator has authority to skip an in-scope test.
 
-SKIP is reserved for the orchestrator's explicit instruction (e.g., "skip Phase 0 for this run, Claude is already authenticated"). When the orchestrator directs a SKIP, record it as SKIP with the orchestrator's reason verbatim. The executor never decides to SKIP unilaterally.
+Every test in this runbook is runnable on the standard Workbench executor (Playwright MCP for UI, curl for API, ssh + docker exec for infra, real CLI sessions for terminal flows, Hymie Firefox if a headed browser is required). If a test appears unrunnable: investigate why, file an issue, and mark the test FAIL. "I don't have the tool" is wrong: you do. "It's blocked by a prior failure" means file the blocker FAIL with an issue and continue (the failure does not pollute downstream tests by default — see PROC-004 Principle 4).
+
+Aggregate results that bundle multiple tests into a single PASS line are forbidden. "Exercised-elsewhere" footnotes that mark untested tools as PASS are forbidden. One test ID, one explicit result, one set of assertions specific to that test (PROC-004 Principle 6).
 
 1. Execute tests in phase order. Phase 1 (Smoke) must fully pass before proceeding.
 2. For each test, follow the **Steps** exactly using Playwright MCP tools.
