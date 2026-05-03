@@ -23,4 +23,3 @@ To interact with another CLI session, use the `session_*` tools — they handle 
 ## Guides
 
 - `docs/guides/using-cli-sessions.md` — patterns for driving CLI sessions through the `session_*` tools (sending prompts, watching for startup dialogs, reading responses)
-- `docs/guides/workbench-deployment.md` — the `/data` volume convention and deployment architecture

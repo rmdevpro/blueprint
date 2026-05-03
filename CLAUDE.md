@@ -1,26 +1,34 @@
-# Identity
+# This Repository
 
-You are Claude, running as an agent inside Workbench — an agentic workbench that manages AI CLI sessions, workspace files, and tasks. You are running inside a Docker container. Your workspace is at `/data/workspace`. You have access to Workbench's MCP tools and can drive other CLI sessions through them.
+This repository is the source code for the Agentic Workbench application — the system you are running inside. You are using the workbench to develop the workbench. The application is a Node.js server (`server.js`) decomposed into focused modules using factory-based dependency injection. The full architecture, module responsibilities, and configuration reference are in `README.md`.
 
-# Purpose
+# Anchor Documents
 
-You are an agent in the Workbench system. This system and its agents serve the user. You must be helpful, harmless, and honest towards the user. What's helpful is what the user finds helpful. What's harmful is what damages the user's work, time, or trust. Honest means telling the user what's actually happening, not what sounds good.
+These documents define the standards and context this project must be reviewed and developed against. When a document is relevant to your current task, read it fully. Do not grep or search within documents — content cannot be understood out of context. A document that is partially read is a document misread.
 
-# Resources
+## Engineering Standards
 
-## MCP Tools (server `workbench`)
+- `/data/workspace/repos/Admin/docs/requirements/REQ-001-base-engineering.md` — engineering requirements all code in this project must satisfy. Read before writing or reviewing any application code.
+- `/data/workspace/repos/Admin/docs/standards/STD-003-test-plan-standard.md` — defines what a test plan must contain and how it must be maintained. Read before reviewing or updating the test plans.
+- `/data/workspace/repos/Admin/docs/standards/STD-004-code-standard.md` — defines what a code deliverable must look like as an artifact. Read before writing or reviewing application code.
+- `/data/workspace/repos/Admin/docs/standards/STD-005-test-code-standard.md` — defines what test code must look like. Read before writing or reviewing test code.
+- `/data/workspace/repos/Admin/docs/standards/STD-007-readme-standard.md` — defines what the README must contain and how it must be maintained. Read before updating `README.md`.
 
-The Workbench server exposes 44 flat tools, grouped by domain:
+## Process
 
-- `file_*` (8) — list, read, create, update, delete, find, search_documents, search_code (workspace files)
-- `session_*` (19) — new, connect, restart, kill, list, config, summarize, prepare_pre_compact, resume_post_compact, export, info, find, search, send_text, send_keys, send_key, read_screen, read_output, wait
-- `project_*` (11) — find, get, update, sys_prompt_get, sys_prompt_update, mcp_list, mcp_register, mcp_unregister, mcp_enable, mcp_disable, mcp_list_enabled
-- `task_*` (5) — find, get, add, move, update
-- `log_*` (1) — find
+- `/data/workspace/repos/Admin/docs/process/PROC-001-debugging-guide.md` — required debugging and investigation workflow. Read at the start of any bug investigation.
+- `/data/workspace/repos/Admin/docs/process/PROC-002-small-feature-guide.md` — required feature development workflow. Read at the start of any new feature work.
+- `/data/workspace/repos/Admin/docs/process/PROC-003-runbook-execution-guide.md` — procedure for orchestrating the UI test runbook. Read when running or interpreting UI test results.
+- `/data/workspace/repos/Admin/docs/process/PROC-004-test-execution-policy.md` — canonical policy for which tests run and when. Read when deciding test scope.
 
-To interact with another CLI session, use the `session_*` tools — they handle session lifecycle (`session_new` / `connect` / `restart` / `kill`), input (`session_send_text` for prompts, `session_send_key` to submit, `session_send_keys` for raw shell-style input), and output (`session_read_screen` for the visible pane, `session_read_output` for structured transcript). `session_wait` pauses between sending and reading so the CLI has time to respond. You do not need to know the underlying transport — the MCP tool surface is the interface.
+## Deployment
 
-## Guides
+- `/data/workspace/repos/Admin/docs/guides/workbench-deployment.md` — deployment architecture, the `/data` volume convention, dev/prod distinction, and add-on installation. Read before any deployment or infrastructure work.
 
-- `docs/guides/using-cli-sessions.md` — patterns for driving CLI sessions through the `session_*` tools (sending prompts, watching for startup dialogs, reading responses)
-- `docs/guides/workbench-deployment.md` — the `/data` volume convention and deployment architecture
+## This Repository
+
+- `README.md` — architecture, module structure, dependency graph, configuration reference, and compliance notes. Read before working on any part of the codebase.
+- `tests/workbench-test-plan-backend.md` — backend test plan. Read before writing backend tests or reviewing backend changes.
+- `tests/workbench-test-plan-ui.md` — UI test plan. Read before writing UI tests or reviewing UI changes.
+- `tests/workbench-test-runbook.md` — master UI test runbook. Read before running UI tests.
+- `tests/traceability-matrix.md` — test coverage traceability matrix. Read to understand current coverage status before adding or modifying tests.
