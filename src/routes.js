@@ -399,6 +399,14 @@ function registerCoreRoutes(
     // Always include the workspace
     const workspace = safe.WORKSPACE;
     mounts.push({ path: workspace });
+    // Knowledge Base at /data/knowledge-base
+    const KB_PATH = '/data/knowledge-base';
+    try {
+      await stat(KB_PATH);
+      mounts.push({ path: KB_PATH, label: 'Knowledge Base' });
+    } catch (_err) {
+      mounts.push({ path: KB_PATH, label: 'Knowledge Base', uninitialized: true });
+    }
     // Add any directories under /mnt
     try {
       const entries = await readdir('/mnt', { withFileTypes: true });
@@ -409,6 +417,29 @@ function registerCoreRoutes(
       /* /mnt may not exist */
     }
     res.json(mounts);
+  });
+
+  // ── POST /api/kb/init ─────────────────────────────────────────────────────
+
+  app.post('/api/kb/init', async (req, res) => {
+    const KB_PATH = '/data/knowledge-base';
+    // Check if already initialized
+    try {
+      await stat(join(KB_PATH, '.git'));
+      return res.json({ ok: true, alreadyInitialized: true });
+    } catch (_err) { /* not yet cloned */ }
+    // Check if path exists but is not a git repo
+    try {
+      await stat(KB_PATH);
+      return res.status(409).json({ error: 'Path exists but is not a git repository' });
+    } catch (_err) { /* path does not exist, safe to clone */ }
+    const kbRepoUrl = db.getSetting('kb_repo_url', '"https://github.com/rmdevpro/workbench-kb"');
+    try {
+      await execFileAsync('git', ['clone', kbRepoUrl, KB_PATH]);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: `Clone failed: ${err.message}` });
+    }
   });
 
   // ── GET /api/browse ────────────────────────────────────────────────────────
@@ -1186,6 +1217,7 @@ function registerCoreRoutes(
       vector_collection_codex: { enabled: true, dims: 384 },
       vector_ignore_patterns: 'node_modules/**\n.git/**\n*.lock\n*.min.js\ndist/**\nbuild/**',
       vector_additional_paths: [],
+      kb_repo_url: 'https://github.com/rmdevpro/workbench-kb',
     };
     res.json({ ...defaults, ...settings });
   });
