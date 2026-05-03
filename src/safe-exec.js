@@ -189,6 +189,11 @@ function tmuxCreateCLI(sessionName, cwd, cliType, args = []) {
   // Pass through DCS/OSC escape sequences (notably OSC 8 hyperlinks emitted by
   // Claude Code and other CLIs) so xterm.js receives them intact (#240).
   tmuxExecSync(['set-option', '-t', safeName, 'allow-passthrough', 'on']);
+  // tmux 3.4+ supports OSC 8 hyperlinks but only forwards them when the
+  // configured terminal advertises the `hyperlinks` feature. Append it to
+  // terminal-features for any terminal type so xterm.js gets the OSC 8
+  // sequence and can wire up clickable links (#240).
+  tmuxExecSync(['set-option', '-t', safeName, '-as', 'terminal-features', ',*:hyperlinks']);
 }
 
 // Backward-compatible wrappers
