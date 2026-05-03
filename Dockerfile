@@ -2,7 +2,7 @@ FROM node:22-trixie-slim
 
 RUN apt-get update && apt-get install -y \
     git curl ca-certificates python3 make g++ tmux ssh openssh-client jq \
-    ffmpeg zip unzip rsync sqlite3 tree tini \
+    ffmpeg zip unzip rsync sqlite3 tree tini sudo \
     && rm -rf /var/lib/apt/lists/*
 
 # Install GitHub CLI
@@ -29,6 +29,9 @@ RUN npm install -g @anthropic-ai/claude-code @google/gemini-cli @openai/codex
 
 # Reuse the existing 'node' user (UID 1000) — rename to workbench, home at /data
 # Also hand ownership of the CLI packages to workbench so npm auto-updates work.
+# Grant workbench passwordless sudo so the runtime user can install packages
+# (e.g. `sudo apt-get install` for chromium runtime libs needed by Playwright)
+# without rebuilding the image.
 RUN usermod -l workbench -d /data -m node && \
     groupmod -n workbench node && \
     mkdir -p /data/.claude /data/.workbench /data/workspace && \
@@ -36,7 +39,9 @@ RUN usermod -l workbench -d /data -m node && \
     chown -R workbench:workbench \
         /usr/local/lib/node_modules/@anthropic-ai \
         /usr/local/lib/node_modules/@google \
-        /usr/local/lib/node_modules/@openai
+        /usr/local/lib/node_modules/@openai && \
+    echo 'workbench ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/workbench && \
+    chmod 0440 /etc/sudoers.d/workbench
 
 # Copy and install app dependencies
 WORKDIR /app
