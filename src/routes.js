@@ -399,13 +399,13 @@ function registerCoreRoutes(
     // Always include the workspace
     const workspace = safe.WORKSPACE;
     mounts.push({ path: workspace });
-    // Knowledge Base at /data/knowledge-base
+    // Knowledge Base at /data/knowledge-base (auto-cloned on startup if absent)
     const KB_PATH = '/data/knowledge-base';
     try {
       await stat(KB_PATH);
       mounts.push({ path: KB_PATH, label: 'Knowledge Base' });
     } catch (_err) {
-      mounts.push({ path: KB_PATH, label: 'Knowledge Base', uninitialized: true });
+      /* not yet cloned — omit until available */
     }
     // Add any directories under /mnt
     try {
@@ -733,6 +733,18 @@ function registerCoreRoutes(
 
         const sessDir = safe.findSessionsDir(projectPath);
 
+        // #257: reconcile MUST run BEFORE the autonomous JSONL discovery below.
+        // For MCP-spawned sessions there's no session-resolver running, so the
+        // provisional `new_<ts>` row needs the reconciler to bind it to its
+        // realID JSONL. If discovery runs first, it creates a separate realID
+        // row using parseSessionFile-derived name (the prompt text), which then
+        // makes the reconciler treat the JSONL as "claimed" — leaving the
+        // provisional row as a permanent orphan in the sidebar AND mis-naming
+        // the real row. Run reconcile first; discovery picks up any leftover
+        // unbound JSONLs (e.g. sessions created via the CLI directly).
+        const currentSessionsForReconcile = db.getSessionsForProject(project.id);
+        await reconcileStaleSessionsForProject(currentSessionsForReconcile, sessDir, project.id);
+
         try {
           const sessionFiles = await readdir(sessDir);
           for (const file of sessionFiles) {
@@ -755,9 +767,6 @@ function registerCoreRoutes(
           }
           /* expected for ENOENT: no sessions dir */
         }
-
-        const currentSessions = db.getSessionsForProject(project.id);
-        await reconcileStaleSessionsForProject(currentSessions, sessDir, project.id);
 
         const dbSessions = db.getSessionsForProject(project.id);
         const sessions = await buildSessionList(dbSessions, sessDir);

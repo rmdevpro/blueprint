@@ -36,10 +36,6 @@
     .ft-row.ft-drop-target { background: var(--accent); color: var(--bg-primary); }
     .ft-row.ft-loading .ft-arrow { opacity: 0.5; }
     .ft-error { padding: 4px 6px; color: var(--danger); font-size: 11px; }
-    .ft-kb-init { padding: 6px 4px; }
-    .ft-kb-init-btn { font-size: 11px; padding: 3px 8px; cursor: pointer; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 3px; }
-    .ft-kb-init-btn:hover:not(:disabled) { background: var(--accent); color: var(--bg-primary); border-color: var(--accent); }
-    .ft-kb-init-btn:disabled { opacity: 0.6; cursor: default; }
   </style>
   <script src="/lib/jquery/jquery.min.js"></script>
   <style>
@@ -2893,37 +2889,7 @@ build/**</textarea>
           const row = createRow(path, 'mount', displayName);
           const children = document.createElement('div');
           children.className = 'ft-children';
-          if (mount.uninitialized) {
-            children.hidden = false;
-            const initEl = document.createElement('div');
-            initEl.className = 'ft-kb-init';
-            const btn = document.createElement('button');
-            btn.className = 'ft-kb-init-btn';
-            btn.textContent = 'Initialize Knowledge Base';
-            btn.onclick = async () => {
-              btn.disabled = true;
-              btn.textContent = 'Cloning…';
-              try {
-                const r = await fetch('/api/kb/init', { method: 'POST' });
-                if (!r.ok) {
-                  const d = await r.json().catch(() => ({}));
-                  btn.textContent = d.error || 'Failed';
-                  btn.disabled = false;
-                  return;
-                }
-                // Reload the file browser to reflect the newly cloned KB
-                _fileBrowserTree = null;
-                await loadFiles();
-              } catch (e) {
-                btn.textContent = 'Failed — check console';
-                btn.disabled = false;
-              }
-            };
-            initEl.appendChild(btn);
-            children.appendChild(initEl);
-          } else {
-            children.hidden = true;
-          }
+          children.hidden = true;
           section.appendChild(row);
           section.appendChild(children);
           el.appendChild(section);

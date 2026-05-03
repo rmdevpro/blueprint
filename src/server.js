@@ -334,6 +334,25 @@ if (require.main === module) {
             err: err.message,
           }),
         );
+
+        // Auto-clone Knowledge Base on first run (non-blocking)
+        const { execFile } = require('child_process');
+        const { promisify } = require('util');
+        const execFileAsync = promisify(execFile);
+        const KB_PATH = '/data/knowledge-base';
+        const { stat: fsStat } = require('fs/promises');
+        fsStat(KB_PATH).catch(async () => {
+          const rawUrl = db.getSetting('kb_repo_url', '"https://github.com/rmdevpro/workbench-kb"');
+          let kbRepoUrl;
+          try { kbRepoUrl = JSON.parse(rawUrl); } catch { kbRepoUrl = rawUrl; }
+          logger.info('Cloning Knowledge Base', { module: 'server', url: kbRepoUrl });
+          try {
+            await execFileAsync('git', ['clone', kbRepoUrl, KB_PATH]);
+            logger.info('Knowledge Base cloned', { module: 'server' });
+          } catch (err) {
+            logger.error('Knowledge Base clone failed', { module: 'server', err: err.message });
+          }
+        });
       });
     } catch (err) {
       logger.error('Fatal startup error', {
