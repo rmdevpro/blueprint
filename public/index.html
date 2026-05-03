@@ -1434,6 +1434,23 @@ build/**</textarea>
         scrollback: 10000,
         fastScrollSensitivity: 5,
         scrollSensitivity: 3,
+        // #240: route OSC 8 clicks for file:// or workspace paths to the file
+        // viewer; let real external URLs go to a new tab.
+        linkHandler: {
+          activate(event, uri) {
+            let path = null;
+            if (uri.startsWith('file://')) {
+              try { path = decodeURIComponent(new URL(uri).pathname); } catch {}
+            } else if (uri.startsWith('/')) {
+              path = uri;
+            }
+            if (path && path.startsWith('/')) {
+              openFileTab(path);
+            } else {
+              window.open(uri, '_blank', 'noopener,noreferrer');
+            }
+          },
+        },
       });
       // Block mouse tracking sequences from Ink/Claude CLI so native selection works
       const mouseModes = [1000, 1002, 1003, 1006, 1015];
@@ -1446,6 +1463,34 @@ build/**</textarea>
       term.loadAddon(fitAddon);
       term.loadAddon(new WebLinksAddon.WebLinksAddon());
       term.open(paneEl);
+
+      // #240: detect bare workspace paths (e.g. /data/workspace/repos/foo/bar.js)
+      // printed as plain text by any CLI and make them clickable into the file viewer.
+      term.registerLinkProvider({
+        provideLinks(lineNumber, callback) {
+          const line = term.buffer.active.getLine(lineNumber - 1);
+          if (!line) return callback(undefined);
+          const text = line.translateToString(true);
+          const links = [];
+          const re = /\/data\/workspace\/[^\s"'`<>()\[\]]+/g;
+          let m;
+          while ((m = re.exec(text)) !== null) {
+            // Strip trailing punctuation that's typically not part of the path.
+            let pathText = m[0].replace(/[.,;:!?)]+$/, '');
+            const startCol = m.index + 1;
+            links.push({
+              range: {
+                start: { x: startCol, y: lineNumber },
+                end: { x: startCol + pathText.length - 1, y: lineNumber },
+              },
+              text: pathText,
+              decorations: { pointerCursor: true, underline: true },
+              activate(event, t) { openFileTab(t); },
+            });
+          }
+          callback(links.length ? links : undefined);
+        },
+      });
 
       const tab = {
         id: tabId, tmux: tmuxSession, name, project, cli_type: cliType || 'claude',

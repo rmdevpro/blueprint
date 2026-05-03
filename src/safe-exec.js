@@ -186,6 +186,9 @@ function tmuxCreateCLI(sessionName, cwd, cliType, args = []) {
   });
   tmuxExecSync(['set-option', '-t', safeName, 'mouse', 'off']);
   tmuxExecSync(['set-option', '-t', safeName, 'history-limit', '10000']);
+  // Pass through DCS/OSC escape sequences (notably OSC 8 hyperlinks emitted by
+  // Claude Code and other CLIs) so xterm.js receives them intact (#240).
+  tmuxExecSync(['set-option', '-t', safeName, 'allow-passthrough', 'on']);
 }
 
 // Backward-compatible wrappers
