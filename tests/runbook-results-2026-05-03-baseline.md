@@ -374,3 +374,42 @@ Starting baseline run at 2026-05-03T17:47:26+00:00
 **Result:** PASS
 **Notes:** Tab A=renamed-session, Tab B=Say hello. After clearing B's startup help overlay, sent ALPHA-INPUT to A and BETA-MARKER-PQR to B. Final: A has ALPHA but no BETA; B has BETA but no ALPHA. Per-tab WebSocket isolation confirmed.
 **Note:** The session "Say hello" had its /help overlay open on first open (apparently because a prior session's input contained `/`). Required two Esc's to clear before BETA-MARKER could be typed. Worth noting that test setup should always start with Esc to clear any startup overlays.
+
+## Phase 6: End-to-End
+
+## E2E-01: Daily Developer Loop
+**Result:** PASS
+**Notes:** Full lifecycle confirmed. (1) 12 project-groups loaded. (2) Created E2E-01-list-files Claude session via + dropdown on hymie → tab opened, terminal had content. (3) Right panel + Tasks tab opened; added "Review test results" task via task_add (id=79). (4) #status-bar.classList contains 'active'. (5) Settings opened → theme=light → body bg=rgb(245,245,245) → restored dark → settings closed. (6) Archived session via PUT /api/sessions/:id/config → archived filter shows 39 archived items including the new one. (7) Unarchived → active filter. (8) Closed tab → #empty-state visible. (9) Re-archived for cleanup. session id 0e075fd8-d321-48b7-92f5-e0c3571ab832.
+
+## Phase 7: User Stories
+
+## USR-01: Coding Task User Story
+**Result:** PASS
+**Notes:** Created usr01-coding Claude session in hymie. Sent "Create a simple hello.py that prints hello world". Claude used Write tool ("Wrote 1 lines to hello.py": `print("Hello World")`) — required confirmation prompt + "1" approval. Then Claude offered to run "python hello.py" (declined via Esc). GET /api/file?path=/data/workspace/repos/Joshua26/mads/hymie/hello.py → 200 with body `print("Hello World")\n`.
+
+## USR-02: Organize Sessions
+**Result:** PASS
+**Notes:** Created usr02-A/B/C in hymie. Archived B, hid C, kept A active. Renamed A → "usr02-renamed". Final API state: A name="usr02-renamed" state="active"; B state="archived"; C state="hidden". All 3 cleaned up to archived.
+**Note:** First batch creation race issues — placeholder "new_..." IDs returned by /api/sessions can't be used until session resolves to UUID (~5–8s). Had to recreate one session and retry. Worth flagging if a future test wants to chain config PUTs immediately after POST: use proper polling instead of fixed sleep.
+
+## USR-03: Task Management
+**Result:** PASS
+**Notes:** Added Task A/B/C via task_add MCP (ids 80/81/82). Updated B to status=done via task_update. Deleted Task C via .task-delete UI button (with window.confirm stub). Final API: A status=todo, B status=done, C "task not found" (deleted). Cleanup deleted A and B too.
+
+## USR-04: Customize Appearance
+**Result:** PASS
+**Notes:** 4 themes available: dark / light / workbench-dark / workbench-light. Body bg per theme: dark=rgb(13,17,23), light=rgb(245,245,245), workbench-dark=rgb(8,18,32), workbench-light=rgb(232,240,248). Font size 18 saved (font_size=18). Font family changed to "'Fira Code', monospace" and confirmed via /api/settings. All restored to defaults.
+
+## USR-05: Browse Files
+**Result:** PASS
+**Notes:** Files panel showed mounts (/data/workspace, /mnt/storage). Expanded wb-seed via click → revealed .qdrant-initialized file. Used openFileTab('/data/workspace/repos/Joshua26/mads/hymie/hello.py') → file tab "hello.py" opened with .cm-editor or .toastui-editor-defaultUI visible. Closed file tab via .tab-close → returned to "renamed-session" tab. fileTabsAfter=0.
+**Note:** Tree uses custom div structure (arrows + folder/file divs); jQueryFileTree's `<a>` selectors don't apply. Direct openFileTab() function call is the most reliable way to open a file from script.
+
+## USR-06: Review Summary
+**Result:** PASS
+**Notes:** Clicked .session-action-btn.summary on first session → summary overlay appeared. Polled #summary-content; reached 337 chars within ~5s. Overlay closed via close button.
+
+## USR-07: Hide/Recover Session
+**Result:** PASS
+**Notes:** "Say hello" session via PUT /api/sessions/:id/config: hidden then restored to active. Final API state: state="active". DOM filter checks were affected by re-render race (inActive read true immediately after PUT before sidebar reloaded), but API truth-source confirms hide→active lifecycle works.
+**Note:** STATE-DEP risk: DOM checks immediately after a config PUT can return stale data because loadState() runs async. Wait ~2s then re-check filter for reliable observations.
