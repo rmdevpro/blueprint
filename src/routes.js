@@ -442,6 +442,116 @@ function registerCoreRoutes(
     }
   });
 
+  // ── KB helpers ───────────────────────────────────────────────────────────────
+
+  const KB_PATH = '/data/knowledge-base';
+  const KB_UPSTREAM = 'https://github.com/rmdevpro/workbench-kb';
+
+  function getKbAccount() {
+    let accounts = [];
+    try { accounts = JSON.parse(db.getSetting('git_accounts', '[]')); } catch (_e) {}
+    return accounts.find(a => a.isKB) || null;
+  }
+
+  function kbOriginUrl(account, repoName) {
+    return `https://${account.username}:${account.token}@${account.host}/${account.username}/${repoName}`;
+  }
+
+  // ── GET /api/kb/status ────────────────────────────────────────────────────
+
+  app.get('/api/kb/status', async (req, res) => {
+    try {
+      await stat(join(KB_PATH, '.git'));
+    } catch (_err) {
+      return res.json({ initialized: false });
+    }
+    try {
+      const [aheadRes, behindRes, originRes, fetchRes] = await Promise.allSettled([
+        execFileAsync('git', ['-C', KB_PATH, 'rev-list', '--count', 'origin/main..HEAD']),
+        execFileAsync('git', ['-C', KB_PATH, 'rev-list', '--count', 'HEAD..origin/main']),
+        execFileAsync('git', ['-C', KB_PATH, 'remote', 'get-url', 'origin']),
+        execFileAsync('git', ['-C', KB_PATH, 'log', '-1', '--format=%ci', 'FETCH_HEAD']).catch(() =>
+          execFileAsync('git', ['-C', KB_PATH, 'log', '-1', '--format=%ci'])
+        ),
+      ]);
+      const ahead = aheadRes.status === 'fulfilled' ? parseInt(aheadRes.value.stdout.trim(), 10) || 0 : 0;
+      const behind = behindRes.status === 'fulfilled' ? parseInt(behindRes.value.stdout.trim(), 10) || 0 : 0;
+      const originUrl = originRes.status === 'fulfilled' ? originRes.value.stdout.trim().replace(/:\/\/[^@]+@/, '://') : null;
+      const lastSync = fetchRes.status === 'fulfilled' ? fetchRes.value.stdout.trim() : null;
+      res.json({ initialized: true, ahead, behind, originUrl, lastSync });
+    } catch (err) {
+      res.json({ initialized: true, error: err.message });
+    }
+  });
+
+  // ── POST /api/kb/fork ─────────────────────────────────────────────────────
+
+  app.post('/api/kb/fork', async (req, res) => {
+    const account = getKbAccount();
+    if (!account) return res.status(400).json({ error: 'No KB git account configured' });
+    let repoName;
+    try { repoName = JSON.parse(db.getSetting('kb_repo_name', '"blueprint_workbench_kb"')); } catch (_e) { repoName = 'blueprint_workbench_kb'; }
+
+    // Fork via GitHub API
+    try {
+      const forkRes = await fetch(`https://api.${account.host}/repos/rmdevpro/workbench-kb/forks`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${account.token}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: repoName, default_branch_only: true }),
+      });
+      if (!forkRes.ok) {
+        const body = await forkRes.json().catch(() => ({}));
+        return res.status(502).json({ error: body.message || `GitHub API error ${forkRes.status}` });
+      }
+    } catch (err) {
+      return res.status(502).json({ error: `GitHub API request failed: ${err.message}` });
+    }
+
+    // Point local clone at fork and add upstream remote
+    const originUrl = kbOriginUrl(account, repoName);
+    const publicUrl = `https://${account.host}/${account.username}/${repoName}`;
+    try {
+      await stat(join(KB_PATH, '.git'));
+      // Repo exists — update remotes
+      await execFileAsync('git', ['-C', KB_PATH, 'remote', 'set-url', 'origin', originUrl]);
+      try {
+        await execFileAsync('git', ['-C', KB_PATH, 'remote', 'add', 'upstream', KB_UPSTREAM]);
+      } catch (_e) {
+        await execFileAsync('git', ['-C', KB_PATH, 'remote', 'set-url', 'upstream', KB_UPSTREAM]);
+      }
+    } catch (_err) {
+      // Not yet cloned — clone the fork
+      await execFileAsync('git', ['clone', originUrl, KB_PATH]);
+      await execFileAsync('git', ['-C', KB_PATH, 'remote', 'add', 'upstream', KB_UPSTREAM]);
+    }
+
+    db.setSetting('kb_repo_url', JSON.stringify(publicUrl));
+    res.json({ ok: true, forkUrl: publicUrl });
+  });
+
+  // ── POST /api/kb/sync-upstream ────────────────────────────────────────────
+
+  app.post('/api/kb/sync-upstream', async (req, res) => {
+    try {
+      await stat(join(KB_PATH, '.git'));
+    } catch (_err) {
+      return res.status(400).json({ error: 'Knowledge Base not initialized' });
+    }
+    try {
+      await execFileAsync('git', ['-C', KB_PATH, 'fetch', 'upstream']);
+      const { stdout } = await execFileAsync('git', ['-C', KB_PATH, 'rebase', 'upstream/main']);
+      res.json({ ok: true, message: stdout.trim() || 'Up to date' });
+    } catch (err) {
+      // Abort any partial rebase
+      await execFileAsync('git', ['-C', KB_PATH, 'rebase', '--abort']).catch(() => {});
+      res.status(409).json({ error: `Rebase conflict: ${err.stderr || err.message}` });
+    }
+  });
+
   // ── GET /api/browse ────────────────────────────────────────────────────────
   // AD-001: No path containment checks. Workbench provides full filesystem access.
 

@@ -648,6 +648,11 @@
           <label>Repository URL</label>
           <span id="setting-kb-repo-url" style="flex:1;padding:4px 8px;font-size:12px;font-family:monospace;color:var(--text-muted)">https://github.com/rmdevpro/workbench-kb</span>
         </div>
+        <div class="setting-row" style="gap:8px;margin-top:4px">
+          <button id="kb-fork-btn" onclick="kbFork()" style="padding:4px 10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;cursor:pointer">Fork to my account</button>
+          <button id="kb-sync-btn" onclick="kbSyncUpstream()" style="padding:4px 10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;cursor:pointer">Sync from upstream</button>
+          <span id="kb-status-line" style="font-size:11px;color:var(--text-muted)"></span>
+        </div>
       </div>
 
       <div class="settings-group">
@@ -3999,6 +4004,7 @@ build/**</textarea>
         if (s.huggingface_api_key) document.getElementById('setting-huggingface-key').value = s.huggingface_api_key;
         document.getElementById('setting-kb-repo-name').value = s.kb_repo_name || 'blueprint_workbench_kb';
         renderGitAccounts(s.git_accounts || []);
+        loadKbStatus();
       } catch {}
       // Global CLAUDE.md now viewed via file tab (read-only) — no textarea to load
       loadMcpServers();
@@ -4183,6 +4189,69 @@ build/**</textarea>
       const url = kb ? kbUrlForAccount(kb) : KB_REPO_DEFAULT;
       await saveSetting('kb_repo_url', url);
       renderKbRepoUrl(accounts);
+    }
+
+    async function loadKbStatus() {
+      try {
+        const res = await fetch('/api/kb/status');
+        const s = await res.json();
+        const line = document.getElementById('kb-status-line');
+        const forkBtn = document.getElementById('kb-fork-btn');
+        const syncBtn = document.getElementById('kb-sync-btn');
+        if (!s.initialized) {
+          line.textContent = 'Not initialized';
+          if (syncBtn) syncBtn.disabled = true;
+          return;
+        }
+        if (syncBtn) syncBtn.disabled = false;
+        const parts = [];
+        if (s.ahead) parts.push(`↑${s.ahead}`);
+        if (s.behind) parts.push(`↓${s.behind}`);
+        if (s.lastSync) parts.push(`synced ${new Date(s.lastSync).toLocaleString()}`);
+        if (s.originUrl) parts.push(s.originUrl);
+        line.textContent = parts.join(' · ') || 'Up to date';
+        if (forkBtn) forkBtn.disabled = !getKbAccountFromCache();
+      } catch (_e) {}
+    }
+
+    function getKbAccountFromCache() {
+      const accounts = _settingsCache.git_accounts || [];
+      return accounts.find(a => a.isKB) || null;
+    }
+
+    async function kbFork() {
+      const btn = document.getElementById('kb-fork-btn');
+      btn.disabled = true;
+      btn.textContent = 'Forking…';
+      try {
+        const res = await fetch('/api/kb/fork', { method: 'POST' });
+        const d = await res.json();
+        if (!res.ok) { btn.textContent = d.error || 'Failed'; btn.disabled = false; return; }
+        btn.textContent = 'Forked ✓';
+        document.getElementById('setting-kb-repo-url').textContent = d.forkUrl;
+        await loadKbStatus();
+      } catch (e) {
+        btn.textContent = 'Failed';
+        btn.disabled = false;
+      }
+    }
+
+    async function kbSyncUpstream() {
+      const btn = document.getElementById('kb-sync-btn');
+      const line = document.getElementById('kb-status-line');
+      btn.disabled = true;
+      btn.textContent = 'Syncing…';
+      try {
+        const res = await fetch('/api/kb/sync-upstream', { method: 'POST' });
+        const d = await res.json();
+        if (!res.ok) { line.textContent = d.error || 'Sync failed'; btn.disabled = false; btn.textContent = 'Sync from upstream'; return; }
+        btn.textContent = 'Sync from upstream';
+        await loadKbStatus();
+      } catch (e) {
+        btn.textContent = 'Sync from upstream';
+        line.textContent = 'Sync failed';
+        btn.disabled = false;
+      }
     }
 
     function renderGitAccounts(accounts) {
