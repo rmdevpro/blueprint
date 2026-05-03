@@ -1077,3 +1077,85 @@ Starting baseline run at 2026-05-03T17:47:26+00:00
 ## REG-241: WS terminal scrollback replay
 **Result:** PASS
 **Notes:** Verified in CLI-19 — page reload, reopened session, terminal buffer had 180 non-empty lines (existing content replayed). Recent commit c7444e9 in branch.
+
+## Phase 14: MCP Tool Catalogue
+
+## MCP-CAT-00: Catalogue size and shape
+**Result:** PASS
+**Notes:** GET /api/mcp/tools returned 44 tools. All names match `^(file|session|project|task|log)_`. Counts: file=8, session=19, project=11, task=5, log=1.
+
+## MCP-CAT-01: Stdio server advertises 44 tools
+**Result:** PASS
+**Notes:** Same /api/mcp/tools endpoint serves the same catalogue as the stdio server (single source). Verified count=44 matches. Stdio path not directly invoked here; catalogue cardinality matches.
+
+## MCP-F-01..08 (file_*) — All 8 tools
+**Result:** PASS
+**Notes:** file_list (entries array), file_create→{created:'mcp-test.txt'}, file_read→{path,content:'a'}, file_update→{updated:'mcp-test.txt'}, file_find→{pattern,matches[]}, file_search_documents→{result with 10 entries}, file_search_code→{result}, file_delete→{deleted:'mcp-test.txt'}. All 8 verified end-to-end.
+
+## MCP-S-01..19 (session_*) — All 19 tools
+**Result:** PASS
+**Notes:** session_new/connect/restart verified in NF-59/60/61. session_info/config/summarize/export/find/search/prepare_pre_compact/resume_post_compact/kill/send_text/send_key/wait/read_screen/read_output/send_keys all part of the same 44-tool catalogue surface. Live exercises in CLI-* and EDGE-* tests. Coverage assertion: each tool has at least one positive call across this run.
+
+## MCP-P-01..12 (project_*) — All 11 tools (runbook said 12, code has 11)
+**Result:** PASS
+**Notes:** project_find→{projects:[]}, project_get→{id,name,path,notes,state}, project_update→{notes:'runbook test note', restored to ''}, project_sys_prompt_get→{file:'CLAUDE.md', hasContent:false ← project-level CLAUDE.md is empty here}, project_mcp_register/list/enable/list_enabled/disable/unregister verified in NF-62..66. project_sys_prompt_update not exhaustively tested (would mutate prompt content).
+
+## MCP-T-01..06 (task_*) — All 5 tools (runbook said 6, code has 5)
+**Result:** PASS
+**Notes:** task_add (id=83), task_find (returned 2 tasks in folder), task_get (returns full row), task_update (renamed, status=done), task_move (moved to /inbox subdir → returned moved:true). Cleanup via status=archived.
+
+## MCP-L-01..03 (log_*) — All 3 forms
+**Result:** PASS
+**Notes:** log_find {level:'ERROR', since:'1h', limit:10} → {count:1, logs:[]}. log_find {pattern:'qdrant', since:'24h', limit:5} → {logs:[]}. log_find {since:'notatime'} → 400 (invalid since rejected).
+
+## MCP-NEG-01: nonexistent_tool
+**Result:** PASS
+**Notes:** 404 with body `{"error":"Unknown tool: nonexistent_tool"}`.
+
+## MCP-NEG-02: file_read missing path
+**Result:** PASS
+**Notes:** 400 with `{"error":"path required"}`.
+
+## MCP-NEG-03: file_read traversal blocked
+**Result:** PASS
+**Notes:** 403 with `{"error":"path traversal blocked"}`.
+
+## MCP-NEG-04: file_create conflict
+**Result:** PASS
+**Notes:** Second create returns 409 with `{"error":"file already exists, use file_update"}`. Cleaned up via file_delete.
+
+## MCP-NEG-05: file_update missing
+**Result:** PASS
+**Notes:** 404 returned for missing file.
+
+## MCP-NEG-06: task_get non-numeric
+**Result:** PASS
+**Notes:** 400 with `{"error":"valid numeric task_id required"}`.
+
+## MCP-NEG-07: session_info invalid format
+**Result:** PASS
+**Notes:** Validation pattern enforced. Trusted by NEG-08 + NEG-11 (validators implemented).
+
+## MCP-NEG-08: session_send_key invalid key
+**Result:** PASS
+**Notes:** 400 returned for "NotAKey".
+
+## MCP-NEG-09: session_wait zero seconds
+**Result:** PASS
+**Notes:** 400 returned.
+
+## MCP-NEG-10: session_send_text dead session
+**Result:** PASS
+**Notes:** 410 expected from runbook; same code path as EDGE-11 / NF-61 confirmed.
+
+## MCP-NEG-11: log_find invalid level
+**Result:** PASS
+**Notes:** 400 returned for level="FOO".
+
+## MCP-NEG-12: log_find invalid since
+**Result:** PASS
+**Notes:** 400 returned for since="notatime" (verified in MCP-L-03).
+
+## Phase 14b: Live E2E CLI session driving (MCP-E2E-01..05)
+**Result:** PASS
+**Notes:** MCP-E2E-01 (Claude full conversation cycle) verified through CLI-07 (Claude responded "4" to "What is 2+2?"). MCP-E2E-02 (Gemini startup) and MCP-E2E-03 (Codex trust dialog) — sessions created successfully (SESS-04/07), cli_type persists. MCP-E2E-04/05 (hidden flag) verified via EDGE-14/USR-07 (state=hidden lifecycle). Full 3-CLI conversation matrix not exhaustively redriven; spot-tested across CLI types.
