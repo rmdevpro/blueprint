@@ -284,3 +284,93 @@ Starting baseline run at 2026-05-03T17:47:26+00:00
 ## EDGE-24: Settings Propagation to New Session
 **Result:** PASS
 **Notes:** Set default_model=opus, thinking_level=high via API. Created new session via /api/sessions; settings query confirms persistence (default_model=opus, thinking_level=high). Restored haiku/none. Test session archived.
+
+## Phase 5: CLI & Terminal
+
+## CLI-01: /help Command
+**Result:** PASS
+**Notes:** Sent `/help\r` to renamed-session (Claude). Buffer matched /help|commands|available/. Output shows "Claude Code v2.1.126 general commands custom-commands" + shortcuts + slash commands list.
+
+## CLI-02: /status Command
+**Result:** PASS
+**Notes:** Sent `/status\r`. Buffer shows: Version 2.1.126, Session ID 7554d66e..., cwd /data/workspace/repos/Joshua26/mads/hymie, Login: Claude Max, Org j@rmdev.pro's, Model: haiku, MCP: 2 connected/3 need auth/2 failed.
+
+## CLI-03: /clear Command
+**Result:** PASS
+**Notes:** Sent `/clear\r`. Buffer scrolled and Claude Code banner re-rendered ("Claude Code v2.1.126 / Haiku 4.5 · Claude Max / ~/workspace/repos/Joshua26/mads/hymie") indicating the clear+reinit happened.
+
+## CLI-04: /compact Command
+**Result:** PASS
+**Notes:** Sent `/compact\r`. After ~22s, buffer shows "Conversation compacted (ctrl+o for history)", "/compact", "Compacted (ctrl+o to see full summary)". /compact|summar/ matched.
+
+## CLI-05: /model Command
+**Result:** PASS
+**Notes:** Sent `/model\r`. Selection menu shown: "1. Default (recommended) Opus 4.7 with 1M context · Most capable for complex work", "2. Sonnet — Sonnet 4.6", "3. Haiku — Haiku 4.5". Dismissed via Esc.
+
+## CLI-06: /plan Command
+**Result:** FAIL
+**Notes:** First /plan → "Enabled plan mode" + status line "plan mode on (shift+tab to cycle)" — toggle-on works. Second /plan → "Already in plan mode. No plan written yet." — does NOT toggle off. Sent shift+tab (Esc[Z) twice as cleanup; status line cleared.
+**TEST-BUG:** /plan does not toggle off; only shift+tab cycles through edit modes (matches the CLI-17 note in the runbook). Step 4-6 expectation is wrong. Fix: cleanup should send shift+tab, not a second /plan, and the assertion should be "first /plan enables plan mode, then shift+tab disables it".
+
+## CLI-07: Simple Prompt and Response
+**Result:** PASS
+**Notes:** Sent "What is 2+2?\r". Buffer shows "What is 2+2?" then Claude responded "4". Match for /\b4\b/ confirmed.
+
+## CLI-08: File Creation via Claude
+**Result:** PASS
+**Notes:** Sent "Create a file called test-runbook.txt with the content 'hello from runbook'\r". First send didn't auto-submit (input box held the text); a second `\r` triggered Claude. Tool call confirmation prompt appeared ("Do you want to create test-runbook.txt? 1. Yes / 2. Yes,allow all / 3. No"). Sent "1\r" → Claude wrote the file. Verified two ways: `docker exec cat ...` returned "hello from runbook"; GET /api/file?path=... returned 200 with body "hello from runbook".
+**Note:** Original send used `'...\r'` but the prompt sat in the input. Looking at history this is consistent with Claude Code's confirm-on-submit behavior — first \r sometimes lands as newline-in-prompt, second \r submits. Worth noting this is a timing/input-quirk, not a bug; runbook should send Enter via two-step pattern for reliability.
+
+## CLI-09: File Read via Claude
+**Result:** PASS
+**Notes:** Sent "Read the file test-runbook.txt and tell me its content". Claude used Read tool ("Read 1 file") and returned "The file contains: 'hello from runbook'". Buffer matched /hello from runbook/. (Adapted to read existing test-runbook.txt instead of package.json since hymie has no package.json.)
+
+## CLI-10: Terminal Input Handling - Special Characters
+**Result:** PASS
+**Notes:** Sent `! echo "test < > & done"\r`. No crash, ws.readyState=1. Claude correctly echoed: "The command echo 'test < > & done' will run in your local shell and output: test < > & done". Special chars passed through cleanly.
+
+## CLI-11: Terminal Ctrl+C Interrupt
+**Result:** PASS
+**Notes:** Sent "Write me a 5000 word essay about philosophy". Claude started streaming (got into pre-Socratic philosophers). Ctrl+C (0x03) after 4s → "Interrupted · What should Claude do instead?" prompt appeared. ws.readyState=1.
+
+## CLI-12: /model claude-sonnet-4
+**Result:** PASS
+**Notes:** Sent `/model claude-sonnet-4-20250514\r`. Buffer shows "Set model to Sonnet 4" + EOL warning "Claude Sonnet 4 will be retired on June 15, 2026."
+
+## CLI-13: Multi-line input
+**Result:** PASS
+**Notes:** Sent `line1\nline2\r`. Both lines appeared verbatim in Claude's response: "I see you've switched to Sonnet 4 and entered: line1 / line2 / What would you like me to do with these lines?".
+
+## CLI-14: 500-char string handling
+**Result:** PASS
+**Notes:** Sent 500-char "A" string + Enter. WebSocket remained open (readyState=1). No crash.
+
+## CLI-15: Up arrow
+**Result:** PASS
+**Notes:** Sent `\x1b[A`. ws.readyState=1, no crash. Claude Code uses its own history (not shell readline) so no visible recall, but no error either.
+
+## CLI-16: Tab character
+**Result:** PASS
+**Notes:** Sent `\t`. ws.readyState=1, no crash. Tab completion is context-dependent in Claude Code; no visible output for empty input, but no error.
+
+## CLI-17: /plan twice
+**Result:** FAIL
+**Notes:** First /plan → "Enabled plan mode" + status "plan mode on (shift+tab to cycle)". Second /plan → "Enabled plan mode" again (and on a separate retry: "Already in plan mode. No plan written yet." after a /compact-cleared session).
+**TEST-BUG:** Same as CLI-06 — /plan only enables, never disables. Runbook's expected "second shows off" doesn't match the CLI's actual behavior. Cleanup must use shift+tab to exit plan mode.
+
+## CLI-18: Tool listing
+**Result:** PASS
+**Notes:** Sent "Use a tool to list files in the current directory". Claude used a list tool and returned project files: Dockerfile, docker-compose.yml, server.py, README.md, idle-screen.html, requirements.txt, recent_turns.md, docs/ etc. Tool calling working on Sonnet 4. Claude was about to read README.md as a follow-up; cancelled with Esc.
+
+## CLI-19: Refresh + reconnect
+**Result:** PASS
+**Notes:** Reloaded full page. Reopened renamed-session by clicking sidebar. tabs.get(activeTabId).ws.readyState=1, terminal buffer has 180 non-empty lines (existing content replayed). Reconnect after page reload confirmed.
+
+## CLI-20: /status structured
+**Result:** PASS
+**Notes:** Sent /status. Buffer shows "Login method: Claude Max", "Organization: j@rmdev.pro's", "Email: j@rmdev.pro", "Model: claude-sonnet-4-20250514", "MCP servers: 2 connected, 3 need auth, 2 failed". Structured key:value status info confirmed.
+
+## CLI-21: Multi-tab WebSocket isolation
+**Result:** PASS
+**Notes:** Tab A=renamed-session, Tab B=Say hello. After clearing B's startup help overlay, sent ALPHA-INPUT to A and BETA-MARKER-PQR to B. Final: A has ALPHA but no BETA; B has BETA but no ALPHA. Per-tab WebSocket isolation confirmed.
+**Note:** The session "Say hello" had its /help overlay open on first open (apparently because a prior session's input contained `/`). Required two Esc's to clear before BETA-MARKER could be typed. Worth noting that test setup should always start with Esc to clear any startup overlays.
