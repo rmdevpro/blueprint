@@ -1463,7 +1463,12 @@ build/**</textarea>
 
       const fitAddon = new FitAddon.FitAddon();
       term.loadAddon(fitAddon);
-      term.loadAddon(new WebLinksAddon.WebLinksAddon());
+      // #240: pass an explicit handler so http(s) links open in a new tab
+      // directly, rather than the addon's default open-blank-then-navigate
+      // pattern (which is brittle and fails in some browsers).
+      term.loadAddon(new WebLinksAddon.WebLinksAddon((event, uri) => {
+        window.open(uri, '_blank', 'noopener,noreferrer');
+      }));
       term.open(paneEl);
 
       // #240: detect bare workspace paths (e.g. /data/workspace/repos/foo/bar.js)
