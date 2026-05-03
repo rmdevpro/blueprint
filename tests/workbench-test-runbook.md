@@ -4825,6 +4825,20 @@ Tests for the user-facing fixes shipped in the canonical branch but not yet in t
 - The terminal receives the absolute file path as if typed (e.g. `/data/workspace/repos/agentic-workbench/README.md` appears at the prompt).
 - The session WebSocket sent the path bytes — confirmable by inspecting `tabs.get(activeTabId).ws` send log if instrumented, or by checking the path appears in the running CLI's input area.
 
+### NF-COPY-PATH: Right-click "Copy Path" on file and folder rows
+**Source:** Feature added with the terminal-overhaul bundle.
+**Setup:** Files panel open. At least one file and one folder visible in the tree.
+**Steps:**
+1. Right-click on a file row.
+2. Menu shows: Open · Copy Path · Rename · Delete.
+3. Click Copy Path.
+4. Paste into any text input — clipboard contains the absolute file path with no trailing slash.
+5. Right-click on a folder row.
+6. Menu shows: New File · New Folder · Upload · Copy Path · Rename · Delete.
+7. Click Copy Path.
+8. Paste into any text input — clipboard contains the absolute folder path with no trailing slash.
+**Verify:** Both menus expose Copy Path; clipboard contents match each row's `data-path` attribute (with any trailing `/` stripped).
+
 ### REG-241: Browser close + reopen preserves session scrollback (Phase 3, future)
 **Issue:** #241.
 **Status:** Pending implementation in Phase 3 of the terminal-overhaul bundle. Test scaffold below; mark FAIL until #241 is closed.
