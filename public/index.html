@@ -3116,6 +3116,7 @@ build/**</textarea>
           <div class="context-menu-item" data-action="new-folder">New Folder</div>
           <div class="context-menu-item" data-action="upload">Upload</div>
           <div class="context-menu-divider"></div>
+          <div class="context-menu-item" data-action="copy-path">Copy Path</div>
           <div class="context-menu-item" data-action="rename">Rename</div>
           <div class="context-menu-item" data-action="delete" style="color:var(--danger)">Delete</div>
         `;
@@ -3123,6 +3124,7 @@ build/**</textarea>
         menu.innerHTML = `
           <div class="context-menu-item" data-action="open">Open</div>
           <div class="context-menu-divider"></div>
+          <div class="context-menu-item" data-action="copy-path">Copy Path</div>
           <div class="context-menu-item" data-action="rename">Rename</div>
           <div class="context-menu-item" data-action="delete" style="color:var(--danger)">Delete</div>
         `;
@@ -3133,6 +3135,24 @@ build/**</textarea>
         removeContextMenu();
         if (action === 'open') {
           openFileTab(path);
+        } else if (action === 'copy-path') {
+          // Strip trailing slash for cleaner paste; dir vs file is unambiguous from
+          // the context menu the user opened.
+          const cleanPath = path.replace(/\/$/, '');
+          try {
+            await navigator.clipboard.writeText(cleanPath);
+          } catch {
+            // Clipboard API can fail without user-gesture trust or on insecure origins;
+            // fall back to a hidden textarea + execCommand.
+            const ta = document.createElement('textarea');
+            ta.value = cleanPath;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } catch { /* nothing more we can do */ }
+            ta.remove();
+          }
         } else if (action === 'new-file') {
           const name = prompt('File name:', 'new-file.md');
           if (!name) return;
