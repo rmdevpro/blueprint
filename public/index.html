@@ -648,6 +648,11 @@
           <label>Repository URL</label>
           <span id="setting-kb-repo-url" style="flex:1;padding:4px 8px;font-size:12px;font-family:monospace;color:var(--text-muted)">https://github.com/rmdevpro/workbench-kb</span>
         </div>
+        <div class="setting-row">
+          <label>Sync Interval (minutes)</label>
+          <input type="number" id="setting-kb-sync-interval" min="1" max="1440" value="5" style="width:70px;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px"
+            onchange="saveSetting('kb_sync_interval_minutes', parseInt(this.value, 10) || 5, this)">
+        </div>
         <div class="setting-row" style="gap:8px;margin-top:4px">
           <button id="kb-fork-btn" onclick="kbFork()" style="padding:4px 10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;cursor:pointer">Fork to my account</button>
           <button id="kb-sync-btn" onclick="kbSyncUpstream()" style="padding:4px 10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;cursor:pointer">Sync from upstream</button>
@@ -4003,6 +4008,7 @@ build/**</textarea>
         if (s.codex_api_key) document.getElementById('setting-codex-key').value = s.codex_api_key;
         if (s.huggingface_api_key) document.getElementById('setting-huggingface-key').value = s.huggingface_api_key;
         document.getElementById('setting-kb-repo-name').value = s.kb_repo_name || 'blueprint_workbench_kb';
+        document.getElementById('setting-kb-sync-interval').value = s.kb_sync_interval_minutes || 5;
         renderGitAccounts(s.git_accounts || []);
         loadKbStatus();
       } catch {}

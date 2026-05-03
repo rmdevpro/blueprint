@@ -353,6 +353,29 @@ if (require.main === module) {
             logger.error('Knowledge Base clone failed', { module: 'server', err: err.message });
           }
         });
+
+        // KB polling sync — fetch + ff-merge on configurable interval
+        let _kbSyncTimer = null;
+        function startKbSyncPoller() {
+          if (_kbSyncTimer) clearInterval(_kbSyncTimer);
+          let rawInterval = db.getSetting('kb_sync_interval_minutes', '5');
+          let minutes;
+          try { minutes = parseInt(JSON.parse(rawInterval), 10); } catch { minutes = 5; }
+          if (!minutes || minutes < 1) minutes = 5;
+          _kbSyncTimer = setInterval(async () => {
+            try {
+              await fsStat(join(KB_PATH, '.git'));
+            } catch (_e) { return; }
+            try {
+              await execFileAsync('git', ['-C', KB_PATH, 'fetch', 'origin']);
+              await execFileAsync('git', ['-C', KB_PATH, 'merge', '--ff-only', 'origin/main']);
+              logger.debug('KB sync: pulled from origin', { module: 'server' });
+            } catch (err) {
+              logger.warn('KB sync: ff-merge skipped', { module: 'server', err: err.message });
+            }
+          }, minutes * 60 * 1000);
+        }
+        startKbSyncPoller();
       });
     } catch (err) {
       logger.error('Fatal startup error', {

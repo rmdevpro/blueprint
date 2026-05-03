@@ -1338,6 +1338,7 @@ function registerCoreRoutes(
       vector_additional_paths: [],
       kb_repo_url: 'https://github.com/rmdevpro/workbench-kb',
       kb_repo_name: 'blueprint_workbench_kb',
+      kb_sync_interval_minutes: 5,
     };
     res.json({ ...defaults, ...settings });
   });
