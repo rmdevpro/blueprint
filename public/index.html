@@ -104,6 +104,33 @@
     #project-list::-webkit-scrollbar-track { background: transparent; }
     #project-list::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 3px; }
 
+    .program-group { margin-bottom: 6px; }
+    .program-header {
+      display: flex; align-items: center; gap: 4px;
+      padding: 4px 12px;
+      cursor: pointer; user-select: none;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+    .program-header:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+    .program-header.virtual { color: var(--text-muted); font-style: italic; }
+    .program-header.archived { opacity: 0.6; }
+    .program-header .arrow { font-size: 9px; transition: transform 0.15s; display: inline-block; width: 10px; text-align: center; }
+    .program-header.collapsed .arrow { transform: rotate(-90deg); }
+    .program-header.collapsed + .program-children { display: none; }
+    .program-header .program-name { flex: 1; }
+    .program-header .term-btn {
+      background: none; border: none; color: var(--text-muted); cursor: pointer;
+      padding: 0 4px; font-size: 12px; line-height: 1;
+    }
+    .program-header .term-btn:hover { color: var(--accent); background: var(--bg-hover); }
+    .program-header.drag-over { background: var(--accent); color: var(--bg-primary); }
+    .program-children { padding-left: 8px; }
+
     .project-group { margin-bottom: 4px; }
 
     .project-header {
@@ -507,7 +534,7 @@
       <img src="/logo-dark.png" alt="Workbench" class="sidebar-logo logo-dark" height="48">
       <img src="/logo-light.png" alt="Workbench" class="sidebar-logo logo-light" height="48">
       <div style="display:flex;gap:4px">
-        <button onclick="addProject()" title="Add Project">+</button>
+        <button onclick="addProgram()" title="Add Program">+</button>
         <button onclick="loadState()" title="Refresh">&#x21bb;</button>
       </div>
     </div>
@@ -981,6 +1008,8 @@ build/**</textarea>
     window.tabs = tabs; // expose for test instrumentation
     let activeTabId = null;
     let projectState = [];
+    let programState = [];
+    const expandedPrograms = new Set(JSON.parse(localStorage.getItem('expandedPrograms') || '["__unassigned__"]'));
     let sessionFilter = 'active';
     let sessionSortBy = 'date';
     const expandedProjects = new Set(JSON.parse(localStorage.getItem('expandedProjects') || '[]'));
@@ -1075,6 +1104,7 @@ build/**</textarea>
         const res = await fetch('/api/state');
         const data = await res.json();
         projectState = data.projects;
+        programState = data.programs || [];
         if (data.workspace) window._workspace = data.workspace;
 
         // Resolve temp tab IDs: if a new_* tab exists but no matching session in state,
@@ -1143,7 +1173,16 @@ build/**</textarea>
       if (stateHash === renderSidebar._lastHash && container.childElementCount > 0) return;
       container.innerHTML = '';
 
-      for (const project of projectState) {
+      // Group projects by program for the new sidebar hierarchy. Programs render
+      // as uppercase section headers; projects nest under their program; any
+      // project without a program_id falls into a read-only "Unassigned" pseudo-program.
+      const projectsByProgram = { __unassigned__: [] };
+      for (const p of projectState) {
+        const key = p.program_id == null ? '__unassigned__' : String(p.program_id);
+        (projectsByProgram[key] = projectsByProgram[key] || []).push(p);
+      }
+
+      const renderOneProjectGroup = (project, parent) => {
         // Filter projects by their own state AND by session states
         const projState = project.state || 'active';
         // Skip projects that don't match the current filter
@@ -1243,6 +1282,12 @@ build/**</textarea>
           sessionList.classList.toggle('collapsed');
           _lastClickedProjectPath = project.path;
         });
+        // Make the project draggable across programs (drop targets are program headers)
+        header.draggable = true;
+        header.addEventListener('dragstart', (e) => {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('application/x-project-name', project.name);
+        });
         group.appendChild(header);
 
         const sessionList = document.createElement('div');
@@ -1340,10 +1385,193 @@ build/**</textarea>
         }
 
         group.appendChild(sessionList);
-        container.appendChild(group);
+        parent.appendChild(group);
+      };
+
+      const renderProgramSection = (program, projects, parent) => {
+        const isVirtual = program.virtual === true;
+        const programKey = isVirtual ? '__unassigned__' : String(program.id);
+        const isExpanded = expandedPrograms.has(programKey);
+        const wrap = document.createElement('div');
+        wrap.className = 'program-group';
+        const header = document.createElement('div');
+        header.className = 'program-header'
+          + (isVirtual ? ' virtual' : '')
+          + (program.status === 'archived' ? ' archived' : '')
+          + (isExpanded ? '' : ' collapsed');
+        header.dataset.programId = isVirtual ? '' : String(program.id);
+        const plusBtn = isVirtual ? '' : `<button class="term-btn add-project-btn" title="Add project to this program" style="font-size:13px">+</button>`;
+        header.innerHTML = `
+          <span class="arrow">&#9660;</span>
+          <span class="program-name">${escHtml(program.name)}</span>
+          ${plusBtn}
+        `;
+        const children = document.createElement('div');
+        children.className = 'program-children';
+
+        header.addEventListener('click', (e) => {
+          if (e.target.closest('.term-btn')) return;
+          if (expandedPrograms.has(programKey)) expandedPrograms.delete(programKey);
+          else expandedPrograms.add(programKey);
+          localStorage.setItem('expandedPrograms', JSON.stringify([...expandedPrograms]));
+          header.classList.toggle('collapsed');
+        });
+
+        if (!isVirtual) {
+          // Right-click → rename / archive / delete
+          header.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            _showProgramContextMenu(e, program);
+          });
+          // + button on the program adds a project assigned to it
+          const addBtn = header.querySelector('.add-project-btn');
+          if (addBtn) addBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            addProject(program.id);
+          });
+          // Drop a project on a program header to assign it
+          header.addEventListener('dragover', (e) => {
+            const projName = e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.includes('application/x-project-name');
+            if (projName) { e.preventDefault(); header.classList.add('drag-over'); }
+          });
+          header.addEventListener('dragleave', () => header.classList.remove('drag-over'));
+          header.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            header.classList.remove('drag-over');
+            const projName = e.dataTransfer.getData('application/x-project-name');
+            if (!projName) return;
+            await fetch(`/api/projects/${encodeURIComponent(projName)}/program`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ program_id: program.id }),
+            });
+            loadState();
+          });
+        } else {
+          // Unassigned drop target = unassign
+          header.addEventListener('dragover', (e) => {
+            const projName = e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.includes('application/x-project-name');
+            if (projName) { e.preventDefault(); header.classList.add('drag-over'); }
+          });
+          header.addEventListener('dragleave', () => header.classList.remove('drag-over'));
+          header.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            header.classList.remove('drag-over');
+            const projName = e.dataTransfer.getData('application/x-project-name');
+            if (!projName) return;
+            await fetch(`/api/projects/${encodeURIComponent(projName)}/program`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ program_id: null }),
+            });
+            loadState();
+          });
+        }
+
+        wrap.appendChild(header);
+        wrap.appendChild(children);
+        parent.appendChild(wrap);
+
+        for (const p of projects) renderOneProjectGroup(p, children);
+      };
+
+      // Render programs first (active by default), then any leftover projects under "Unassigned".
+      for (const program of programState) {
+        const projects = projectsByProgram[String(program.id)] || [];
+        renderProgramSection(program, projects, container);
+      }
+      if (projectsByProgram.__unassigned__.length > 0) {
+        renderProgramSection({ id: null, name: 'Unassigned', virtual: true }, projectsByProgram.__unassigned__, container);
       }
 
       renderSidebar._lastHash = stateHash;
+    }
+
+    function _showProgramContextMenu(e, program) {
+      document.querySelectorAll('.context-menu').forEach(m => m.remove());
+      const menu = document.createElement('div');
+      menu.className = 'context-menu';
+      menu.style.cssText = `position:fixed;top:${e.clientY}px;left:${e.clientX}px;z-index:2000;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:4px 0;min-width:160px;box-shadow:0 4px 12px rgba(0,0,0,0.3)`;
+      const archived = program.status === 'archived';
+      menu.innerHTML = `
+        <div class="context-menu-item" data-action="rename">Rename…</div>
+        <div class="context-menu-item" data-action="edit-description">Edit Description…</div>
+        <div class="context-menu-item" data-action="${archived ? 'unarchive' : 'archive'}">${archived ? 'Unarchive' : 'Archive'}</div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item" data-action="delete" style="color:var(--danger)">Delete…</div>
+      `;
+      menu.querySelectorAll('.context-menu-item').forEach(item => {
+        item.addEventListener('mouseenter', () => item.style.background = 'var(--bg-hover)');
+        item.addEventListener('mouseleave', () => item.style.background = '');
+        item.addEventListener('click', async () => {
+          menu.remove();
+          const action = item.dataset.action;
+          if (action === 'rename') {
+            const name = prompt('Program name:', program.name);
+            if (!name || !name.trim() || name.trim() === program.name) return;
+            const r = await fetch(`/api/programs/${program.id}`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: name.trim() }),
+            });
+            if (!r.ok) {
+              const err = await r.json().catch(() => ({}));
+              alert('Could not rename: ' + (err.error || r.statusText));
+            }
+            loadState();
+          } else if (action === 'edit-description') {
+            const description = prompt('Description:', program.description || '') ?? program.description;
+            await fetch(`/api/programs/${program.id}`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ description }),
+            });
+            loadState();
+          } else if (action === 'archive') {
+            await fetch(`/api/programs/${program.id}`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'archived' }),
+            });
+            loadState();
+          } else if (action === 'unarchive') {
+            await fetch(`/api/programs/${program.id}`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'active' }),
+            });
+            loadState();
+          } else if (action === 'delete') {
+            const cnt = await fetch(`/api/programs/${program.id}/project-count`).then(r => r.json()).catch(() => null);
+            if (!cnt) { alert('Failed to load program details'); return; }
+            const msg = cnt.total === 0
+              ? `Delete program "${program.name}"?`
+              : `Delete program "${program.name}"?\n\nProjects exist: ${cnt.counts.active} active, ${cnt.counts.archived} archived (${cnt.total} total).\nThey will be moved to "Unassigned".`;
+            if (!confirm(msg)) return;
+            await fetch(`/api/programs/${program.id}`, { method: 'DELETE' });
+            loadState();
+          }
+        });
+      });
+      document.body.appendChild(menu);
+      setTimeout(() => {
+        const dismiss = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', dismiss); } };
+        document.addEventListener('click', dismiss);
+      }, 0);
+    }
+
+    async function addProgram() {
+      const name = prompt('Program name:');
+      if (!name || !name.trim()) return;
+      const description = prompt('Description (optional):') || '';
+      const r = await fetch('/api/programs', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), description }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        alert('Could not create program: ' + (err.error || r.statusText));
+        return;
+      }
+      const program = await r.json();
+      expandedPrograms.add(String(program.id));
+      localStorage.setItem('expandedPrograms', JSON.stringify([...expandedPrograms]));
+      loadState();
     }
 
     // ── Tab Management ───────────────────────────────
@@ -4129,7 +4357,9 @@ build/**</textarea>
 
     // ── Add Project ──────────────────────────────────
 
-    async function addProject() {
+    async function addProject(programId) {
+      // Stash the program assignment so pickerSelect can apply it after creating the project.
+      window._pendingProgramId = programId == null ? null : Number(programId);
       const overlayId = 'dir-picker-' + Date.now();
       const overlay = document.createElement('div');
       overlay.id = overlayId;
@@ -4188,6 +4418,14 @@ build/**</textarea>
         });
         const data = await res.json();
         if (data.error) { alert('Error: ' + data.error); return; }
+        // If addProject was invoked with a programId, assign the new project to it.
+        if (window._pendingProgramId != null) {
+          await fetch(`/api/projects/${encodeURIComponent(data.name)}/program`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ program_id: window._pendingProgramId }),
+          }).catch(() => { /* non-fatal — project still created */ });
+        }
+        window._pendingProgramId = null;
         document.getElementById(overlayId).remove();
         loadState();
       } catch (err) { alert('Error: ' + err.message); }
