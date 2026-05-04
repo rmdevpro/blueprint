@@ -78,6 +78,11 @@ try {
 } catch (_e) {
   /* column exists or table doesn't exist yet */
 }
+try {
+  db.exec("ALTER TABLE task_history ADD COLUMN created_by TEXT DEFAULT 'human'");
+} catch (_e) {
+  /* column exists or table doesn't exist yet */
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS projects (
@@ -142,10 +147,24 @@ db.exec(`
     event_type TEXT NOT NULL,
     old_value TEXT,
     new_value TEXT,
+    created_by TEXT DEFAULT 'human',
     created_at TEXT DEFAULT (datetime('now'))
   );
 
   CREATE INDEX IF NOT EXISTS idx_task_history_task ON task_history(task_id);
+
+  CREATE TABLE IF NOT EXISTS task_folders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    status TEXT DEFAULT 'active',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    archived_at TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_task_folders_status ON task_folders(status);
 
   CREATE TABLE IF NOT EXISTS mcp_registry (
     name TEXT PRIMARY KEY,
@@ -232,9 +251,19 @@ const stmts = {
   moveTask: db.prepare("UPDATE tasks SET folder_path = ?, sort_order = ?, updated_at = datetime('now') WHERE id = ?"),
   reorderTask: db.prepare("UPDATE tasks SET sort_order = ?, updated_at = datetime('now') WHERE id = ?"),
   deleteTask: db.prepare('DELETE FROM tasks WHERE id = ?'),
-  addTaskHistory: db.prepare('INSERT INTO task_history (task_id, event_type, old_value, new_value) VALUES (?, ?, ?, ?)'),
+  addTaskHistory: db.prepare('INSERT INTO task_history (task_id, event_type, old_value, new_value, created_by) VALUES (?, ?, ?, ?, ?)'),
   getTaskHistory: db.prepare('SELECT * FROM task_history WHERE task_id = ? ORDER BY created_at DESC'),
   maxSortOrder: db.prepare('SELECT MAX(sort_order) as max_sort FROM tasks WHERE folder_path = ?'),
+
+  getAllTaskFolders: db.prepare('SELECT * FROM task_folders ORDER BY path ASC'),
+  getTaskFoldersByStatus: db.prepare('SELECT * FROM task_folders WHERE status = ? ORDER BY path ASC'),
+  getTaskFolder: db.prepare('SELECT * FROM task_folders WHERE id = ?'),
+  getTaskFolderByPath: db.prepare('SELECT * FROM task_folders WHERE path = ?'),
+  addTaskFolder: db.prepare('INSERT INTO task_folders (path, name, description) VALUES (?, ?, ?)'),
+  updateTaskFolder: db.prepare("UPDATE task_folders SET name = ?, description = ?, updated_at = datetime('now') WHERE id = ?"),
+  setTaskFolderStatus: db.prepare("UPDATE task_folders SET status = ?, archived_at = CASE WHEN ? = 'archived' THEN datetime('now') ELSE NULL END, updated_at = datetime('now') WHERE id = ?"),
+  deleteTaskFolder: db.prepare('DELETE FROM task_folders WHERE id = ?'),
+  reparentTasks: db.prepare("UPDATE tasks SET folder_path = ?, updated_at = datetime('now') WHERE folder_path = ?"),
 
   getSessionMeta: db.prepare('SELECT * FROM session_meta WHERE session_id = ?'),
   getSessionMetaByPath: db.prepare('SELECT * FROM session_meta WHERE file_path = ?'),
@@ -361,31 +390,31 @@ module.exports = {
     }
     const info = stmts.addTask.run(folderPath, title, description, sortOrder, createdBy);
     const id = info.lastInsertRowid;
-    stmts.addTaskHistory.run(id, 'created', null, title);
+    stmts.addTaskHistory.run(id, 'created', null, title, createdBy);
     return { id, folder_path: folderPath, title, description, status: 'todo', sort_order: sortOrder, created_by: createdBy };
   },
   updateTaskTitle(id, title) {
     const old = stmts.getTask.get(id);
     if (!old) return;
     stmts.updateTaskTitle.run(title, id);
-    stmts.addTaskHistory.run(id, 'renamed', old.title, title);
+    stmts.addTaskHistory.run(id, 'renamed', old.title, title, 'human');
   },
   updateTaskDescription(id, description) {
     const old = stmts.getTask.get(id);
     if (!old) return;
     stmts.updateTaskDescription.run(description, id);
-    stmts.addTaskHistory.run(id, 'description_changed', null, null);
+    stmts.addTaskHistory.run(id, 'description_changed', null, null, 'human');
   },
   updateTaskStatus(id, status) {
     const old = stmts.getTask.get(id);
     if (!old) return;
     if (status === 'done') {
       stmts.updateTaskStatusDone.run(id);
-      stmts.addTaskHistory.run(id, 'completed', old.status, 'done');
+      stmts.addTaskHistory.run(id, 'completed', old.status, 'done', 'human');
     } else {
       stmts.updateTaskStatusOther.run(status, id);
       const event = status === 'archived' ? 'archived' : 'reopened';
-      stmts.addTaskHistory.run(id, event, old.status, status);
+      stmts.addTaskHistory.run(id, event, old.status, status, 'human');
     }
   },
   moveTask(id, newFolderPath, sortOrder) {
@@ -396,7 +425,7 @@ module.exports = {
       sortOrder = (row?.max_sort ?? -1) + 1;
     }
     stmts.moveTask.run(newFolderPath, sortOrder, id);
-    stmts.addTaskHistory.run(id, 'moved', old.folder_path, newFolderPath);
+    stmts.addTaskHistory.run(id, 'moved', old.folder_path, newFolderPath, 'human');
   },
   reorderTasks(orders) {
     const run = db.transaction(() => {
@@ -411,6 +440,39 @@ module.exports = {
   },
   getTaskHistory(taskId) {
     return stmts.getTaskHistory.all(taskId);
+  },
+  addTaskComment(taskId, body, createdBy = 'human') {
+    const info = stmts.addTaskHistory.run(taskId, 'comment', null, body, createdBy);
+    return { id: info.lastInsertRowid, task_id: taskId, event_type: 'comment', new_value: body, created_by: createdBy };
+  },
+
+  getAllTaskFolders(filter) {
+    if (!filter || filter === 'all') return stmts.getAllTaskFolders.all();
+    return stmts.getTaskFoldersByStatus.all(filter);
+  },
+  getTaskFolder(id) {
+    return stmts.getTaskFolder.get(id);
+  },
+  getTaskFolderByPath(path) {
+    return stmts.getTaskFolderByPath.get(path);
+  },
+  addTaskFolder(path, name, description = '') {
+    const info = stmts.addTaskFolder.run(path, name, description);
+    return stmts.getTaskFolder.get(info.lastInsertRowid);
+  },
+  updateTaskFolder(id, name, description) {
+    stmts.updateTaskFolder.run(name, description, id);
+    return stmts.getTaskFolder.get(id);
+  },
+  setTaskFolderStatus(id, status) {
+    stmts.setTaskFolderStatus.run(status, status, id);
+    return stmts.getTaskFolder.get(id);
+  },
+  deleteTaskFolder(id) {
+    stmts.deleteTaskFolder.run(id);
+  },
+  reparentTasks(fromPath, toPath) {
+    stmts.reparentTasks.run(toPath, fromPath);
   },
 
   getSessionFull(id) {
