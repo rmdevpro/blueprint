@@ -125,7 +125,11 @@ async function _seedRole(cliType, rolePath, projectPath, cliArgs, existingFiles,
         newestTs: newest?.timestamp,
         newestPath: newest?.filePath,
       });
-      if (newest?.sessionId) db.setCliSessionId(tmpId, newest.sessionId);
+      if (newest?.sessionId) {
+        db.setCliSessionId(tmpId, newest.sessionId);
+        const verify = db.getSession(tmpId);
+        logger.info('Gemini cli_session_id post-write check', { module: 'routes', tmpId: tmpId.substring(0, 12), verify_cli_session_id: verify?.cli_session_id });
+      }
     } catch (e) { logger.warn('Gemini cli_session_id capture failed', { module: 'routes', err: e.message }); }
 
   } else if (cliType === 'codex') {
