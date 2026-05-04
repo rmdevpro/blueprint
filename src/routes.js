@@ -1091,6 +1091,16 @@ function registerCoreRoutes(
 
       const proj = db.ensureProject(project, projectPath);
 
+      // Insert the session row up front so role seeding's setCliSessionId
+      // UPDATEs (Codex rollout id, Gemini chat id) hit an existing row.
+      const nameMaxLen = config.get('session.nameMaxLength', 60);
+      const sessionName =
+        name && name.replace(/\s+/g, ' ').trim()
+          ? name.substring(0, nameMaxLen).replace(/\n/g, ' ').trim()
+          : 'New Session';
+      db.upsertSession(tmpId, proj.id, sessionName, cliType);
+      if (hidden) db.setSessionState(tmpId, 'hidden');
+
       // Role seeding — two-phase launch when a role is selected
       if (role) {
         const rolePath = `/data/knowledge-base/roles/${role}.md`;
@@ -1104,13 +1114,6 @@ function registerCoreRoutes(
       } else {
         safe.tmuxCreateCLI(tmux, projectPath, cliType, cliArgs);
       }
-      const nameMaxLen = config.get('session.nameMaxLength', 60);
-      const sessionName =
-        name && name.replace(/\s+/g, ' ').trim()
-          ? name.substring(0, nameMaxLen).replace(/\n/g, ' ').trim()
-          : 'New Session';
-      db.upsertSession(tmpId, proj.id, sessionName, cliType);
-      if (hidden) db.setSessionState(tmpId, 'hidden');
 
       if (name && cliType === 'claude') {
         // Send a stand-by hint instead of treating the form value as a prompt.
