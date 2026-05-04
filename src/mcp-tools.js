@@ -195,6 +195,9 @@ handlers.file_search_code = async (args) => {
 
 handlers.session_new = async (args) => {
   require_(args, 'project');
+  require_(args, 'name');
+  const name = String(args.name).trim();
+  if (!name) throw new ToolError('name required', 400);
   const cliType = args.cli || 'claude';
   if (!VALID_CLI_TYPES_FOR_NEW.includes(cliType))
     throw new ToolError(`invalid cli: ${cliType}. Must be one of: ${VALID_CLI_TYPES_FOR_NEW.join(', ')}`);
@@ -211,7 +214,7 @@ handlers.session_new = async (args) => {
     : crypto.randomUUID();
   const tmux = safe.tmuxNameFor(tmpId);
   safe.tmuxCreateCLI(tmux, proj.path, cliType);
-  db.upsertSession(tmpId, proj.id, args.name || 'New Session', cliType);
+  db.upsertSession(tmpId, proj.id, name, cliType);
   // MCP-spawned sessions default to hidden — agents creating sub-sessions
   // shouldn't clutter the human's sidebar. Pass hidden:false to override.
   if (args.hidden !== false) db.setSessionState(tmpId, 'hidden');

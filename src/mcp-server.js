@@ -99,9 +99,9 @@ const TOOLS = [
   T('session_new', 'Create a new CLI session in a project. Defaults to hidden so MCP-spawned sub-sessions do not clutter the sidebar.', {
     project: P.project,
     cli: { type: 'string', enum: ['claude', 'gemini', 'codex', 'bash'], description: 'CLI to launch (default claude). Use bash for utility shell sessions.' },
-    name: { type: 'string', description: 'Session name shown in the sidebar.' },
+    name: { type: 'string', description: 'Session name shown in the sidebar. Required.' },
     hidden: { type: 'boolean', description: 'Whether to hide from sidebar (default true). Set false for visible sessions.' },
-  }, ['project']),
+  }, ['project', 'name']),
   T('session_connect', 'Look up a session and ensure its tmux pane is running. Returns the tmux name. Pass session_id (preferred) or query (fuzzy name match).', {
     session_id: P.session_id,
     query: { type: 'string', description: 'Fuzzy name match against the sidebar session list (best match wins).' },

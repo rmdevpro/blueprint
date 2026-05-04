@@ -1045,7 +1045,9 @@ function registerCoreRoutes(
         return res
           .status(400)
           .json({ error: `project name too long (max ${PROJECT_NAME_MAX_LEN})` });
-      if (name && name.length > PROMPT_MAX_LEN)
+      if (!name || !String(name).trim())
+        return res.status(400).json({ error: 'name required' });
+      if (name.length > PROMPT_MAX_LEN)
         return res.status(400).json({ error: `name too long (max ${PROMPT_MAX_LEN})` });
 
       const dbProject = db.getProject(project);
@@ -1102,11 +1104,9 @@ function registerCoreRoutes(
 
       // Insert the session row up front so role seeding's setCliSessionId
       // UPDATEs (Codex rollout id, Gemini chat id) hit an existing row.
+      // name is validated as required at the top of the handler — sanitize for storage.
       const nameMaxLen = config.get('session.nameMaxLength', 60);
-      const sessionName =
-        name && name.replace(/\s+/g, ' ').trim()
-          ? name.substring(0, nameMaxLen).replace(/\n/g, ' ').trim()
-          : 'New Session';
+      const sessionName = name.substring(0, nameMaxLen).replace(/\s+/g, ' ').trim();
       db.upsertSession(tmpId, proj.id, sessionName, cliType);
       if (hidden) db.setSessionState(tmpId, 'hidden');
 
@@ -1124,14 +1124,15 @@ function registerCoreRoutes(
         safe.tmuxCreateCLI(tmux, projectPath, cliType, cliArgs);
       }
 
-      if (name && cliType === 'claude') {
+      if (cliType === 'claude') {
         // Send a stand-by hint instead of treating the form value as a prompt.
         // Old behavior — pasting the user's free-form prompt verbatim — caused
         // Claude to start taking action on form submit (sometimes destructively).
         // Now the field is just a session title; we hand Claude a brief notice
         // that orients it without inviting action. The byproduct is the same:
         // Claude responds with a JSONL entry, which is what session-id
-        // resolution is waiting on.
+        // resolution is waiting on. Name is required, so this hint always fires
+        // for Claude — closes the orphan-row window in #257.
         // Gemini/Codex still skipped — startup dialogs (trust, auth) would
         // consume any input. They get permanent UUIDs at creation anyway.
         const promptDelayMs = config.get('session.promptInjectionDelayMs', 2000);
