@@ -2164,6 +2164,15 @@ build/**</textarea>
 
     // Task-by-folder lookup built from /api/tasks/tree
     let _tasksByFolder = {};
+    // Virtual task folders: map parent_path -> [folder rows]. Populated on tree load.
+    let _virtualFoldersByParent = {};
+    let _virtualFoldersByPath = {};
+
+    function _parentVirtualPath(p) {
+      const parts = String(p).split('/').filter(Boolean);
+      parts.pop();
+      return parts.length ? '/' + parts.join('/') : '/';
+    }
 
     async function loadTaskTree() {
       try {
@@ -2173,6 +2182,22 @@ build/**</textarea>
         taskTreeData = taskData.tree;
         _tasksByFolder = {};
         _flattenTaskTree(taskData.tree, _tasksByFolder);
+
+        // Fetch virtual task folders so we can render them alongside FS dirs.
+        try {
+          const fRes = await fetch('/api/task-folders?filter=active');
+          const fData = await fRes.json();
+          _virtualFoldersByParent = {};
+          _virtualFoldersByPath = {};
+          for (const f of (fData.folders || [])) {
+            _virtualFoldersByPath[f.path] = f;
+            const parent = _parentVirtualPath(f.path);
+            (_virtualFoldersByParent[parent] = _virtualFoldersByParent[parent] || []).push(f);
+          }
+        } catch (e) {
+          _virtualFoldersByParent = {};
+          _virtualFoldersByPath = {};
+        }
 
         // Fetch filesystem mounts (same as file browser and project picker)
         let mounts = [];
@@ -2360,6 +2385,80 @@ build/**</textarea>
         }
       } catch {}
 
+      // Append virtual task folders whose parent matches dirPath
+      const virtualKids = (_virtualFoldersByParent[dirPath] || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+      for (const vfolder of virtualKids) {
+        const childPath = vfolder.path;
+        const li = document.createElement('li');
+        li.className = 'task-folder virtual' + (selectedTaskFolder === childPath ? ' selected' : '');
+        li.dataset.virtualFolderId = vfolder.id;
+        const taskCount = _countTasksUnderPath(childPath);
+        li.innerHTML = `<span class="task-folder-label">
+          <span class="folder-arrow">&#9656;</span>
+          <span class="folder-icon">📋</span>${escHtml(vfolder.name)}
+          ${taskCount ? '<span class="folder-count">' + taskCount + '</span>' : ''}
+        </span>`;
+        li.title = vfolder.description || '';
+        const childContainer = document.createElement('div');
+        childContainer.style.cssText = 'display:none';
+
+        li.querySelector('.task-folder-label').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          selectedTaskFolder = childPath;
+          document.querySelectorAll('.task-folder.selected').forEach(f => f.classList.remove('selected'));
+          li.classList.add('selected');
+          if (childContainer.style.display === 'none') {
+            childContainer.style.display = '';
+            li.querySelector('.folder-arrow').style.transform = 'rotate(90deg)';
+            expandedTaskFolders.add(childPath);
+            if (!childContainer.dataset.loaded) {
+              childContainer.dataset.loaded = '1';
+              await _loadTaskFolder(childPath, childContainer);
+            }
+          } else {
+            childContainer.style.display = 'none';
+            li.querySelector('.folder-arrow').style.transform = '';
+            expandedTaskFolders.delete(childPath);
+          }
+        });
+
+        if (expandedTaskFolders.has(childPath)) {
+          childContainer.style.display = '';
+          li.querySelector('.folder-arrow').style.transform = 'rotate(90deg)';
+          childContainer.dataset.loaded = '1';
+          _loadTaskFolder(childPath, childContainer);
+        }
+
+        li.querySelector('.task-folder-label').addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          _showTaskContextMenu(e, childPath, null, vfolder);
+        });
+
+        const label = li.querySelector('.task-folder-label');
+        label.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          li.classList.add('drag-over');
+        });
+        label.addEventListener('dragleave', () => li.classList.remove('drag-over'));
+        label.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          li.classList.remove('drag-over');
+          const dragId = e.dataTransfer.getData('application/x-task-id');
+          if (!dragId) return;
+          await fetch(`/api/tasks/${dragId}/move`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder_path: childPath }),
+          });
+          loadTaskTree();
+        });
+
+        li.appendChild(childContainer);
+        ul.appendChild(li);
+      }
+
       container.appendChild(ul);
     }
 
@@ -2426,7 +2525,7 @@ build/**</textarea>
       return li;
     }
 
-    function _showTaskContextMenu(e, folderPath, task) {
+    function _showTaskContextMenu(e, folderPath, task, virtualFolder) {
       document.querySelectorAll('.context-menu').forEach(m => m.remove());
       const menu = document.createElement('div');
       menu.className = 'context-menu';
@@ -2441,8 +2540,20 @@ build/**</textarea>
           <div class="context-menu-divider"></div>
           <div class="context-menu-item" data-action="delete" style="color:var(--danger)">Delete</div>
         `;
+      } else if (virtualFolder) {
+        // Context menu for a virtual task folder
+        const archived = virtualFolder.status === 'archived';
+        menu.innerHTML = `
+          <div class="context-menu-item" data-action="add-task">Add Task</div>
+          <div class="context-menu-item" data-action="new-folder">New Folder</div>
+          <div class="context-menu-divider"></div>
+          <div class="context-menu-item" data-action="edit-folder">Edit Description…</div>
+          <div class="context-menu-item" data-action="${archived ? 'unarchive-folder' : 'archive-folder'}">${archived ? 'Unarchive' : 'Archive'}</div>
+          <div class="context-menu-divider"></div>
+          <div class="context-menu-item" data-action="delete-folder" style="color:var(--danger)">Delete…</div>
+        `;
       } else {
-        // Context menu for a folder
+        // Context menu for a non-virtual folder (mount root or FS dir holding existing tasks)
         menu.innerHTML = `
           <div class="context-menu-item" data-action="add-task">Add Task</div>
           <div class="context-menu-divider"></div>
@@ -2468,12 +2579,52 @@ build/**</textarea>
           } else if (action === 'new-folder') {
             const name = prompt('Folder name:');
             if (name && name.trim()) {
-              await fetch('/api/mkdir', {
+              const description = prompt('Description (optional):') || '';
+              const r = await fetch('/api/task-folders', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: folderPath.replace(/\/?$/, '/') + name.trim() }),
+                body: JSON.stringify({ parent_path: folderPath, name: name.trim(), description }),
               });
-              loadTaskTree();
+              if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                alert('Could not create folder: ' + (err.error || r.statusText));
+              } else {
+                expandedTaskFolders.add(folderPath);
+                loadTaskTree();
+              }
             }
+          } else if (action === 'edit-folder' && virtualFolder) {
+            const name = prompt('Folder name:', virtualFolder.name);
+            if (!name || !name.trim()) return;
+            const description = prompt('Description:', virtualFolder.description || '');
+            await fetch(`/api/task-folders/${virtualFolder.id}`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: name.trim(), description: description || '' }),
+            });
+            loadTaskTree();
+          } else if (action === 'archive-folder' && virtualFolder) {
+            await fetch(`/api/task-folders/${virtualFolder.id}`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'archived' }),
+            });
+            loadTaskTree();
+          } else if (action === 'unarchive-folder' && virtualFolder) {
+            await fetch(`/api/task-folders/${virtualFolder.id}`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'active' }),
+            });
+            loadTaskTree();
+          } else if (action === 'delete-folder' && virtualFolder) {
+            const cnt = await fetch(`/api/task-folders/${virtualFolder.id}/task-counts`).then(r => r.json()).catch(() => null);
+            if (!cnt) { alert('Failed to load folder details'); return; }
+            const c = cnt.counts;
+            const total = cnt.total;
+            const parent = virtualFolder.path.split('/').slice(0, -1).join('/') || '/';
+            const msg = total === 0
+              ? `Delete folder "${virtualFolder.name}"?`
+              : `Delete folder "${virtualFolder.name}"?\n\nTasks exist: ${c.active} active, ${c.done} done, ${c.archived} archived (${total} total).\nThey will be moved to the parent folder (${parent}).`;
+            if (!confirm(msg)) return;
+            await fetch(`/api/task-folders/${virtualFolder.id}`, { method: 'DELETE' });
+            loadTaskTree();
           } else if (action === 'edit') {
             openTaskDetail(task.id);
           } else if (action === 'complete') {

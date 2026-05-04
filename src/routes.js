@@ -1364,10 +1364,10 @@ function registerCoreRoutes(
     return '/' + p.replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/');
   }
 
-  function buildTaskTree(tasks) {
+  function buildTaskTree(tasks, virtualFolders = []) {
     const root = { path: '/', name: 'Workspace', tasks: [], children: {} };
-    for (const task of tasks) {
-      const parts = task.folder_path.replace(/^\//, '').split('/').filter(Boolean);
+    function ensurePath(p) {
+      const parts = p.replace(/^\//, '').split('/').filter(Boolean);
       let node = root;
       for (const part of parts) {
         if (!node.children[part]) {
@@ -1378,14 +1378,30 @@ function registerCoreRoutes(
         }
         node = node.children[part];
       }
+      return node;
+    }
+    // First pass: register virtual folders so they appear even with no tasks.
+    for (const f of virtualFolders) {
+      const node = ensurePath(f.path);
+      node.virtual = true;
+      node.folder_id = f.id;
+      node.description = f.description || '';
+      node.status = f.status;
+      // Prefer the virtual folder's display name when present.
+      if (f.name) node.name = f.name;
+    }
+    // Second pass: place tasks under their folder paths.
+    for (const task of tasks) {
+      const node = ensurePath(task.folder_path);
       node.tasks.push(task);
     }
+    // Prune empty branches — but keep virtual folders even when empty.
     function prune(node) {
       for (const key of Object.keys(node.children)) {
         prune(node.children[key]);
-        if (node.children[key].tasks.length === 0 && Object.keys(node.children[key].children).length === 0) {
-          delete node.children[key];
-        }
+        const child = node.children[key];
+        const empty = child.tasks.length === 0 && Object.keys(child.children).length === 0;
+        if (empty && !child.virtual) delete node.children[key];
       }
     }
     prune(root);
@@ -1394,8 +1410,85 @@ function registerCoreRoutes(
 
   app.get('/api/tasks/tree', (req, res) => {
     const filter = req.query.filter || 'todo';
+    const showArchivedFolders = req.query.show_archived_folders === '1';
     const tasks = db.getAllTasks(filter);
-    res.json({ tree: buildTaskTree(tasks) });
+    const folders = db.getAllTaskFolders(showArchivedFolders ? 'all' : 'active');
+    res.json({ tree: buildTaskTree(tasks, folders) });
+  });
+
+  // ── Task folders (virtual, decoupled from filesystem) ────────────────────
+  function _normalizeVirtualPath(p) {
+    if (!p) return '/';
+    return ('/' + String(p).split('/').filter(Boolean).join('/')) || '/';
+  }
+  function _parentPath(p) {
+    const parts = String(p).split('/').filter(Boolean);
+    parts.pop();
+    return parts.length ? '/' + parts.join('/') : '/';
+  }
+
+  app.get('/api/task-folders', (req, res) => {
+    const filter = req.query.filter || 'all';
+    res.json({ folders: db.getAllTaskFolders(filter) });
+  });
+
+  app.post('/api/task-folders', (req, res) => {
+    const { parent_path, name, description } = req.body || {};
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'name required' });
+    const cleanName = String(name).trim();
+    if (cleanName.includes('/')) return res.status(400).json({ error: 'name must not contain "/"' });
+    const parent = _normalizeVirtualPath(parent_path);
+    const path = parent === '/' ? '/' + cleanName : parent + '/' + cleanName;
+    if (db.getTaskFolderByPath(path)) return res.status(409).json({ error: 'folder already exists at this path' });
+    const folder = db.addTaskFolder(path, cleanName, description ? String(description) : '');
+    fireEvent('task_folder_added', { folder_id: folder.id, path });
+    res.json(folder);
+  });
+
+  app.put('/api/task-folders/:id', (req, res) => {
+    const id = Number(req.params.id);
+    const folder = db.getTaskFolder(id);
+    if (!folder) return res.status(404).json({ error: 'folder not found' });
+    const { name, description, status } = req.body || {};
+    if (status !== undefined) {
+      if (!['active', 'archived'].includes(status))
+        return res.status(400).json({ error: 'invalid status' });
+      db.setTaskFolderStatus(id, status);
+    }
+    if (name !== undefined || description !== undefined) {
+      db.updateTaskFolder(
+        id,
+        name !== undefined ? String(name).trim() : folder.name,
+        description !== undefined ? String(description) : folder.description,
+      );
+    }
+    res.json(db.getTaskFolder(id));
+  });
+
+  app.delete('/api/task-folders/:id', (req, res) => {
+    const id = Number(req.params.id);
+    const folder = db.getTaskFolder(id);
+    if (!folder) return res.status(404).json({ error: 'folder not found' });
+    const tasks = db.getTasksByFolder(folder.path);
+    const parent = _parentPath(folder.path);
+    if (tasks.length > 0) db.reparentTasks(folder.path, parent);
+    db.deleteTaskFolder(id);
+    fireEvent('task_folder_deleted', { folder_id: id, path: folder.path, reparented: tasks.length, to: parent });
+    res.json({ deleted: true, reparented: tasks.length, to: parent });
+  });
+
+  app.get('/api/task-folders/:id/task-counts', (req, res) => {
+    const id = Number(req.params.id);
+    const folder = db.getTaskFolder(id);
+    if (!folder) return res.status(404).json({ error: 'folder not found' });
+    const tasks = db.getTasksByFolder(folder.path);
+    const counts = { active: 0, done: 0, archived: 0 };
+    for (const t of tasks) {
+      if (t.status === 'done') counts.done++;
+      else if (t.status === 'archived') counts.archived++;
+      else counts.active++;
+    }
+    res.json({ folder, counts, total: tasks.length });
   });
 
   app.post('/api/tasks', (req, res) => {
