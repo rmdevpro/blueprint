@@ -111,6 +111,15 @@ async function _seedRole(cliType, rolePath, projectPath, cliArgs, existingFiles,
     ], { cwd: projectPath });
     // Phase 2: resume latest interactively (no yolo)
     require('./safe-exec').tmuxCreateCLI(tmux, projectPath, 'gemini', ['--resume', 'latest']);
+    // Capture cli_session_id from the new Gemini chat file so #273's
+    // resume-by-index path works on first respawn (without waiting for the
+    // ws-terminal connect to trigger _resolveAndWatchNonClaude).
+    try {
+      const { discoverGeminiSessions } = require('./session-utils');
+      const sessions = discoverGeminiSessions();
+      const newest = sessions.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))[0];
+      if (newest?.sessionId) db.setCliSessionId(tmpId, newest.sessionId);
+    } catch (_e) { /* non-fatal */ }
 
   } else if (cliType === 'codex') {
     // Single non-interactive step — role seeded as initial context
