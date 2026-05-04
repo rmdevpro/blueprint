@@ -252,7 +252,7 @@ const stmts = {
   reorderTask: db.prepare("UPDATE tasks SET sort_order = ?, updated_at = datetime('now') WHERE id = ?"),
   deleteTask: db.prepare('DELETE FROM tasks WHERE id = ?'),
   addTaskHistory: db.prepare('INSERT INTO task_history (task_id, event_type, old_value, new_value, created_by) VALUES (?, ?, ?, ?, ?)'),
-  getTaskHistory: db.prepare('SELECT * FROM task_history WHERE task_id = ? ORDER BY created_at DESC'),
+  getTaskHistory: db.prepare('SELECT * FROM task_history WHERE task_id = ? ORDER BY created_at DESC, id DESC'),
   maxSortOrder: db.prepare('SELECT MAX(sort_order) as max_sort FROM tasks WHERE folder_path = ?'),
 
   getAllTaskFolders: db.prepare('SELECT * FROM task_folders ORDER BY path ASC'),
