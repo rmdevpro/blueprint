@@ -1360,15 +1360,28 @@ build/**</textarea>
       .catch(err => console.error('Failed to open session:', err));
     }
 
-    function createSession(projectName, cliType = 'claude') {
+    async function createSession(projectName, cliType = 'claude') {
       // Prevent duplicate modals from double-click
       if (document.querySelector('[id^="new-session-overlay-"]')) return;
+
+      // Fetch roles (silently — empty list if KB not ready)
+      let roles = [];
+      try { roles = await fetch('/api/kb/roles').then(r => r.json()); } catch (_e) {}
+
       // Show prompt-first modal instead of creating session immediately
       const overlay = document.createElement('div');
       const overlayId = 'new-session-overlay-' + Date.now();
       overlay.id = overlayId;
       overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center';
       overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+      const rolePickerHtml = roles.length ? `
+          <div style="margin-bottom:16px">
+            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Role <span style="color:var(--text-muted);font-size:11px">(optional)</span></label>
+            <select id="new-session-role" style="width:100%;padding:8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;box-sizing:border-box">
+              <option value="">— No role —</option>
+              ${roles.map(r => `<option value="${r.name}">${r.label}</option>`).join('')}
+            </select>
+          </div>` : '';
       overlay.innerHTML = `
         <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:24px;width:480px" onclick="event.stopPropagation()">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
@@ -1379,6 +1392,7 @@ build/**</textarea>
             <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Session name</label>
             <input id="new-session-name" type="text" maxlength="60" style="width:100%;padding:8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;box-sizing:border-box" placeholder="Short description of this session" autofocus>
           </div>
+          ${rolePickerHtml}
           <div style="display:flex;justify-content:flex-end;gap:8px">
             <button onclick="document.getElementById('${overlayId}').remove()" style="padding:6px 16px;background:var(--bg-tertiary);color:var(--text-secondary);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:13px">Cancel</button>
             <button id="new-session-submit" style="padding:6px 16px;background:var(--btn-primary);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px">Start Session</button>
@@ -1394,17 +1408,20 @@ build/**</textarea>
       document.getElementById('new-session-submit').addEventListener('click', async () => {
         const name = document.getElementById('new-session-name').value.trim();
         if (!name) { document.getElementById('new-session-name').focus(); return; }
+        const role = document.getElementById('new-session-role')?.value || '';
 
         // Disable button while creating
         const btn = document.getElementById('new-session-submit');
-        btn.textContent = 'Creating...';
+        btn.textContent = role ? 'Seeding role…' : 'Creating...';
         btn.disabled = true;
 
         try {
+          const body = { project: projectName, name, cli_type: cliType };
+          if (role) body.role = role;
           const res = await fetch('/api/sessions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project: projectName, name, cli_type: cliType }),
+            body: JSON.stringify(body),
           });
           const data = await res.json();
           if (data.error) { alert('Error: ' + data.error); btn.textContent = 'Start Session'; btn.disabled = false; return; }

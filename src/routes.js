@@ -60,6 +60,63 @@ function _parseSince(input) {
   return new Date(Date.now() - 3600 * 1000).toISOString();
 }
 
+// Phase 1 + Phase 2 role seeding. Runs CLI non-interactively in plan/exec mode
+// to seed the role into the session, then launches interactive via tmux.
+async function _seedRole(cliType, rolePath, projectPath, cliArgs, existingFiles, sessDir, tmpId, proj, db, tmux, logger) {
+  const { execFile } = require('child_process');
+  const { promisify } = require('util');
+  const execFileAsync = promisify(execFile);
+  const { readdir: readdirFs } = require('fs/promises');
+  const { basename: basenameFs } = require('path');
+
+  if (cliType === 'claude') {
+    // Phase 1: non-interactive plan mode — seeds role into plan file
+    await execFileAsync('claude', [
+      '-p', '--permission-mode', 'plan',
+      `Read ${rolePath} and copy it verbatim into your plan.`,
+    ], { cwd: projectPath });
+    // Find the new JSONL created by Phase 1
+    const afterFiles = await readdirFs(sessDir).catch(() => []);
+    const newJSONL = afterFiles.find(f => f.endsWith('.jsonl') && !existingFiles.has(f));
+    const phase1Id = newJSONL ? basenameFs(newJSONL, '.jsonl') : null;
+    // Phase 2: resume interactively with bypass
+    const resumeArgs = phase1Id
+      ? ['--resume', phase1Id, '--dangerously-skip-permissions', ...cliArgs]
+      : ['--dangerously-skip-permissions', ...cliArgs];
+    require('./safe-exec').tmuxCreateCLI(tmux, projectPath, 'claude', resumeArgs);
+    if (phase1Id) {
+      // Register the real session ID so the resolver maps it correctly
+      db.upsertSession(phase1Id, proj.id, null, 'claude');
+    }
+
+  } else if (cliType === 'gemini') {
+    // Phase 1: non-interactive plan mode
+    await execFileAsync('gemini', [
+      '--approval-mode', 'plan',
+      '-p', `Read ${rolePath} and copy it verbatim into your plan.`,
+    ], { cwd: projectPath });
+    // Phase 2: resume latest interactively (no yolo)
+    require('./safe-exec').tmuxCreateCLI(tmux, projectPath, 'gemini', ['--resume', 'latest']);
+
+  } else if (cliType === 'codex') {
+    // Single non-interactive step — role seeded as initial context
+    await execFileAsync('codex', [
+      'exec', `Read ${rolePath} and assume this role for this session.`,
+    ], { cwd: projectPath });
+    // Find the new rollout file for resume
+    const codexSessDir = require('path').join(process.env.HOME || '/data', '.codex', 'sessions');
+    const { discoverCodexSessions } = require('./session-utils');
+    const sessions = discoverCodexSessions ? discoverCodexSessions() : [];
+    const newest = sessions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+    const rolloutId = newest?.filePath
+      ? (() => { const m = basenameFs(newest.filePath, '.jsonl').match(/([0-9a-f-]{36})$/i); return m ? m[1] : null; })()
+      : null;
+    const resumeArgs = rolloutId ? ['resume', rolloutId] : [];
+    require('./safe-exec').tmuxCreateCLI(tmux, projectPath, 'codex', resumeArgs);
+    if (rolloutId) db.setCliSessionId(tmpId, rolloutId);
+  }
+}
+
 function registerCoreRoutes(
   app,
   {
@@ -901,11 +958,29 @@ function registerCoreRoutes(
     }
   });
 
+  // ── GET /api/kb/roles ─────────────────────────────────────────────────────
+
+  app.get('/api/kb/roles', async (req, res) => {
+    const rolesDir = '/data/knowledge-base/roles';
+    try {
+      const files = await readdir(rolesDir);
+      const roles = files
+        .filter(f => f.endsWith('.md'))
+        .map(f => ({
+          name: f.replace(/\.md$/, ''),
+          label: f.replace(/\.md$/, '').replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        }));
+      res.json(roles);
+    } catch (_err) {
+      res.json([]);
+    }
+  });
+
   // ── POST /api/sessions ────────────────────────────────────────────────────
 
   app.post('/api/sessions', async (req, res) => {
     try {
-      const { project, name, cli_type, hidden } = req.body;
+      const { project, name, cli_type, hidden, role } = req.body;
       const cliType = cli_type || 'claude';
       const VALID_CLI_TYPES = ['claude', 'gemini', 'codex'];
       if (!VALID_CLI_TYPES.includes(cliType))
@@ -967,7 +1042,20 @@ function registerCoreRoutes(
           }
         }
       }
-      safe.tmuxCreateCLI(tmux, projectPath, cliType, cliArgs);
+
+      // Role seeding — two-phase launch when a role is selected
+      if (role) {
+        const rolePath = `/data/knowledge-base/roles/${role}.md`;
+        try {
+          await stat(rolePath);
+          await _seedRole(cliType, rolePath, projectPath, cliArgs, existingFiles, sessDir, tmpId, proj, db, tmux, logger);
+        } catch (roleErr) {
+          logger.warn('Role seeding failed — launching without role', { module: 'routes', role, err: roleErr.message });
+          safe.tmuxCreateCLI(tmux, projectPath, cliType, cliArgs);
+        }
+      } else {
+        safe.tmuxCreateCLI(tmux, projectPath, cliType, cliArgs);
+      }
 
       const proj = db.ensureProject(project, projectPath);
       const nameMaxLen = config.get('session.nameMaxLength', 60);
