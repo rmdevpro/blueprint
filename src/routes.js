@@ -104,6 +104,11 @@ async function _seedRole(cliType, rolePath, projectPath, cliArgs, existingFiles,
     }
 
   } else if (cliType === 'gemini') {
+    // Snapshot existing chat files BEFORE Phase 1 so we can identify the
+    // new one (Phase 1 creates exactly one chat file). Sort-by-timestamp
+    // picked stale files when many old chats existed in unrelated projects.
+    const { discoverGeminiSessions } = require('./session-utils');
+    const beforeGemini = new Set(discoverGeminiSessions().map(s => s.filePath));
     // Phase 1: non-interactive plan mode
     await execFileAsync('gemini', [
       '--approval-mode', 'plan',
@@ -111,28 +116,26 @@ async function _seedRole(cliType, rolePath, projectPath, cliArgs, existingFiles,
     ], { cwd: projectPath });
     // Phase 2: resume latest interactively (no yolo)
     require('./safe-exec').tmuxCreateCLI(tmux, projectPath, 'gemini', ['--resume', 'latest']);
-    // Capture cli_session_id from the new Gemini chat file so #273's
-    // resume-by-index path works on first respawn (without waiting for the
-    // ws-terminal connect to trigger _resolveAndWatchNonClaude).
+    // Find the new chat file produced by Phase 1 — diff against snapshot.
     try {
-      const { discoverGeminiSessions } = require('./session-utils');
-      const sessions = discoverGeminiSessions();
-      const newest = sessions.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))[0];
-      if (newest?.sessionId) db.setCliSessionId(tmpId, newest.sessionId);
+      const after = discoverGeminiSessions();
+      const created = after.find(s => !beforeGemini.has(s.filePath));
+      if (created?.sessionId) db.setCliSessionId(tmpId, created.sessionId);
     } catch (e) { logger.warn('Gemini cli_session_id capture failed', { module: 'routes', err: e.message }); }
 
   } else if (cliType === 'codex') {
+    // Snapshot existing rollouts BEFORE Phase 1 — same reasoning as Gemini.
+    const { discoverCodexSessions } = require('./session-utils');
+    const beforeCodex = new Set((discoverCodexSessions ? discoverCodexSessions() : []).map(s => s.filePath));
     // Single non-interactive step — role seeded as initial context
     await execFileAsync('codex', [
       'exec', rolePrompt,
     ], { cwd: projectPath });
-    // Find the new rollout file for resume
-    const codexSessDir = require('path').join(process.env.HOME || '/data', '.codex', 'sessions');
-    const { discoverCodexSessions } = require('./session-utils');
-    const sessions = discoverCodexSessions ? discoverCodexSessions() : [];
-    const newest = sessions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
-    const rolloutId = newest?.filePath
-      ? (() => { const m = basenameFs(newest.filePath, '.jsonl').match(/([0-9a-f-]{36})$/i); return m ? m[1] : null; })()
+    // Find the rollout file produced by Phase 1 — diff against snapshot.
+    const after = discoverCodexSessions ? discoverCodexSessions() : [];
+    const created = after.find(s => !beforeCodex.has(s.filePath));
+    const rolloutId = created?.filePath
+      ? (() => { const m = basenameFs(created.filePath, '.jsonl').match(/([0-9a-f-]{36})$/i); return m ? m[1] : null; })()
       : null;
     const resumeArgs = rolloutId ? ['resume', rolloutId] : [];
     require('./safe-exec').tmuxCreateCLI(tmux, projectPath, 'codex', resumeArgs);
