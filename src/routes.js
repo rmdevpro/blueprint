@@ -83,12 +83,16 @@ async function _seedRole(cliType, rolePath, projectPath, cliArgs, existingFiles,
     `${roleContent}\n` +
     `=== END ROLE ===`;
 
+  // Don't let Phase 1 inherit our stdin — Codex (and others) will block
+  // forever on "Reading additional input from stdin..." otherwise.
+  const seedExecOpts = (cwd) => ({ cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+
   if (cliType === 'claude') {
     // Phase 1: non-interactive plan mode — seeds role into plan file
     await execFileAsync('claude', [
       '-p', '--permission-mode', 'plan',
       rolePrompt,
-    ], { cwd: projectPath });
+    ], seedExecOpts(projectPath));
     // Find the new JSONL created by Phase 1
     const afterFiles = await readdirFs(sessDir).catch(() => []);
     const newJSONL = afterFiles.find(f => f.endsWith('.jsonl') && !existingFiles.has(f));
@@ -113,7 +117,7 @@ async function _seedRole(cliType, rolePath, projectPath, cliArgs, existingFiles,
     await execFileAsync('gemini', [
       '--approval-mode', 'plan',
       '-p', rolePrompt,
-    ], { cwd: projectPath });
+    ], seedExecOpts(projectPath));
     // Phase 2: resume latest interactively (no yolo)
     require('./safe-exec').tmuxCreateCLI(tmux, projectPath, 'gemini', ['--resume', 'latest']);
     // Find the new chat file produced by Phase 1 — diff against snapshot.
@@ -127,10 +131,12 @@ async function _seedRole(cliType, rolePath, projectPath, cliArgs, existingFiles,
     // Snapshot existing rollouts BEFORE Phase 1 — same reasoning as Gemini.
     const { discoverCodexSessions } = require('./session-utils');
     const beforeCodex = new Set((discoverCodexSessions ? discoverCodexSessions() : []).map(s => s.filePath));
-    // Single non-interactive step — role seeded as initial context
+    // Single non-interactive step — role seeded as initial context.
+    // --skip-git-repo-check: Codex refuses to run outside a git repo by
+    // default, but workbench projects aren't required to be git repos.
     await execFileAsync('codex', [
-      'exec', rolePrompt,
-    ], { cwd: projectPath });
+      'exec', '--skip-git-repo-check', rolePrompt,
+    ], seedExecOpts(projectPath));
     // Find the rollout file produced by Phase 1 — diff against snapshot.
     const after = discoverCodexSessions ? discoverCodexSessions() : [];
     const created = after.find(s => !beforeCodex.has(s.filePath));
