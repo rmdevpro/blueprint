@@ -1186,16 +1186,16 @@ build/**</textarea>
         // Filter projects by their own state AND by session states
         const projState = project.state || 'active';
         // Skip projects that don't match the current filter
-        if (sessionFilter === 'active' && projState !== 'active') continue;
+        if (sessionFilter === 'active' && projState !== 'active') return;
         if (sessionFilter === 'archived' && projState !== 'archived') {
           // In archived view, also show active projects that have archived sessions
           const hasArchivedSessions = project.sessions.some(s => (s.state || (s.archived ? 'archived' : 'active')) === 'archived');
-          if (!hasArchivedSessions) continue;
+          if (!hasArchivedSessions) return;
         }
-        if (sessionFilter === 'all' && projState === 'hidden') continue;
+        if (sessionFilter === 'all' && projState === 'hidden') return;
         if (sessionFilter === 'hidden' && projState !== 'hidden') {
           const hasHiddenSessions = project.sessions.some(s => (s.state || 'active') === 'hidden');
-          if (!hasHiddenSessions) continue;
+          if (!hasHiddenSessions) return;
         }
         const hasMatchingSessions = project.sessions.some(s => {
           const state = s.state || (s.archived ? 'archived' : 'active');
