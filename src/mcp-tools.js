@@ -84,7 +84,7 @@ async function ensureSessionTmux(session, projectPath) {
   const tmux = safe.tmuxNameFor(session.id);
   if (!(await safe.tmuxExists(tmux))) {
     const cliType = session.cli_type || 'claude';
-    const { args: resumeArgs, missing, expectedPath } = safe.buildResumeArgs(session, projectPath);
+    const { args: resumeArgs, missing, expectedPath } = await safe.buildResumeArgs(session, projectPath);
     if (missing) {
       throw new ToolError(`Cannot reattach session ${session.id} — JSONL missing at ${expectedPath}`, 410);
     }
