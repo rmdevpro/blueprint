@@ -883,6 +883,84 @@ function registerCoreRoutes(
     }
   });
 
+  // ── Programs (parent folder for projects) ─────────────────────────────────
+  app.put('/api/projects/:name/program', (req, res) => {
+    const project = db.getProject(req.params.name);
+    if (!project) return res.status(404).json({ error: 'project not found' });
+    const { program_id } = req.body || {};
+    if (program_id != null && !db.getProgram(Number(program_id)))
+      return res.status(404).json({ error: 'program not found' });
+    const updated = db.setProjectProgram(project.id, program_id);
+    fireEvent('project_program_changed', { project: project.name, program_id: updated.program_id });
+    res.json(updated);
+  });
+
+  app.get('/api/programs', (req, res) => {
+    const filter = req.query.filter || 'all';
+    res.json({ programs: db.getAllPrograms(filter) });
+  });
+
+  app.post('/api/programs', (req, res) => {
+    const { name, description } = req.body || {};
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'name required' });
+    const cleanName = String(name).trim();
+    if (cleanName.length > 60) return res.status(400).json({ error: 'name too long (max 60)' });
+    if (db.getProgramByName(cleanName)) return res.status(409).json({ error: 'program with that name already exists' });
+    const program = db.addProgram(cleanName, description ? String(description) : '');
+    fireEvent('program_added', { program_id: program.id, name: program.name });
+    res.json(program);
+  });
+
+  app.put('/api/programs/:id', (req, res) => {
+    const id = Number(req.params.id);
+    const program = db.getProgram(id);
+    if (!program) return res.status(404).json({ error: 'program not found' });
+    const { name, description, status } = req.body || {};
+    const fields = {};
+    if (name !== undefined) {
+      const clean = String(name).trim();
+      if (!clean) return res.status(400).json({ error: 'name cannot be empty' });
+      if (clean !== program.name) {
+        const dup = db.getProgramByName(clean);
+        if (dup && dup.id !== id) return res.status(409).json({ error: 'program with that name already exists' });
+      }
+      fields.name = clean;
+    }
+    if (description !== undefined) fields.description = String(description);
+    if (status !== undefined) {
+      if (!['active', 'archived'].includes(status))
+        return res.status(400).json({ error: 'invalid status' });
+      fields.status = status;
+    }
+    const updated = db.updateProgram(id, fields);
+    res.json(updated);
+  });
+
+  app.delete('/api/programs/:id', (req, res) => {
+    const id = Number(req.params.id);
+    const program = db.getProgram(id);
+    if (!program) return res.status(404).json({ error: 'program not found' });
+    const projectsCount = db.countProjectsInProgram(id);
+    db.deleteProgram(id);
+    fireEvent('program_deleted', { program_id: id, name: program.name, orphaned_projects: projectsCount });
+    res.json({ deleted: true, orphaned_projects: projectsCount });
+  });
+
+  app.get('/api/programs/:id/project-count', (req, res) => {
+    const id = Number(req.params.id);
+    const program = db.getProgram(id);
+    if (!program) return res.status(404).json({ error: 'program not found' });
+    const total = db.countProjectsInProgram(id);
+    // Status breakdown — useful for the delete-confirmation message
+    const projects = db.getProjects().filter(p => p.program_id === id);
+    const counts = { active: 0, archived: 0 };
+    for (const p of projects) {
+      if (p.state === 'archived') counts.archived++;
+      else counts.active++;
+    }
+    res.json({ program, total, counts });
+  });
+
   // ── Auth endpoints ─────────────────────────────────────────────────────────
 
   app.get('/api/auth/status', async (req, res) => {
@@ -997,7 +1075,7 @@ function registerCoreRoutes(
           s.project_missing = dirMissing;
         }
 
-        projects.push({ name: projectName, path: projectPath, sessions, missing: dirMissing, state: project.state || 'active' });
+        projects.push({ name: projectName, path: projectPath, sessions, missing: dirMissing, state: project.state || 'active', program_id: project.program_id ?? null });
       }
 
       projects.sort((a, b) => {
@@ -1006,7 +1084,8 @@ function registerCoreRoutes(
         return new Date(bTime) - new Date(aTime);
       });
 
-      res.json({ projects, workspace: WORKSPACE });
+      const programs = db.getAllPrograms('active');
+      res.json({ projects, programs, workspace: WORKSPACE });
     } catch (err) {
       logger.error('Error listing state', { module: 'routes', err: err.message });
       res.status(500).json({ error: err.message });
