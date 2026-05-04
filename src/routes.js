@@ -62,18 +62,32 @@ function _parseSince(input) {
 
 // Phase 1 + Phase 2 role seeding. Runs CLI non-interactively in plan/exec mode
 // to seed the role into the session, then launches interactive via tmux.
+//
+// The role file content is INLINED into the prompt rather than asking the CLI
+// to read it from disk. Gemini's workspace sandbox refuses reads outside the
+// project's cwd (the role lives in /data/knowledge-base/roles/, well outside
+// /data/workspace/<project>), and Codex has the same scoping. Inlining works
+// for all three CLIs uniformly.
 async function _seedRole(cliType, rolePath, projectPath, cliArgs, existingFiles, sessDir, tmpId, proj, db, tmux, logger) {
   const { execFile } = require('child_process');
   const { promisify } = require('util');
   const execFileAsync = promisify(execFile);
-  const { readdir: readdirFs } = require('fs/promises');
+  const { readdir: readdirFs, readFile: readFileFs } = require('fs/promises');
   const { basename: basenameFs } = require('path');
+
+  // Read the role content up-front; bail to caller's catch if missing.
+  const roleContent = await readFileFs(rolePath, 'utf-8');
+  const rolePrompt =
+    `You are being assigned a role for this session. The role definition is below — adopt it as your role and copy the content verbatim into your plan so it persists across the session.\n\n` +
+    `=== ROLE: ${basenameFs(rolePath, '.md')} ===\n` +
+    `${roleContent}\n` +
+    `=== END ROLE ===`;
 
   if (cliType === 'claude') {
     // Phase 1: non-interactive plan mode — seeds role into plan file
     await execFileAsync('claude', [
       '-p', '--permission-mode', 'plan',
-      `Read ${rolePath} and copy it verbatim into your plan.`,
+      rolePrompt,
     ], { cwd: projectPath });
     // Find the new JSONL created by Phase 1
     const afterFiles = await readdirFs(sessDir).catch(() => []);
@@ -93,7 +107,7 @@ async function _seedRole(cliType, rolePath, projectPath, cliArgs, existingFiles,
     // Phase 1: non-interactive plan mode
     await execFileAsync('gemini', [
       '--approval-mode', 'plan',
-      '-p', `Read ${rolePath} and copy it verbatim into your plan.`,
+      '-p', rolePrompt,
     ], { cwd: projectPath });
     // Phase 2: resume latest interactively (no yolo)
     require('./safe-exec').tmuxCreateCLI(tmux, projectPath, 'gemini', ['--resume', 'latest']);
@@ -101,7 +115,7 @@ async function _seedRole(cliType, rolePath, projectPath, cliArgs, existingFiles,
   } else if (cliType === 'codex') {
     // Single non-interactive step — role seeded as initial context
     await execFileAsync('codex', [
-      'exec', `Read ${rolePath} and assume this role for this session.`,
+      'exec', rolePrompt,
     ], { cwd: projectPath });
     // Find the new rollout file for resume
     const codexSessDir = require('path').join(process.env.HOME || '/data', '.codex', 'sessions');
