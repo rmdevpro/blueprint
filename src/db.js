@@ -264,6 +264,12 @@ const stmts = {
   setTaskFolderStatus: db.prepare("UPDATE task_folders SET status = ?, archived_at = CASE WHEN ? = 'archived' THEN datetime('now') ELSE NULL END, updated_at = datetime('now') WHERE id = ?"),
   deleteTaskFolder: db.prepare('DELETE FROM task_folders WHERE id = ?'),
   reparentTasks: db.prepare("UPDATE tasks SET folder_path = ?, updated_at = datetime('now') WHERE folder_path = ?"),
+  reparentTasksUnderPrefix: db.prepare(
+    "UPDATE tasks SET folder_path = ? || substr(folder_path, length(?) + 1), updated_at = datetime('now') WHERE folder_path = ? OR folder_path LIKE ? || '/%'"
+  ),
+  reparentFoldersUnderPrefix: db.prepare(
+    "UPDATE task_folders SET path = ? || substr(path, length(?) + 1), updated_at = datetime('now') WHERE path LIKE ? || '/%'"
+  ),
 
   getSessionMeta: db.prepare('SELECT * FROM session_meta WHERE session_id = ?'),
   getSessionMetaByPath: db.prepare('SELECT * FROM session_meta WHERE file_path = ?'),
@@ -473,6 +479,16 @@ module.exports = {
   },
   reparentTasks(fromPath, toPath) {
     stmts.reparentTasks.run(toPath, fromPath);
+  },
+  // Replace a path prefix on every task and every virtual folder rooted under
+  // `fromPath`. Used to "move" the entire subtree to `toPath` when a folder
+  // is deleted. Atomic via transaction.
+  reparentSubtree(fromPath, toPath) {
+    const run = db.transaction(() => {
+      stmts.reparentTasksUnderPrefix.run(toPath, fromPath, fromPath, fromPath);
+      stmts.reparentFoldersUnderPrefix.run(toPath, fromPath, fromPath);
+    });
+    run();
   },
 
   getSessionFull(id) {

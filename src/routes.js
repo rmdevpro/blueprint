@@ -1469,26 +1469,32 @@ function registerCoreRoutes(
     const id = Number(req.params.id);
     const folder = db.getTaskFolder(id);
     if (!folder) return res.status(404).json({ error: 'folder not found' });
-    const tasks = db.getTasksByFolder(folder.path);
     const parent = _parentPath(folder.path);
-    if (tasks.length > 0) db.reparentTasks(folder.path, parent);
+    // Move every task and every nested virtual folder up to the parent —
+    // prefix replace covers the entire subtree atomically.
+    db.reparentSubtree(folder.path, parent);
     db.deleteTaskFolder(id);
-    fireEvent('task_folder_deleted', { folder_id: id, path: folder.path, reparented: tasks.length, to: parent });
-    res.json({ deleted: true, reparented: tasks.length, to: parent });
+    fireEvent('task_folder_deleted', { folder_id: id, path: folder.path, to: parent });
+    res.json({ deleted: true, to: parent });
   });
 
   app.get('/api/task-folders/:id/task-counts', (req, res) => {
     const id = Number(req.params.id);
     const folder = db.getTaskFolder(id);
     if (!folder) return res.status(404).json({ error: 'folder not found' });
-    const tasks = db.getTasksByFolder(folder.path);
+    // Count tasks in the entire subtree (this folder and any nested folders).
+    const all = db.getAllTasks('all');
+    const prefix = folder.path === '/' ? '/' : folder.path + '/';
     const counts = { active: 0, done: 0, archived: 0 };
-    for (const t of tasks) {
+    let total = 0;
+    for (const t of all) {
+      if (t.folder_path !== folder.path && !t.folder_path.startsWith(prefix)) continue;
+      total++;
       if (t.status === 'done') counts.done++;
       else if (t.status === 'archived') counts.archived++;
       else counts.active++;
     }
-    res.json({ folder, counts, total: tasks.length });
+    res.json({ folder, counts, total });
   });
 
   app.post('/api/tasks', (req, res) => {
