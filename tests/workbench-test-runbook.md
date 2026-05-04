@@ -5062,6 +5062,104 @@ for (const p of projects) assert(trust[p] === 'TRUST_FOLDER');
 **Pre-fix behavior:** `.task-node` had `align-items:center`, which centered the checkbox vertically in the row — so on multi-line titles it floated halfway down instead of staying aligned with the first line.
 
 ---
+### KB-01: Knowledge Base appears as second root in file browser
+**Issue:** #269.
+**Setup:** Fresh container start (or restart) with `/data/knowledge-base` absent before boot.
+**Steps:**
+1. Start the container and wait for it to finish booting.
+2. `browser_navigate` to `${WORKBENCH_URL}`. Open the Files panel.
+3. Wait up to 60s for the Knowledge Base root to appear in the file tree (auto-clone runs in background).
+4. Verify "Knowledge Base" appears as a second mount root alongside the workspace.
+5. Expand the Knowledge Base root — verify subdirectories `roles/`, `guides/`, `process/`, `runbooks/`, `requirements/`, `standards/` are present.
+6. `docker exec ${WORKBENCH_CONTAINER} ls /data/knowledge-base` — confirm the directory exists and is a git repo (`.git` present).
+**Verify:** KB auto-cloned on first boot, visible in file browser with correct structure.
+
+---
+### KB-02: Knowledge Base repo URL setting
+**Issue:** #269, #270.
+**Steps:**
+1. Open Settings → General → Knowledge Base section.
+2. Verify "Repo Name" field shows `blueprint_workbench_kb`.
+3. Verify "Repository URL" shows `https://github.com/rmdevpro/workbench-kb` (default, no KB account set).
+4. Change Repo Name to `test_kb` — verify Repository URL updates to `https://github.com/rmdevpro/workbench-kb` (unchanged until KB account set).
+5. Restore Repo Name to `blueprint_workbench_kb`.
+**Verify:** Repo name field editable, URL display reflects current state.
+
+---
+### KB-03: Add and delete a git account
+**Issue:** #270.
+**Steps:**
+1. Open Settings → General → Git Accounts section.
+2. Verify empty state: "No git accounts configured."
+3. Fill in Label: `Test`, Host: `github.com`, Username: `testuser`, Token: `ghp_test123`. Click Add.
+4. Verify account row appears in the table with Label, Host, Username, and masked token (••••••••).
+5. Verify KB radio button is auto-selected (first account becomes KB account).
+6. Verify Repository URL in Knowledge Base section updates to `https://github.com/testuser/blueprint_workbench_kb`.
+7. Click the ✕ delete button for the account.
+8. Verify row is removed and empty state returns.
+9. Verify Repository URL reverts to default.
+**Verify:** Add and delete work correctly. First account auto-designated as KB. URL derived on add, reverted on delete.
+
+---
+### KB-04: Designate KB account updates derived URL
+**Issue:** #270.
+**Steps:**
+1. Add two git accounts: `Alice` (github.com / alice / token1) and `Bob` (github.com / bob / token2).
+2. Verify Alice is auto-selected as KB (first added).
+3. Verify Repository URL shows `https://github.com/alice/blueprint_workbench_kb`.
+4. Click the KB radio button for Bob.
+5. Verify Repository URL updates to `https://github.com/bob/blueprint_workbench_kb`.
+**Verify:** Designating a different KB account immediately updates the derived URL.
+
+---
+### KB-05: KB status line shows initialized state
+**Issue:** #271.
+**Steps:**
+1. With `/data/knowledge-base` cloned and a KB account configured, open Settings → General → Knowledge Base.
+2. Verify the status line shows a last-sync timestamp and/or ahead/behind counts.
+3. Verify "Sync from upstream" button is enabled.
+4. Verify "Fork to my account" button is present.
+**Verify:** Status line populated. Buttons enabled when KB initialized.
+
+---
+### KB-06: Sync from upstream button runs rebase
+**Issue:** #271.
+**Setup:** KB initialized, `upstream` remote pointing at `https://github.com/rmdevpro/workbench-kb`.
+**Steps:**
+1. Open Settings → General → Knowledge Base.
+2. Click "Sync from upstream".
+3. Verify button shows loading state during sync.
+4. After completion, verify status line updates (timestamp changes).
+5. `docker exec ${WORKBENCH_CONTAINER} git -C /data/knowledge-base log --oneline -3` — confirm log is consistent with upstream.
+**Verify:** Sync runs without error. Status refreshes after completion.
+
+---
+### KB-07: Sync interval setting persists
+**Issue:** #272.
+**Steps:**
+1. Open Settings → General → Knowledge Base.
+2. Verify "Sync Interval (minutes)" field shows `5` by default.
+3. Change value to `10`. Tab out or change focus.
+4. Close and reopen Settings.
+5. Verify value is still `10`.
+6. `curl ${WORKBENCH_URL}/api/settings | jq .kb_sync_interval_minutes` — returns `10`.
+**Verify:** Interval setting persists in DB.
+
+---
+### REG-273: Gemini session respawn uses --resume by index
+**Issue:** #273.
+**Setup:** An existing Gemini session with a known `cli_session_id` stored in the DB.
+**Steps:**
+1. Create a Gemini session and send a few messages so the session has history.
+2. Note the session's `cli_session_id`: `curl ${WORKBENCH_URL}/api/state | jq '.projects[].sessions[] | select(.cli_type=="gemini") | .cli_session_id'`
+3. Kill the tmux session: `ssh ${WORKBENCH_HOST} docker exec ${WORKBENCH_CONTAINER} tmux kill-session -t <tmux_name>`
+4. Click the Gemini session tab in the browser — this triggers auto-respawn.
+5. In container logs: `docker logs ${WORKBENCH_CONTAINER} --tail 20` — verify no error.
+6. Verify the terminal shows the Gemini session resuming with conversation history intact (not a fresh session).
+7. Send a message that references the prior conversation — verify Gemini responds with context.
+**Verify:** Gemini respawns using `--resume <index>` matched to stored `cli_session_id`. Prior conversation context present.
+
+---
 ### ROL-01: Role picker visible when KB initialized
 **Issue:** #274.
 **Setup:** `/data/knowledge-base/roles/` exists and contains at least one `.md` file.
