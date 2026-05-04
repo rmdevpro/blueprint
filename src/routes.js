@@ -598,6 +598,16 @@ function registerCoreRoutes(
     } catch (_err) {
       return res.status(400).json({ error: 'Knowledge Base not initialized' });
     }
+    // Ensure upstream remote exists (auto-clone on older containers may not have set it).
+    try {
+      await execFileAsync('git', ['-C', KB_PATH, 'remote', 'get-url', 'upstream']);
+    } catch (_e) {
+      try {
+        await execFileAsync('git', ['-C', KB_PATH, 'remote', 'add', 'upstream', KB_UPSTREAM]);
+      } catch (addErr) {
+        return res.status(500).json({ error: `Could not configure upstream remote: ${addErr.message}` });
+      }
+    }
     try {
       await execFileAsync('git', ['-C', KB_PATH, 'fetch', 'upstream']);
       const { stdout } = await execFileAsync('git', ['-C', KB_PATH, 'rebase', 'upstream/main']);
@@ -965,7 +975,7 @@ function registerCoreRoutes(
     try {
       const files = await readdir(rolesDir);
       const roles = files
-        .filter(f => f.endsWith('.md'))
+        .filter(f => f.endsWith('.md') && f.toLowerCase() !== 'readme.md')
         .map(f => ({
           name: f.replace(/\.md$/, ''),
           label: f.replace(/\.md$/, '').replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),

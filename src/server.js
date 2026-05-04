@@ -356,6 +356,11 @@ if (require.main === module) {
           logger.info('Cloning Knowledge Base', { module: 'server', url: kbRepoUrl });
           try {
             await execFileAsync('git', ['clone', kbRepoUrl, KB_PATH]);
+            // Always set up `upstream` pointing at the public KB so
+            // `Sync from upstream` works whether or not the user has forked.
+            // After fork, /api/kb/fork rewrites `origin` and leaves `upstream`
+            // unchanged.
+            await execFileAsync('git', ['-C', KB_PATH, 'remote', 'add', 'upstream', 'https://github.com/rmdevpro/workbench-kb']).catch(() => {});
             logger.info('Knowledge Base cloned', { module: 'server' });
           } catch (err) {
             logger.error('Knowledge Base clone failed', { module: 'server', err: err.message });
