@@ -209,6 +209,8 @@ const { checkAuthStatus } = registerCoreRoutes(app, {
   ensureSettings: watchers.ensureSettings,
   registerGeminiMcp: watchers.registerGeminiMcp,
   registerCodexProvider: watchers.registerCodexProvider,
+  trustGeminiProjectDirs: watchers.trustGeminiProjectDirs,
+  trustCodexProjectDirs: watchers.trustCodexProjectDirs,
   sleep: tmux.sleep,
 });
 

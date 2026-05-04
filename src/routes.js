@@ -137,6 +137,8 @@ function registerCoreRoutes(
     ensureSettings,
     registerGeminiMcp,
     registerCodexProvider,
+    trustGeminiProjectDirs,
+    trustCodexProjectDirs,
     sleep,
   },
 ) {
@@ -806,6 +808,8 @@ function registerCoreRoutes(
         }
         db.ensureProject(repoName, targetPath);
         await trustDir(targetPath);
+        if (trustGeminiProjectDirs) await trustGeminiProjectDirs().catch(() => {});
+        if (trustCodexProjectDirs) await trustCodexProjectDirs().catch(() => {});
         return res.json({ name: repoName, path: targetPath, cloned: true });
       }
 
@@ -819,6 +823,8 @@ function registerCoreRoutes(
       const projectName = name || basename(projectPath);
       db.ensureProject(projectName, projectPath);
       await trustDir(projectPath);
+      if (trustGeminiProjectDirs) await trustGeminiProjectDirs().catch(() => {});
+      if (trustCodexProjectDirs) await trustCodexProjectDirs().catch(() => {});
       return res.json({ name: projectName, path: projectPath, added: true });
     } catch (err) {
       logger.error('Error adding project', { module: 'routes', err: err.message });
