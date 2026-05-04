@@ -5124,7 +5124,7 @@ for (const p of projects) assert(trust[p] === 'TRUST_FOLDER');
 ---
 ### KB-06: Sync from upstream button runs rebase
 **Issue:** #271.
-**Setup:** KB initialized, `upstream` remote pointing at `https://github.com/rmdevpro/workbench-kb`.
+**Setup:** KB initialized. The `upstream` remote (pointing at `https://github.com/rmdevpro/workbench-kb`) is set automatically by the auto-clone path on first startup, and `/api/kb/sync-upstream` self-heals it if missing — no manual prerequisite.
 **Steps:**
 1. Open Settings → General → Knowledge Base.
 2. Click "Sync from upstream".
