@@ -5454,15 +5454,16 @@ for (const p of projects) assert(trust[p] === 'TRUST_FOLDER');
 **Verify:** Project's `.program_id` is `null`. The project-header now appears under the Unassigned `.program-header.virtual`. If no other unassigned projects exist, Unassigned is the only remaining home for it.
 
 ---
-### PROGRAM-07: Right-click rename
+### PROGRAM-07: Edit program via ✎ pencil → center-popup modal
 **Issue:** #284.
 **Setup:** A program exists.
 **Steps:**
-1. Right-click the program header → select "Rename…" → enter a new name → confirm.
-2. Wait for `loadState()`.
-**Verify:** The header's `.program-name` text equals the new name. `curl /api/programs/<id> | jq .name` matches. Trying to rename to an existing program's name returns `409 {"error":"program with that name already exists"}` and the header text is unchanged after dismissing.
-
-> **Verification status:** PUT-side fully verified (DB renames correctly, 409 on duplicate). DOM-update verification under a Playwright dispatched-click harness was flaky (a second concurrent /api/state call was observed returning empty programs, leaving the sidebar stale). Same code path executed inline updates the DOM correctly. This needs to be re-run as a real human right-click + selection on a real browser to confirm — known gap. See follow-up if observed broken in production use.
+1. Click the ✎ pencil button on the program's header.
+2. The Program Config modal opens (center popup, same pattern as project config).
+3. Verify Name + Description fields prefilled with current values; State select shows current status.
+4. Edit name, description, and/or state; click Save.
+5. Wait for `loadState()` (this can take several seconds on busy installs — `/api/state` latency depends on project / session count).
+**Verify:** Modal closes on Save. Header text updates to the new name. `curl /api/programs/<id> | jq` reflects new name + description + status. Click ✎ again — fields show updated values. Trying to rename to an existing program's name returns `409` and surfaces an alert; modal stays open. Click Delete in the modal → confirmation message reads `Delete program "<name>"? Projects exist: A active, B archived (T total). They will be moved to "Unassigned".` (or short form when total is 0). On confirm, program removed and projects orphaned to Unassigned.
 
 ---
 ### PROGRAM-08: Archive hides program by default
