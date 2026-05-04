@@ -224,6 +224,11 @@ const TOOLS = [
     status: { type: 'string', enum: ['todo', 'done', 'archived'] },
     folder_path: P.folder_path,
   }, ['task_id']),
+  T('task_comment_add', 'Add a comment to a task. Comments are recorded in task_history with event_type=comment and shown alongside change events.', {
+    task_id: P.task_id,
+    body: { type: 'string', description: 'Comment text (markdown).' },
+    created_by: { type: 'string', description: 'Author tag for filtering. Defaults to "agent" for MCP-authored comments.' },
+  }, ['task_id', 'body']),
 
   // log_*
   T('log_find', 'Query the workbench audit-log table. Optional filters: level (DEBUG/INFO/WARN/ERROR), module (e.g. qdrant-sync), since (1h / 30m / 24h / iso8601), pattern (regex over message + context), limit (default 200, max 5000). Returns rows newest-first.', {

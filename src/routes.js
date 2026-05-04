@@ -1458,6 +1458,19 @@ function registerCoreRoutes(
     res.json({ deleted: true });
   });
 
+  // ── Task comments ────────────────────────────────────────────────────────
+  app.post('/api/tasks/:id/comments', (req, res) => {
+    const id = Number(req.params.id);
+    const task = db.getTask(id);
+    if (!task) return res.status(404).json({ error: 'task not found' });
+    const { body, created_by } = req.body || {};
+    if (!body || !String(body).trim()) return res.status(400).json({ error: 'body required' });
+    if (body.length > TASK_DESC_MAX_LEN) return res.status(400).json({ error: 'body too long' });
+    const comment = db.addTaskComment(id, String(body).trim(), created_by || 'human');
+    fireEvent('task_comment_added', { task_id: id, comment_id: comment.id });
+    res.json(comment);
+  });
+
   // ── Inter-session messages ────────────────────────────────────────────────
 
   // Inter-session messaging removed — tmux handles agent communication natively.

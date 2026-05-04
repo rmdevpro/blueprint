@@ -634,6 +634,16 @@ handlers.task_update = async (args) => {
   return db.getTask(id) || { updated: true };
 };
 
+handlers.task_comment_add = async (args) => {
+  const id = requireTaskId(args);
+  require_(args, 'body');
+  const body = String(args.body).trim();
+  if (!body) throw new ToolError('body required', 400);
+  const task = db.getTask(id);
+  if (!task) throw new ToolError('task not found', 404);
+  return db.addTaskComment(id, body, args.created_by || 'agent');
+};
+
 // ── log_* ────────────────────────────────────────────────────────────────────
 
 const SINCE_RE = /^(\d+)\s*([smhd])$/;

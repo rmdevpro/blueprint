@@ -950,8 +950,19 @@ build/**</textarea>
         <textarea id="task-detail-description" rows="5" style="width:100%;padding:8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px;resize:vertical"></textarea>
       </div>
       <div class="settings-group" style="margin-bottom:16px">
-        <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">History</label>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <label style="font-size:12px;color:var(--text-secondary)">History</label>
+          <div id="task-detail-history-filter" style="display:flex;gap:2px;font-size:11px">
+            <button data-filter="all"      class="hist-filter active" style="padding:2px 8px;background:var(--accent);color:#0d1117;border:none;border-radius:3px;cursor:pointer;font-size:11px">All</button>
+            <button data-filter="changes"  class="hist-filter"        style="padding:2px 8px;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border);border-radius:3px;cursor:pointer;font-size:11px">Changes</button>
+            <button data-filter="comments" class="hist-filter"        style="padding:2px 8px;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border);border-radius:3px;cursor:pointer;font-size:11px">Comments</button>
+          </div>
+        </div>
         <div id="task-detail-history"></div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <input id="task-detail-comment-input" type="text" placeholder="Add a comment…" style="flex:1;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px">
+          <button id="task-detail-comment-add" style="padding:4px 12px;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:12px">Add</button>
+        </div>
       </div>
       <div style="display:flex;gap:8px">
         <button onclick="saveTaskDetail()" style="flex:1;padding:8px;background:var(--accent);color:#0d1117;border:none;border-radius:6px;cursor:pointer;font-weight:600">Save</button>
@@ -2508,6 +2519,28 @@ build/**</textarea>
       return c;
     }
 
+    let _taskDetailHistoryFilter = 'all';
+    let _taskDetailHistory = [];
+
+    function _renderTaskHistory() {
+      const histEl = document.getElementById('task-detail-history');
+      const filtered = _taskDetailHistory.filter(h => {
+        if (_taskDetailHistoryFilter === 'all') return true;
+        if (_taskDetailHistoryFilter === 'comments') return h.event_type === 'comment';
+        return h.event_type !== 'comment';
+      });
+      if (!filtered.length) {
+        histEl.innerHTML = `<div style="font-size:11px;color:var(--text-muted);padding:6px 0">No entries.</div>`;
+        return;
+      }
+      histEl.innerHTML = filtered.map(h => {
+        if (h.event_type === 'comment') {
+          return `<div class="hist-item"><strong>💬 ${escHtml(h.created_by || 'human')}</strong> ${escHtml(h.new_value || '')}<br><span style="font-size:10px;color:var(--text-muted)">${h.created_at}</span></div>`;
+        }
+        return `<div class="hist-item"><strong>${escHtml(h.event_type)}</strong> ${h.old_value ? escHtml(h.old_value) + ' → ' : ''}${h.new_value ? escHtml(h.new_value) : ''}<br><span style="font-size:10px;color:var(--text-muted)">${h.created_at}</span></div>`;
+      }).join('');
+    }
+
     async function openTaskDetail(taskId) {
       try {
         const res = await fetch(`/api/tasks/${taskId}`);
@@ -2515,8 +2548,17 @@ build/**</textarea>
         editingTaskId = taskId;
         document.getElementById('task-detail-title').value = task.title || '';
         document.getElementById('task-detail-description').value = task.description || '';
-        const histEl = document.getElementById('task-detail-history');
-        histEl.innerHTML = (task.history || []).map(h => `<div class="hist-item"><strong>${h.event_type}</strong> ${h.old_value ? escHtml(h.old_value) + ' → ' : ''}${h.new_value ? escHtml(h.new_value) : ''}<br><span style="font-size:10px;color:var(--text-muted)">${h.created_at}</span></div>`).join('');
+        _taskDetailHistory = task.history || [];
+        _taskDetailHistoryFilter = 'all';
+        document.querySelectorAll('#task-detail-history-filter .hist-filter').forEach(b => {
+          const isActive = b.dataset.filter === 'all';
+          b.classList.toggle('active', isActive);
+          b.style.background = isActive ? 'var(--accent)' : 'var(--bg-tertiary)';
+          b.style.color = isActive ? '#0d1117' : 'var(--text-primary)';
+          b.style.border = isActive ? 'none' : '1px solid var(--border)';
+        });
+        _renderTaskHistory();
+        document.getElementById('task-detail-comment-input').value = '';
         document.getElementById('task-detail-modal').classList.add('visible');
       } catch {}
     }
@@ -2541,6 +2583,48 @@ build/**</textarea>
 
     document.getElementById('task-detail-modal').addEventListener('click', (e) => {
       if (e.target.id === 'task-detail-modal') closeTaskDetail();
+    });
+
+    document.querySelectorAll('#task-detail-history-filter .hist-filter').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _taskDetailHistoryFilter = btn.dataset.filter;
+        document.querySelectorAll('#task-detail-history-filter .hist-filter').forEach(b => {
+          const isActive = b.dataset.filter === _taskDetailHistoryFilter;
+          b.classList.toggle('active', isActive);
+          b.style.background = isActive ? 'var(--accent)' : 'var(--bg-tertiary)';
+          b.style.color = isActive ? '#0d1117' : 'var(--text-primary)';
+          b.style.border = isActive ? 'none' : '1px solid var(--border)';
+        });
+        _renderTaskHistory();
+      });
+    });
+
+    async function _addTaskComment() {
+      if (!editingTaskId) return;
+      const input = document.getElementById('task-detail-comment-input');
+      const body = input.value.trim();
+      if (!body) return;
+      const btn = document.getElementById('task-detail-comment-add');
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/tasks/${editingTaskId}/comments`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body, created_by: 'human' }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const refreshed = await fetch(`/api/tasks/${editingTaskId}`).then(r => r.json());
+        _taskDetailHistory = refreshed.history || [];
+        _renderTaskHistory();
+        input.value = '';
+      } catch (err) {
+        console.error('Failed to add comment', err);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+    document.getElementById('task-detail-comment-add').addEventListener('click', _addTaskComment);
+    document.getElementById('task-detail-comment-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _addTaskComment(); }
     });
 
     function _getActiveProjectPath() {
