@@ -118,8 +118,15 @@ async function _seedRole(cliType, rolePath, projectPath, cliArgs, existingFiles,
       const { discoverGeminiSessions } = require('./session-utils');
       const sessions = discoverGeminiSessions();
       const newest = sessions.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))[0];
+      logger.info('Gemini role-seed cli_session_id capture', {
+        module: 'routes',
+        sessionsFound: sessions.length,
+        newestId: newest?.sessionId,
+        newestTs: newest?.timestamp,
+        newestPath: newest?.filePath,
+      });
       if (newest?.sessionId) db.setCliSessionId(tmpId, newest.sessionId);
-    } catch (_e) { /* non-fatal */ }
+    } catch (e) { logger.warn('Gemini cli_session_id capture failed', { module: 'routes', err: e.message }); }
 
   } else if (cliType === 'codex') {
     // Single non-interactive step — role seeded as initial context
