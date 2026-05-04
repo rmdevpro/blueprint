@@ -1445,7 +1445,7 @@ build/**</textarea>
               method: 'PUT', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ program_id: program.id }),
             });
-            loadState();
+            await loadState();
           });
         } else {
           // Unassigned drop target = unassign
@@ -1463,7 +1463,7 @@ build/**</textarea>
               method: 'PUT', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ program_id: null }),
             });
-            loadState();
+            await loadState();
           });
         }
 
@@ -1516,26 +1516,26 @@ build/**</textarea>
               const err = await r.json().catch(() => ({}));
               alert('Could not rename: ' + (err.error || r.statusText));
             }
-            loadState();
+            await loadState();
           } else if (action === 'edit-description') {
             const description = prompt('Description:', program.description || '') ?? program.description;
             await fetch(`/api/programs/${program.id}`, {
               method: 'PUT', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ description }),
             });
-            loadState();
+            await loadState();
           } else if (action === 'archive') {
             await fetch(`/api/programs/${program.id}`, {
               method: 'PUT', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ status: 'archived' }),
             });
-            loadState();
+            await loadState();
           } else if (action === 'unarchive') {
             await fetch(`/api/programs/${program.id}`, {
               method: 'PUT', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ status: 'active' }),
             });
-            loadState();
+            await loadState();
           } else if (action === 'delete') {
             const cnt = await fetch(`/api/programs/${program.id}/project-count`).then(r => r.json()).catch(() => null);
             if (!cnt) { alert('Failed to load program details'); return; }
@@ -1544,7 +1544,7 @@ build/**</textarea>
               : `Delete program "${program.name}"?\n\nProjects exist: ${cnt.counts.active} active, ${cnt.counts.archived} archived (${cnt.total} total).\nThey will be moved to "Unassigned".`;
             if (!confirm(msg)) return;
             await fetch(`/api/programs/${program.id}`, { method: 'DELETE' });
-            loadState();
+            await loadState();
           }
         });
       });
@@ -1571,7 +1571,7 @@ build/**</textarea>
       const program = await r.json();
       expandedPrograms.add(String(program.id));
       localStorage.setItem('expandedPrograms', JSON.stringify([...expandedPrograms]));
-      loadState();
+      await loadState();
     }
 
     // ── Tab Management ───────────────────────────────
