@@ -676,10 +676,23 @@ function parseGeminiChatFile(filePath) {
   const fs = require('fs');
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
-    const data = JSON.parse(content);
-    const messages = data.messages || [];
+    // Gemini CLI 0.40+ writes JSONL: first line is the header (sessionId,
+    // projectHash, startTime, lastUpdated, kind), subsequent lines are
+    // individual messages. Older versions wrote a single JSON object with a
+    // `messages` array. Detect by extension.
+    let data;
+    let messages;
+    if (filePath.endsWith('.jsonl')) {
+      const lines = content.split('\n').filter(l => l.trim());
+      if (!lines.length) return null;
+      data = JSON.parse(lines[0]);
+      messages = lines.slice(1).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    } else {
+      data = JSON.parse(content);
+      messages = data.messages || [];
+    }
     let name = null;
-    let timestamp = null;
+    let timestamp = data.lastUpdated || data.startTime || null;
     let messageCount = 0;
     let model = null;
     const sessionId = data.sessionId || null;
@@ -782,7 +795,9 @@ function discoverGeminiSessions() {
       if (!pDir.isDirectory()) continue;
       const chatsDir = join(geminiBase, pDir.name, 'chats');
       if (!fs.existsSync(chatsDir)) continue;
-      const files = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json'));
+      // Gemini CLI 0.40+ writes session-*.jsonl; older versions wrote session-*.json.
+      // Include both so the watcher + resume-by-index can find current sessions.
+      const files = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json') || f.endsWith('.jsonl'));
       for (const file of files) {
         const filePath = join(chatsDir, file);
         const meta = parseGeminiChatFile(filePath);
