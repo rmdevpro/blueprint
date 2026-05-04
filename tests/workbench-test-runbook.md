@@ -5462,6 +5462,8 @@ for (const p of projects) assert(trust[p] === 'TRUST_FOLDER');
 2. Wait for `loadState()`.
 **Verify:** The header's `.program-name` text equals the new name. `curl /api/programs/<id> | jq .name` matches. Trying to rename to an existing program's name returns `409 {"error":"program with that name already exists"}` and the header text is unchanged after dismissing.
 
+> **Verification status:** PUT-side fully verified (DB renames correctly, 409 on duplicate). DOM-update verification under a Playwright dispatched-click harness was flaky (a second concurrent /api/state call was observed returning empty programs, leaving the sidebar stale). Same code path executed inline updates the DOM correctly. This needs to be re-run as a real human right-click + selection on a real browser to confirm — known gap. See follow-up if observed broken in production use.
+
 ---
 ### PROGRAM-08: Archive hides program by default
 **Issue:** #284.
