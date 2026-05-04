@@ -83,16 +83,37 @@ try {
 } catch (_e) {
   /* column exists or table doesn't exist yet */
 }
+try {
+  db.exec('ALTER TABLE projects ADD COLUMN program_id INTEGER DEFAULT NULL REFERENCES programs(id) ON DELETE SET NULL');
+} catch (_e) {
+  /* column exists or programs table not yet created — schema below adds both
+     in the right order on a fresh DB, and the ALTER is a no-op idempotently */
+}
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS programs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT DEFAULT '',
+    status TEXT DEFAULT 'active',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    archived_at TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_programs_status ON programs(status);
+
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     path TEXT NOT NULL UNIQUE,
     notes TEXT DEFAULT '',
     state TEXT DEFAULT 'active',
+    program_id INTEGER DEFAULT NULL REFERENCES programs(id) ON DELETE SET NULL,
     created_at TEXT DEFAULT (datetime('now'))
   );
+
+  CREATE INDEX IF NOT EXISTS idx_projects_program ON projects(program_id);
 
   CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
@@ -200,6 +221,18 @@ const stmts = {
   getProject: db.prepare('SELECT * FROM projects WHERE name = ?'),
   getProjectById: db.prepare('SELECT * FROM projects WHERE id = ?'),
   insertProject: db.prepare('INSERT OR IGNORE INTO projects (name, path) VALUES (?, ?)'),
+  setProjectProgram: db.prepare("UPDATE projects SET program_id = ? WHERE id = ?"),
+
+  getAllPrograms: db.prepare('SELECT * FROM programs ORDER BY name'),
+  getProgramsByStatus: db.prepare('SELECT * FROM programs WHERE status = ? ORDER BY name'),
+  getProgram: db.prepare('SELECT * FROM programs WHERE id = ?'),
+  getProgramByName: db.prepare('SELECT * FROM programs WHERE name = ?'),
+  addProgram: db.prepare("INSERT INTO programs (name, description) VALUES (?, ?)"),
+  renameProgram: db.prepare("UPDATE programs SET name = ?, updated_at = datetime('now') WHERE id = ?"),
+  setProgramDescription: db.prepare("UPDATE programs SET description = ?, updated_at = datetime('now') WHERE id = ?"),
+  setProgramStatus: db.prepare("UPDATE programs SET status = ?, archived_at = CASE WHEN ? = 'archived' THEN datetime('now') ELSE NULL END, updated_at = datetime('now') WHERE id = ?"),
+  deleteProgram: db.prepare('DELETE FROM programs WHERE id = ?'),
+  countProjectsInProgram: db.prepare('SELECT COUNT(*) as c FROM projects WHERE program_id = ?'),
 
   getSessions: db.prepare('SELECT * FROM sessions WHERE project_id = ? ORDER BY updated_at DESC'),
   getSession: db.prepare('SELECT * FROM sessions WHERE id = ?'),
@@ -325,6 +358,38 @@ module.exports = {
   },
   deleteProject(id) {
     db.prepare('DELETE FROM projects WHERE id = ?').run(id);
+  },
+  setProjectProgram(projectId, programId) {
+    stmts.setProjectProgram.run(programId == null ? null : Number(programId), projectId);
+    return stmts.getProjectById.get(projectId);
+  },
+
+  getAllPrograms(filter) {
+    if (!filter || filter === 'all') return stmts.getAllPrograms.all();
+    return stmts.getProgramsByStatus.all(filter);
+  },
+  getProgram(id) {
+    return stmts.getProgram.get(id);
+  },
+  getProgramByName(name) {
+    return stmts.getProgramByName.get(name);
+  },
+  addProgram(name, description = '') {
+    const info = stmts.addProgram.run(name, description);
+    return stmts.getProgram.get(info.lastInsertRowid);
+  },
+  updateProgram(id, fields) {
+    if (fields.name !== undefined) stmts.renameProgram.run(fields.name, id);
+    if (fields.description !== undefined) stmts.setProgramDescription.run(fields.description, id);
+    if (fields.status !== undefined) stmts.setProgramStatus.run(fields.status, fields.status, id);
+    return stmts.getProgram.get(id);
+  },
+  deleteProgram(id) {
+    // Projects' program_id is automatically set to NULL via ON DELETE SET NULL.
+    stmts.deleteProgram.run(id);
+  },
+  countProjectsInProgram(programId) {
+    return stmts.countProjectsInProgram.get(programId).c;
   },
 
   getSessionsForProject(projectId) {
