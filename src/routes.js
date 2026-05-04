@@ -1043,6 +1043,8 @@ function registerCoreRoutes(
         }
       }
 
+      const proj = db.ensureProject(project, projectPath);
+
       // Role seeding — two-phase launch when a role is selected
       if (role) {
         const rolePath = `/data/knowledge-base/roles/${role}.md`;
@@ -1056,8 +1058,6 @@ function registerCoreRoutes(
       } else {
         safe.tmuxCreateCLI(tmux, projectPath, cliType, cliArgs);
       }
-
-      const proj = db.ensureProject(project, projectPath);
       const nameMaxLen = config.get('session.nameMaxLength', 60);
       const sessionName =
         name && name.replace(/\s+/g, ' ').trim()
