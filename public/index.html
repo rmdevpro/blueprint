@@ -1400,10 +1400,12 @@ build/**</textarea>
           + (program.status === 'archived' ? ' archived' : '')
           + (isExpanded ? '' : ' collapsed');
         header.dataset.programId = isVirtual ? '' : String(program.id);
+        const editBtn = isVirtual ? '' : `<button class="term-btn prog-config-btn" title="Program config" style="font-size:12px">&#9998;</button>`;
         const plusBtn = isVirtual ? '' : `<button class="term-btn add-project-btn" title="Add project to this program" style="font-size:13px">+</button>`;
         header.innerHTML = `
           <span class="arrow">&#9660;</span>
           <span class="program-name">${escHtml(program.name)}</span>
+          ${editBtn}
           ${plusBtn}
         `;
         const children = document.createElement('div');
@@ -1418,11 +1420,11 @@ build/**</textarea>
         });
 
         if (!isVirtual) {
-          // Right-click → rename / archive / delete
-          header.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
+          // ✎ pencil opens the program-config modal (center popup)
+          const cfgBtn = header.querySelector('.prog-config-btn');
+          if (cfgBtn) cfgBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            _showProgramContextMenu(e, program);
+            openProgramConfig(program.id);
           });
           // + button on the program adds a project assigned to it
           const addBtn = header.querySelector('.add-project-btn');
@@ -1486,92 +1488,127 @@ build/**</textarea>
       renderSidebar._lastHash = stateHash;
     }
 
-    function _showProgramContextMenu(e, program) {
-      document.querySelectorAll('.context-menu').forEach(m => m.remove());
-      const menu = document.createElement('div');
-      menu.className = 'context-menu';
-      menu.style.cssText = `position:fixed;top:${e.clientY}px;left:${e.clientX}px;z-index:2000;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:4px 0;min-width:160px;box-shadow:0 4px 12px rgba(0,0,0,0.3)`;
-      const archived = program.status === 'archived';
-      menu.innerHTML = `
-        <div class="context-menu-item" data-action="rename">Rename…</div>
-        <div class="context-menu-item" data-action="edit-description">Edit Description…</div>
-        <div class="context-menu-item" data-action="${archived ? 'unarchive' : 'archive'}">${archived ? 'Unarchive' : 'Archive'}</div>
-        <div class="context-menu-divider"></div>
-        <div class="context-menu-item" data-action="delete" style="color:var(--danger)">Delete…</div>
+    // ── Program modals (center popup, same pattern as openProjectConfig) ──
+    function _programModalShell(overlayId, title, bodyHtml) {
+      const overlay = document.createElement('div');
+      overlay.id = overlayId;
+      overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center';
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+      overlay.innerHTML = `
+        <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:24px;width:420px" onclick="event.stopPropagation()">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <h3 style="font-size:14px;margin:0">${escHtml(title)}</h3>
+            <button style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px" title="Close" onclick="document.getElementById('${overlayId}').remove()">&#10005;</button>
+          </div>
+          ${bodyHtml}
+        </div>
       `;
-      menu.querySelectorAll('.context-menu-item').forEach(item => {
-        item.addEventListener('mouseenter', () => item.style.background = 'var(--bg-hover)');
-        item.addEventListener('mouseleave', () => item.style.background = '');
-        item.addEventListener('click', async () => {
-          menu.remove();
-          const action = item.dataset.action;
-          if (action === 'rename') {
-            const name = prompt('Program name:', program.name);
-            if (!name || !name.trim() || name.trim() === program.name) return;
-            const r = await fetch(`/api/programs/${program.id}`, {
-              method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: name.trim() }),
-            });
-            if (!r.ok) {
-              const err = await r.json().catch(() => ({}));
-              alert('Could not rename: ' + (err.error || r.statusText));
-            }
-            await loadState();
-          } else if (action === 'edit-description') {
-            const description = prompt('Description:', program.description || '') ?? program.description;
-            await fetch(`/api/programs/${program.id}`, {
-              method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ description }),
-            });
-            await loadState();
-          } else if (action === 'archive') {
-            await fetch(`/api/programs/${program.id}`, {
-              method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ status: 'archived' }),
-            });
-            await loadState();
-          } else if (action === 'unarchive') {
-            await fetch(`/api/programs/${program.id}`, {
-              method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ status: 'active' }),
-            });
-            await loadState();
-          } else if (action === 'delete') {
-            const cnt = await fetch(`/api/programs/${program.id}/project-count`).then(r => r.json()).catch(() => null);
-            if (!cnt) { alert('Failed to load program details'); return; }
-            const msg = cnt.total === 0
-              ? `Delete program "${program.name}"?`
-              : `Delete program "${program.name}"?\n\nProjects exist: ${cnt.counts.active} active, ${cnt.counts.archived} archived (${cnt.total} total).\nThey will be moved to "Unassigned".`;
-            if (!confirm(msg)) return;
-            await fetch(`/api/programs/${program.id}`, { method: 'DELETE' });
-            await loadState();
-          }
-        });
-      });
-      document.body.appendChild(menu);
-      setTimeout(() => {
-        const dismiss = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', dismiss); } };
-        document.addEventListener('click', dismiss);
-      }, 0);
+      document.body.appendChild(overlay);
+      return overlay;
     }
 
     async function addProgram() {
-      const name = prompt('Program name:');
-      if (!name || !name.trim()) return;
-      const description = prompt('Description (optional):') || '';
-      const r = await fetch('/api/programs', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), description }),
+      const overlayId = 'prog-new-' + Date.now();
+      const body = `
+        <div style="margin-bottom:12px">
+          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Name</label>
+          <input id="prog-new-name" type="text" placeholder="Program name" style="width:100%;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:13px;outline:none;box-sizing:border-box" autofocus>
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Description <span style="color:var(--text-muted)">(optional)</span></label>
+          <textarea id="prog-new-desc" placeholder="What this program contains" style="width:100%;min-height:80px;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:inherit;resize:vertical;outline:none;box-sizing:border-box"></textarea>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button id="prog-new-cancel" style="padding:6px 16px;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:13px">Cancel</button>
+          <button id="prog-new-save" style="padding:6px 16px;background:var(--accent);color:#0d1117;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600">Create</button>
+        </div>
+      `;
+      _programModalShell(overlayId, 'New Program', body);
+      setTimeout(() => document.getElementById('prog-new-name')?.focus(), 50);
+      document.getElementById('prog-new-cancel').addEventListener('click', () => document.getElementById(overlayId).remove());
+      document.getElementById('prog-new-name').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('prog-new-save').click(); }
       });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        alert('Could not create program: ' + (err.error || r.statusText));
-        return;
-      }
-      const program = await r.json();
-      expandedPrograms.add(String(program.id));
-      localStorage.setItem('expandedPrograms', JSON.stringify([...expandedPrograms]));
-      await loadState();
+      document.getElementById('prog-new-save').addEventListener('click', async () => {
+        const name = document.getElementById('prog-new-name').value.trim();
+        const description = document.getElementById('prog-new-desc').value;
+        if (!name) { document.getElementById('prog-new-name').focus(); return; }
+        const r = await fetch('/api/programs', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, description }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          alert('Could not create program: ' + (err.error || r.statusText));
+          return;
+        }
+        const program = await r.json();
+        expandedPrograms.add(String(program.id));
+        localStorage.setItem('expandedPrograms', JSON.stringify([...expandedPrograms]));
+        document.getElementById(overlayId).remove();
+        await loadState();
+      });
+    }
+
+    async function openProgramConfig(programId) {
+      const program = await fetch(`/api/programs/${programId}/project-count`).then(r => r.ok ? r.json() : null);
+      if (!program) { alert('Program not found'); return; }
+      const p = program.program;
+      const overlayId = 'prog-cfg-' + Date.now();
+      const body = `
+        <div style="margin-bottom:12px">
+          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Name</label>
+          <input id="prog-cfg-name" type="text" value="${escHtml(p.name)}" style="width:100%;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:13px;outline:none;box-sizing:border-box">
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Description</label>
+          <textarea id="prog-cfg-desc" style="width:100%;min-height:80px;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:inherit;resize:vertical;outline:none;box-sizing:border-box">${escHtml(p.description || '')}</textarea>
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">State</label>
+          <select id="prog-cfg-status" style="width:100%;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:13px">
+            <option value="active" ${p.status === 'active' ? 'selected' : ''}>Active</option>
+            <option value="archived" ${p.status === 'archived' ? 'selected' : ''}>Archived</option>
+          </select>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:16px">${program.total} project${program.total === 1 ? '' : 's'} assigned · ${program.counts.active} active · ${program.counts.archived} archived</div>
+        <div style="display:flex;gap:8px;justify-content:space-between;align-items:center">
+          <button id="prog-cfg-delete" style="padding:6px 12px;background:transparent;color:var(--danger);border:1px solid var(--danger);border-radius:4px;cursor:pointer;font-size:13px">Delete…</button>
+          <div style="display:flex;gap:8px">
+            <button id="prog-cfg-cancel" style="padding:6px 16px;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:13px">Cancel</button>
+            <button id="prog-cfg-save" style="padding:6px 16px;background:var(--accent);color:#0d1117;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600">Save</button>
+          </div>
+        </div>
+      `;
+      _programModalShell(overlayId, 'Program Config', body);
+      document.getElementById('prog-cfg-cancel').addEventListener('click', () => document.getElementById(overlayId).remove());
+      document.getElementById('prog-cfg-save').addEventListener('click', async () => {
+        const name = document.getElementById('prog-cfg-name').value.trim();
+        if (!name) { document.getElementById('prog-cfg-name').focus(); return; }
+        const description = document.getElementById('prog-cfg-desc').value;
+        const status = document.getElementById('prog-cfg-status').value;
+        const r = await fetch(`/api/programs/${p.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, description, status }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          alert('Could not save: ' + (err.error || r.statusText));
+          return;
+        }
+        document.getElementById(overlayId).remove();
+        await loadState();
+      });
+      document.getElementById('prog-cfg-delete').addEventListener('click', async () => {
+        const c = program.counts;
+        const msg = program.total === 0
+          ? `Delete program "${p.name}"?`
+          : `Delete program "${p.name}"?\n\nProjects exist: ${c.active} active, ${c.archived} archived (${program.total} total).\nThey will be moved to "Unassigned".`;
+        if (!confirm(msg)) return;
+        await fetch(`/api/programs/${p.id}`, { method: 'DELETE' });
+        document.getElementById(overlayId).remove();
+        await loadState();
+      });
     }
 
     // ── Tab Management ───────────────────────────────
