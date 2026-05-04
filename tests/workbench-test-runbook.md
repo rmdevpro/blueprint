@@ -5400,6 +5400,110 @@ for (const p of projects) assert(trust[p] === 'TRUST_FOLDER');
 **Verify:** `400 {"error":"name must not contain \"/\""}`. No folder is created.
 
 ---
+### PROGRAM-01: Create program via UI, header renders with uppercase styling
+**Issue:** #284.
+**Setup:** Workbench loaded; sidebar visible.
+**Steps:**
+1. Click the top-level `+` button in `#sidebar-header`. Verify its `title="Add Program"`.
+2. In the prompts, enter a program name (`Engineering`) and an optional description.
+3. Wait for `loadState()` to refresh the sidebar.
+**Verify:** A new `.program-header` appears whose `.program-name` text is `Engineering`. Programmatic check: `getComputedStyle(el).textTransform === 'uppercase'`, `parseInt(getComputedStyle(el).fontWeight) >= 600`, `getComputedStyle(el).letterSpacing` is `0.6px` (or close). The header has a `.add-project-btn` (per-program `+`).
+**Programmatic verification:** `(await fetch('/api/programs').then(r=>r.json())).programs.some(p => p.name === 'Engineering')`.
+
+---
+### PROGRAM-02: Top-level `+` no longer creates projects
+**Issue:** #284.
+**Steps:**
+1. Inspect the `#sidebar-header` button.
+**Verify:** `onclick` attribute contains `addProgram` (not `addProject`). `title === "Add Program"`. `addProject` is still defined and reachable via per-program `+` only.
+
+---
+### PROGRAM-03: Unassigned pseudo-folder appears only when projects lack a program
+**Issue:** #284.
+**Setup:** Fresh container, at least one project exists with `program_id` null.
+**Steps:**
+1. Inspect the sidebar.
+**Verify:** A `.program-header.virtual` element exists with text `Unassigned`. `getComputedStyle(el).fontStyle === 'italic'`. The header has **no** `.add-project-btn`. After moving every project into a program (via PUT `/api/projects/:name/program`), the Unassigned pseudo-folder disappears from the sidebar.
+
+---
+### PROGRAM-04: Per-program `+` adds a project assigned to that program
+**Issue:** #284.
+**Setup:** A program exists.
+**Steps:**
+1. Click the `.add-project-btn` inside the program's header.
+2. The Add Project dialog opens with the directory picker.
+3. Select a path, enter a name, click Add.
+**Verify:** After `loadState()`, the new project appears nested inside that program's `.program-children`. `curl /api/state | jq '.projects[] | select(.name=="<new>") | .program_id'` returns the program's id.
+
+---
+### PROGRAM-05: Drag a project header onto a program header to reassign
+**Issue:** #284.
+**Setup:** Two programs (Alpha, Beta) and a project under Alpha.
+**Steps:**
+1. (Test surrogate) Call `PUT /api/projects/<name>/program` with `{program_id: <Beta.id>}`. UI test surrogate is a direct API call; the manual test is dragging the `.project-header` (which is `draggable=true`) onto Beta's `.program-header`.
+2. After `loadState()` runs, query the DOM.
+**Verify:** The project now appears nested under Beta's `.program-children`, not Alpha's. `curl /api/state | jq '.projects[] | select(.name=="<n>") | .program_id'` matches Beta's id. The Drag works because `.project-header.draggable === true` and the drop handler on `.program-header` reads `application/x-project-name` from the dataTransfer.
+
+---
+### PROGRAM-06: Drop a project on Unassigned to clear assignment
+**Issue:** #284.
+**Setup:** Project under a program; Unassigned pseudo-folder visible (other unassigned projects exist) OR target is the only unassigned project after move.
+**Steps:**
+1. Surrogate via API: `PUT /api/projects/<name>/program` with `{program_id: null}`.
+2. Reload sidebar.
+**Verify:** Project's `.program_id` is `null`. The project-header now appears under the Unassigned `.program-header.virtual`. If no other unassigned projects exist, Unassigned is the only remaining home for it.
+
+---
+### PROGRAM-07: Right-click rename
+**Issue:** #284.
+**Setup:** A program exists.
+**Steps:**
+1. Right-click the program header → select "Rename…" → enter a new name → confirm.
+2. Wait for `loadState()`.
+**Verify:** The header's `.program-name` text equals the new name. `curl /api/programs/<id> | jq .name` matches. Trying to rename to an existing program's name returns `409 {"error":"program with that name already exists"}` and the header text is unchanged after dismissing.
+
+---
+### PROGRAM-08: Archive hides program by default
+**Issue:** #284.
+**Steps:**
+1. PUT `/api/programs/<id>` with `{"status":"archived"}` → response has `status:"archived"` and a non-null `archived_at`.
+2. After `loadState()`, the archived program no longer renders in the sidebar (default filter = active).
+3. `curl /api/programs?filter=archived` includes the row; `curl /api/programs?filter=active` does not.
+**Verify:** Archived programs are excluded from `/api/state.programs` (which queries `'active'`), so the sidebar hides them. Their assigned projects are still visible (under Unassigned, since archived programs are filtered out of programState — projects whose program_id is set but program is archived will fall through to Unassigned in the UI).
+
+---
+### PROGRAM-09: Delete program orphans projects to Unassigned
+**Issue:** #284.
+**Setup:** A program with one assigned project.
+**Steps:**
+1. Right-click the program → select "Delete…".
+2. Confirmation prompt should read: `Delete program "<name>"?\n\nProjects exist: 1 active, 0 archived (1 total).\nThey will be moved to "Unassigned".`
+3. Click OK.
+**Verify:** API returns `200 {"deleted":true,"orphaned_projects":1}`. The project's `program_id` becomes `null` (verified via `curl /api/state`). The project now renders under the Unassigned pseudo-folder. The program is gone from `/api/programs`.
+
+---
+### PROGRAM-10: Duplicate program name rejected
+**Issue:** #284.
+**Steps:**
+1. Create program `X`. Try to create another program with name `X`.
+**Verify:** Second POST returns `409 {"error":"program with that name already exists"}`. Only one program with that name exists in `/api/programs`.
+
+---
+### PROGRAM-11: Empty program name rejected
+**Issue:** #284.
+**Steps:**
+1. POST `/api/programs` with `{"name":""}` (or whitespace-only).
+**Verify:** `400 {"error":"name required"}`.
+
+---
+### PROGRAM-12: Project rendering nests inside `.program-children` with 8px indent
+**Issue:** #284.
+**Steps:**
+1. Inspect any project under a program in the DOM.
+2. `getComputedStyle(.program-children).paddingLeft`.
+**Verify:** Returns `8px` — the cumulative left indent for projects under a program is 8px (header at 0, children at 8). Sessions retain their existing offset under the project header. Total indent at session level stays manageable in a narrow sidebar.
+
+---
 ## Troubleshooting
 
 | Symptom | Likely Cause | Action |
