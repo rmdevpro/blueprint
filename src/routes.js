@@ -83,16 +83,23 @@ async function _seedRole(cliType, rolePath, projectPath, cliArgs, existingFiles,
     `${roleContent}\n` +
     `=== END ROLE ===`;
 
-  // Don't let Phase 1 inherit our stdin — Codex (and others) will block
-  // forever on "Reading additional input from stdin..." otherwise.
-  const seedExecOpts = (cwd) => ({ cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+  // child_process.execFile silently ignores the `stdio` option (only spawn
+  // honors it), so a previous attempt to set stdio:['ignore','pipe','pipe']
+  // was a no-op and Codex would block forever on "Reading additional input
+  // from stdin...". Send EOF on the child's stdin pipe immediately after
+  // start so the child sees stdin close and proceeds.
+  const seedExec = (cmd, args, cwd) => {
+    const p = execFileAsync(cmd, args, { cwd });
+    if (p.child && p.child.stdin) p.child.stdin.end();
+    return p;
+  };
 
   if (cliType === 'claude') {
     // Phase 1: non-interactive plan mode — seeds role into plan file
-    await execFileAsync('claude', [
+    await seedExec('claude', [
       '-p', '--permission-mode', 'plan',
       rolePrompt,
-    ], seedExecOpts(projectPath));
+    ], projectPath);
     // Find the new JSONL created by Phase 1
     const afterFiles = await readdirFs(sessDir).catch(() => []);
     const newJSONL = afterFiles.find(f => f.endsWith('.jsonl') && !existingFiles.has(f));
@@ -114,10 +121,10 @@ async function _seedRole(cliType, rolePath, projectPath, cliArgs, existingFiles,
     const { discoverGeminiSessions } = require('./session-utils');
     const beforeGemini = new Set(discoverGeminiSessions().map(s => s.filePath));
     // Phase 1: non-interactive plan mode
-    await execFileAsync('gemini', [
+    await seedExec('gemini', [
       '--approval-mode', 'plan',
       '-p', rolePrompt,
-    ], seedExecOpts(projectPath));
+    ], projectPath);
     // Phase 2: resume latest interactively (no yolo)
     require('./safe-exec').tmuxCreateCLI(tmux, projectPath, 'gemini', ['--resume', 'latest']);
     // Find the new chat file produced by Phase 1 — diff against snapshot.
@@ -134,9 +141,9 @@ async function _seedRole(cliType, rolePath, projectPath, cliArgs, existingFiles,
     // Single non-interactive step — role seeded as initial context.
     // --skip-git-repo-check: Codex refuses to run outside a git repo by
     // default, but workbench projects aren't required to be git repos.
-    await execFileAsync('codex', [
+    await seedExec('codex', [
       'exec', '--skip-git-repo-check', rolePrompt,
-    ], seedExecOpts(projectPath));
+    ], projectPath);
     // Find the rollout file produced by Phase 1 — diff against snapshot.
     const after = discoverCodexSessions ? discoverCodexSessions() : [];
     const created = after.find(s => !beforeCodex.has(s.filePath));
