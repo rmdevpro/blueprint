@@ -5062,6 +5062,82 @@ for (const p of projects) assert(trust[p] === 'TRUST_FOLDER');
 **Pre-fix behavior:** `.task-node` had `align-items:center`, which centered the checkbox vertically in the row — so on multi-line titles it floated halfway down instead of staying aligned with the first line.
 
 ---
+### ROL-01: Role picker visible when KB initialized
+**Issue:** #274.
+**Setup:** `/data/knowledge-base/roles/` exists and contains at least one `.md` file.
+**Steps:**
+1. Click `+` on any project header and select any CLI type.
+2. Inspect the new session dialog.
+3. Verify a "Role" dropdown is present below the session name field.
+4. Verify dropdown contains "— No role —" as the default selected option.
+5. Verify at least one role option is listed (e.g. "Software Developer").
+**Verify:** Role picker rendered and populated. Default selection is "— No role —".
+
+---
+### ROL-02: Role picker hidden when KB has no roles
+**Issue:** #274.
+**Setup:** `/data/knowledge-base/roles/` is absent or empty.
+**Steps:**
+1. Click `+` on any project header.
+2. Inspect the new session dialog.
+3. Verify no role picker element is rendered.
+**Verify:** Dialog shows only session name field and action buttons — no role dropdown.
+
+---
+### ROL-03: Claude session with role seeds plan file verbatim
+**Issue:** #274.
+**Setup:** KB initialized with `roles/software-developer.md`.
+**Steps:**
+1. Click `+`, select Claude, choose "Software Developer" role, enter a session name, click Start Session.
+2. Verify button shows "Seeding role…" and is disabled during Phase 1.
+3. Wait for the session tab to appear and the terminal to show the Claude prompt.
+4. Send the message: `show me your current plan`
+5. Verify the response contains content from `roles/software-developer.md` verbatim.
+**Verify:** Plan file seeded with role content. Button state correct during seeding.
+
+---
+### ROL-04: Gemini session with role seeds plan file verbatim
+**Issue:** #274.
+**Setup:** KB initialized with at least one role file.
+**Steps:**
+1. Click `+`, select Gemini, choose any role, enter a session name, click Start Session.
+2. Wait for the session tab to appear and Gemini to be interactive.
+3. Send the message: `what role have you been assigned?`
+4. Verify the response reflects the selected role's content.
+**Verify:** Gemini plan seeded with role. No `--yolo` flag used (Gemini launched in default approval mode).
+
+---
+### ROL-05: Codex session with role seeds initial context
+**Issue:** #274.
+**Setup:** KB initialized with at least one role file.
+**Steps:**
+1. Click `+`, select Codex, choose any role, enter a session name, click Start Session.
+2. Wait for the session tab to appear and Codex to be interactive.
+3. Send the message: `what role have you been assigned?`
+4. Verify the response reflects the selected role content.
+**Verify:** Codex initial context contains role. No bypass/yolo flag used.
+
+---
+### ROL-06: No role selected — existing behaviour unchanged
+**Issue:** #274.
+**Steps:**
+1. Open new session dialog, leave role as "— No role —" (or absent).
+2. Create one Claude, one Gemini, one Codex session.
+3. Verify all three launch normally with no "Seeding role…" delay.
+4. Verify sessions are interactive promptly.
+**Verify:** No role seeding occurs. All three CLIs launch as before.
+
+---
+### ROL-07: Role seeding failure — graceful fallback
+**Issue:** #274.
+**Setup:** Temporarily rename a role file so it cannot be found.
+**Steps:**
+1. Select the now-missing role and click Start Session.
+2. Verify the session still launches (without role) rather than hanging or showing an error overlay.
+3. Verify the overlay closes and the session tab appears.
+**Verify:** Graceful fallback to no-role launch. No crash or hung dialog.
+
+---
 ## Troubleshooting
 
 | Symptom | Likely Cause | Action |
