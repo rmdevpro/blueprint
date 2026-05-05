@@ -1782,9 +1782,15 @@ build/**</textarea>
     }
 
     function createTab(tabId, tmuxSession, name, project, cliType) {
-      // Remove empty state
-      const emptyState = document.getElementById('empty-state');
-      if (emptyState) emptyState.remove();
+      // Determine panel based on persistence (CLIs default to primary).
+      const targetPanel = tabPanelAssignments[tabId] === 'side' ? 'side' : 'primary';
+      const targetAreaId = targetPanel === 'side' ? 'side-terminal-area' : 'terminal-area';
+
+      // Remove empty state from the target panel
+      if (targetPanel === 'primary') {
+        const emptyState = document.getElementById('empty-state');
+        if (emptyState) emptyState.remove();
+      }
 
       // Create terminal pane. Remove any pre-existing element with the same id
       // first; otherwise switchTab's getElementById finds only the first match
@@ -1793,7 +1799,7 @@ build/**</textarea>
       paneEl.className = 'terminal-pane';
       paneEl.id = `pane-${tabId}`;
       document.getElementById(paneEl.id)?.remove();
-      document.getElementById('terminal-area').appendChild(paneEl);
+      document.getElementById(targetAreaId).appendChild(paneEl);
 
       // Create xterm instance with saved preferences
       const savedFontSize = parseInt(db_getSetting('font_size')) || 14;
@@ -1890,30 +1896,57 @@ build/**</textarea>
       setTimeout(pollTokenUsage, 3000);
     }
 
-    function switchTab(tabId) {
-      const prevActive = activeTabId;
-      tabDbg('switchTab:enter', { fromTabId: prevActive, toTabId: tabId, targetExists: tabs.has(tabId) });
-      activeTabId = tabId;
+    // ── Panel helpers (#251) ────────────────────────────────────────────
+    function _activeIdForPanel(panel) {
+      return panel === 'side' ? activeTabSideId : activeTabId;
+    }
+    function _setActiveIdForPanel(panel, id) {
+      if (panel === 'side') activeTabSideId = id;
+      else activeTabId = id;
+    }
+    function _panelOf(tabId) {
+      const t = tabs.get(tabId);
+      return t?.panel === 'side' ? 'side' : 'primary';
+    }
+    function _hasTabsInPanel(panel) {
+      for (const t of tabs.values()) if ((t.panel || 'primary') === panel) return true;
+      return false;
+    }
+    function _updateSidePanelVisibility() {
+      const has = _hasTabsInPanel('side');
+      const panel = document.getElementById('side-panel');
+      const divider = document.getElementById('side-divider');
+      if (has !== sidePanelOpen) {
+        sidePanelOpen = has;
+        panel.classList.toggle('active', has);
+        divider.classList.toggle('active', has);
+        if (has) panel.style.width = sidePanelWidth + 'px';
+      }
+    }
 
-      // Hide all panes, show active
-      for (const [id, tab] of tabs) {
-        const shouldBeActive = id === tabId;
-        if (!tab.paneEl) {
-          tabDbg('switchTab:missing-paneEl', { id, shouldBeActive });
+    function switchTab(tabId) {
+      const tab = tabs.get(tabId);
+      if (!tab) return;
+      const panel = tab.panel || 'primary';
+      const prevActive = _activeIdForPanel(panel);
+      tabDbg('switchTab:enter', { fromTabId: prevActive, toTabId: tabId, panel, targetExists: true });
+      _setActiveIdForPanel(panel, tabId);
+      focusedPanel = panel;
+
+      // Hide/show panes — only within this tab's panel
+      for (const [id, t] of tabs) {
+        if ((t.panel || 'primary') !== panel) continue;
+        if (!t.paneEl) {
+          tabDbg('switchTab:missing-paneEl', { id });
           continue;
         }
-        const wasActive = tab.paneEl.classList.contains('active');
-        tab.paneEl.classList.toggle('active', shouldBeActive);
-        if (wasActive !== shouldBeActive) {
-          tabDbg('switchTab:pane-toggle', { id, paneElId: tab.paneEl.id, wasActive, isActive: shouldBeActive });
-        }
+        t.paneEl.classList.toggle('active', id === tabId);
       }
 
       // Fit the active terminal
-      const tab = tabs.get(tabId);
-      if (tab && tab.type === 'file') {
+      if (tab.type === 'file') {
         if (tab.editor && tab.editor.focus) tab.editor.focus();
-      } else if (tab && tab.fitAddon) {
+      } else if (tab.fitAddon) {
         // Force an unconditional xterm redraw AFTER the browser has committed
         // the display:none→block transition (next animation frame). fit() only
         // refreshes if dimensions changed, but on a tab switch the pane's size
@@ -1933,14 +1966,14 @@ build/**</textarea>
 
       renderTabs();
       renderSidebar();
-      tabDbg('switchTab:exit', { fromTabId: prevActive, toTabId: tabId });
-      // Home button is manual — no auto-trigger on tab switch
+      tabDbg('switchTab:exit', { fromTabId: prevActive, toTabId: tabId, panel });
     }
 
     function closeTab(tabId) {
       const tab = tabs.get(tabId);
       if (!tab) return;
-      tabDbg('closeTab:enter', { tabId });
+      const panel = tab.panel || 'primary';
+      tabDbg('closeTab:enter', { tabId, panel });
 
       if (tab.type === 'file') {
         if (tab.dirty && !confirm(`${tab.name} has unsaved changes. Close anyway?`)) return;
@@ -1957,29 +1990,32 @@ build/**</textarea>
       tab.paneEl.remove();
       tabs.delete(tabId);
 
-      // Switch to another tab or show empty state
-      if (activeTabId === tabId) {
-        const remaining = [...tabs.keys()];
+      // Switch to another tab in the same panel, or show empty state for that panel
+      const wasActiveInPanel = _activeIdForPanel(panel) === tabId;
+      if (wasActiveInPanel) {
+        const remaining = [...tabs.entries()].filter(([, t]) => (t.panel || 'primary') === panel);
         if (remaining.length > 0) {
-          switchTab(remaining[remaining.length - 1]);
+          switchTab(remaining[remaining.length - 1][0]);
         } else {
-          activeTabId = null;
-          showEmptyState();
+          _setActiveIdForPanel(panel, null);
+          showEmptyState(panel);
           updateStatusBar();
         }
-      } else if (tabs.size === 0) {
-        activeTabId = null;
-        showEmptyState();
-        updateStatusBar();
       }
+      _updateSidePanelVisibility();
 
       renderTabs();
       renderSidebar();
     }
 
-    function showEmptyState() {
+    function showEmptyState(panel = 'primary') {
+      if (panel === 'side') {
+        // Side panel's empty-state is a permanent CSS element; pane visibility
+        // is controlled by .terminal-pane.active. Just clear active flags.
+        document.querySelectorAll('#side-terminal-area .terminal-pane').forEach(p => p.classList.remove('active'));
+        return;
+      }
       const area = document.getElementById('terminal-area');
-      // Hide any leftover terminal/editor panes
       area.querySelectorAll('.terminal-pane').forEach(p => p.classList.remove('active'));
       if (!document.getElementById('empty-state')) {
         const el = document.createElement('div');
@@ -1990,63 +2026,74 @@ build/**</textarea>
       document.getElementById('empty-state').style.display = '';
     }
 
-    function renderTabs() {
-      const bar = document.getElementById('tab-bar');
-      // Preserve the panel toggle button before clearing
-      const panelBtn = document.getElementById('panel-toggle');
-      bar.innerHTML = '';
-
-      for (const [id, tab] of tabs) {
-        const el = document.createElement('div');
-        el.className = 'tab' + (id === activeTabId ? ' active' : '') + (tab.dirty ? ' tab-dirty' : '');
-        el.dataset.tabId = id;
-        const icon = (() => {
-          if (tab.type === 'file') return '<span class="file-tab-icon">&#128196;</span>';
-          // CLI session tabs: show CLI logo
-          const cli = tab.cli_type || 'claude';
-          if (cli === 'bash') return '<span style="color:var(--success);font-weight:bold;font-size:12px">&gt;</span>';
-          const c = { claude: '#e8a55d', gemini: '#4285f4', codex: '#10a37f' }[cli] || '#8b949e';
-          if (cli === 'codex') return `<svg width="10" height="10" viewBox="0 0 10 10" style="vertical-align:middle"><rect x="0" y="0" width="10" height="10" rx="2.5" fill="${c}"/><circle cx="5" cy="5" r="2.5" fill="var(--bg-secondary)"/></svg>`;
-          const icons = { claude: '✳', gemini: '◆' };
-          return `<span style="font-size:13px;color:${c};line-height:1">${icons[cli] || '?'}</span>`;
-        })();
-        const saveBtn = tab.type === 'file'
-          ? `<button class="tab-save" title="Save (Ctrl+S)" style="background:none;border:none;color:${tab.dirty ? 'var(--accent)' : 'var(--text-muted)'};cursor:pointer;font-size:12px;padding:2px 4px;border-radius:3px;margin-right:2px${tab.dirty ? ';font-weight:bold' : ''}">&#128190;</button>`
-          : '';
-        el.innerHTML = `
-          ${icon}
-          <span class="tab-name">${escHtml(tab.name)}</span>
-          ${saveBtn}
-          <button class="tab-close" title="Close tab">&#10005;</button>
-        `;
-        el.addEventListener('click', (e) => {
-          if (e.target.closest('.tab-close') || e.target.closest('.tab-save')) return;
-          switchTab(id);
-        });
-        if (tab.type === 'file') {
-          el.querySelector('.tab-save').addEventListener('click', (e) => {
-            e.stopPropagation();
-            saveFileTab(id);
-          });
-        }
-        el.querySelector('.tab-close').addEventListener('click', (e) => {
+    function _makeTabEl(id, tab, isActive) {
+      const el = document.createElement('div');
+      el.className = 'tab' + (isActive ? ' active' : '') + (tab.dirty ? ' tab-dirty' : '');
+      el.dataset.tabId = id;
+      const icon = (() => {
+        if (tab.type === 'file') return '<span class="file-tab-icon">&#128196;</span>';
+        const cli = tab.cli_type || 'claude';
+        if (cli === 'bash') return '<span style="color:var(--success);font-weight:bold;font-size:12px">&gt;</span>';
+        const c = { claude: '#e8a55d', gemini: '#4285f4', codex: '#10a37f' }[cli] || '#8b949e';
+        if (cli === 'codex') return `<svg width="10" height="10" viewBox="0 0 10 10" style="vertical-align:middle"><rect x="0" y="0" width="10" height="10" rx="2.5" fill="${c}"/><circle cx="5" cy="5" r="2.5" fill="var(--bg-secondary)"/></svg>`;
+        const icons = { claude: '✳', gemini: '◆' };
+        return `<span style="font-size:13px;color:${c};line-height:1">${icons[cli] || '?'}</span>`;
+      })();
+      const saveBtn = tab.type === 'file'
+        ? `<button class="tab-save" title="Save (Ctrl+S)" style="background:none;border:none;color:${tab.dirty ? 'var(--accent)' : 'var(--text-muted)'};cursor:pointer;font-size:12px;padding:2px 4px;border-radius:3px;margin-right:2px${tab.dirty ? ';font-weight:bold' : ''}">&#128190;</button>`
+        : '';
+      el.innerHTML = `
+        ${icon}
+        <span class="tab-name">${escHtml(tab.name)}</span>
+        ${saveBtn}
+        <button class="tab-close" title="Close tab">&#10005;</button>
+      `;
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.tab-close') || e.target.closest('.tab-save')) return;
+        switchTab(id);
+      });
+      if (tab.type === 'file') {
+        el.querySelector('.tab-save').addEventListener('click', (e) => {
           e.stopPropagation();
-          closeTab(id);
+          saveFileTab(id);
         });
-        bar.appendChild(el);
       }
+      el.querySelector('.tab-close').addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeTab(id);
+      });
+      return el;
+    }
 
-      // Re-add panel toggle button
-      if (panelBtn) {
-        bar.appendChild(panelBtn);
-      } else {
-        const btn = document.createElement('button');
-        btn.id = 'panel-toggle';
-        btn.onclick = togglePanel;
-        btn.title = 'Notes & Tasks';
-        btn.innerHTML = '&#9776;';
-        bar.appendChild(btn);
+    function _renderOneTabBar(panel) {
+      const barId = panel === 'side' ? 'side-tab-bar' : 'tab-bar';
+      const bar = document.getElementById(barId);
+      if (!bar) return;
+      const panelBtn = panel === 'primary' ? document.getElementById('panel-toggle') : null;
+      bar.innerHTML = '';
+      const activeId = _activeIdForPanel(panel);
+      for (const [id, tab] of tabs) {
+        if ((tab.panel || 'primary') !== panel) continue;
+        bar.appendChild(_makeTabEl(id, tab, id === activeId));
       }
+      if (panel === 'primary') {
+        if (panelBtn) {
+          bar.appendChild(panelBtn);
+        } else {
+          const btn = document.createElement('button');
+          btn.id = 'panel-toggle';
+          btn.onclick = togglePanel;
+          btn.title = 'Notes & Tasks';
+          btn.innerHTML = '&#9776;';
+          bar.appendChild(btn);
+        }
+      }
+    }
+
+    function renderTabs() {
+      _renderOneTabBar('primary');
+      _renderOneTabBar('side');
+      _updateSidePanelVisibility();
     }
 
     // ── Terminal Connection ───────────────────────────
@@ -3172,13 +3219,18 @@ build/**</textarea>
       }
       const tabId = 'file-' + Date.now();
       const fileName = filePath.split('/').pop();
+      // Documents default to side panel (#251). Persistence overrides if the
+      // user has previously moved this exact tab id, but file-tab ids are
+      // ephemeral so this almost always reduces to 'side'.
+      const targetPanel = tabPanelAssignments[tabId] === 'primary' ? 'primary' : 'side';
+      const targetAreaId = targetPanel === 'side' ? 'side-terminal-area' : 'terminal-area';
 
       // Same orphan-pane guard as createTab — see issue #161.
       const paneEl = document.createElement('div');
       paneEl.className = 'terminal-pane';
       paneEl.id = `pane-${tabId}`;
       document.getElementById(paneEl.id)?.remove();
-      document.getElementById('terminal-area').appendChild(paneEl);
+      document.getElementById(targetAreaId).appendChild(paneEl);
 
       // Hide empty state
       document.querySelectorAll('#terminal-area > div:not(.terminal-pane):not(.status-bar)').forEach(el => el.style.display = 'none');
