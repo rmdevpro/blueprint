@@ -5499,6 +5499,98 @@ for (const p of projects) assert(trust[p] === 'TRUST_FOLDER');
 **Verify:** `400 {"error":"name required"}`.
 
 ---
+### TAB-SPLIT-01: Side panel hidden when no tabs assigned to it
+**Issue:** #251.
+**Setup:** Fresh page load.
+**Steps:**
+1. `getComputedStyle(document.getElementById('side-panel')).display`
+2. `getComputedStyle(document.getElementById('side-divider')).display`
+**Verify:** Both return `'none'`. The side panel and its divider are hidden until a tab lives in the side panel.
+
+---
+### TAB-SPLIT-02: Documents auto-open in the side panel
+**Issue:** #251.
+**Steps:**
+1. From a fresh state, call `openFileTab('/data/.claude/CLAUDE.md')`.
+2. Wait for the editor to render.
+**Verify:** `#side-tab-bar` has at least one `.tab` element with the file's name. `#tab-bar` does NOT contain a tab for that file. The side panel is visible (`display !== 'none'`). `tabs.get(<fileTabId>).panel === 'side'`. `localStorage.tabPanelAssignments[<fileTabId>] === 'side'`.
+
+---
+### TAB-SPLIT-03: Side panel auto-closes when last tab leaves
+**Issue:** #251.
+**Setup:** Open a document so the side panel becomes visible.
+**Steps:**
+1. Move the document tab back to primary via `moveTabToPanel(<fileTabId>, 'primary')` (or drag it back manually).
+2. Wait for `_updateSidePanelVisibility()`.
+**Verify:** Side panel `display === 'none'`. `window.sidePanelOpen === false`. The file tab is now in `#tab-bar`. No side status bar visible.
+
+---
+### TAB-SPLIT-04: Drop a tab on the far-right edge opens the side panel
+**Issue:** #251.
+**Setup:** A CLI tab in primary; side panel hidden.
+**Steps:**
+1. Inspect `#side-edge-dropzone` element exists with absolute positioning on the right edge of `#primary-panel`.
+2. Begin a drag on a tab element (`dragstart` fires).
+3. The dropzone's `pointer-events` should switch from `none` to `auto` (CSS class `dragging` applied).
+4. Dispatch `dragover` then `drop` (with `application/x-tab-id` set) on the dropzone.
+**Verify:** After drop, the moved tab now has `panel === 'side'`, the side panel is visible, and the tab appears in `#side-tab-bar`. `localStorage.tabPanelAssignments[<id>] === 'side'`.
+
+---
+### TAB-SPLIT-05: Cross-panel drop moves the tab + reparents pane
+**Issue:** #251.
+**Setup:** A CLI tab in primary; another CLI tab in side.
+**Steps:**
+1. Drag the primary tab onto `#side-tab-bar` (drop with `application/x-tab-id`).
+**Verify:** After drop, both tabs in `#side-tab-bar`. `tab.paneEl.parentElement.id === 'side-terminal-area'`. WebSocket connection on the moved tab object is unchanged (`tabs.get(id).ws.readyState` same value before/after move).
+
+---
+### TAB-SPLIT-06: Reorder within a panel
+**Issue:** #251.
+**Setup:** Two tabs in primary.
+**Steps:**
+1. Note current order: tab A leftmost, tab B rightmost.
+2. Drag B and drop it on the left half of A's bbox (insert-before).
+**Verify:** After drop, the rendered order is B, A. `localStorage.tabOrders.primary` reflects `[B.id, A.id, ...]`. Reload the page — the order persists.
+
+---
+### TAB-SPLIT-07: Per-panel status bar visible only for CLI tabs
+**Issue:** #251.
+**Steps:**
+1. Open a CLI tab (lands in primary by default) → `#status-bar.active` true.
+2. Open a document → side panel materializes → side document tab active. `#side-status-bar.active` is FALSE (documents don't have a status bar).
+3. Move a CLI tab to side → `#side-status-bar.active` becomes true once the side's active tab is the CLI.
+**Verify:** Status bar visibility tracks `(panel's active tab is CLI session) ? 'show' : 'hide'`. Independent per panel.
+
+---
+### TAB-SPLIT-08: Browser-style tab shrinking
+**Issue:** #251.
+**Steps:**
+1. Inspect `getComputedStyle('.tab').flexGrow` → `'1'`.
+2. `getComputedStyle('.tab').minWidth` → `'40px'`.
+3. `getComputedStyle('.tab').maxWidth` → `'200px'`.
+4. Open many tabs in the same panel (5+) and verify their actual rendered width stays in [40px, 200px].
+**Verify:** Tabs flex-grow to fill available width and shrink down to 40px (icon-only) when many tabs exist. `.tab-name` ellipsises.
+
+---
+### TAB-SPLIT-09: Resize divider adjusts side panel width
+**Issue:** #251.
+**Setup:** Side panel open with at least one tab.
+**Steps:**
+1. Note current `sidePanelWidth` and `#side-panel.offsetWidth`.
+2. `mousedown` on `#side-divider` at clientX=X. `mousemove` to clientX=X-100 (drag left 100px to grow side panel).
+3. `mouseup`.
+**Verify:** `#side-panel.offsetWidth` increased by ≈100px (clamped to [150, 0.45 * window.innerWidth]). `localStorage.sidePanelWidth` reflects the new value. Reload the page — the width persists.
+
+---
+### TAB-SPLIT-10: Page reload preserves tab assignments + width + order
+**Issue:** #251.
+**Setup:** Open a CLI tab and a document tab. Move the CLI tab to side. Resize side to 600px. Reorder so document is first in side.
+**Steps:**
+1. Hard reload the page.
+2. After load, inspect side panel state.
+**Verify:** Side panel re-opens with the same tabs in the same order; `#side-panel.offsetWidth ≈ 600px`. Primary contains whatever was there. The CLI tab is still in side, the document tab is still in side, in the same order. The only state lost is the active-tab pointer per panel (last-active is fine to reset).
+
+---
 ### PROGRAM-12: Project rendering nests inside `.program-children` with 8px indent
 **Issue:** #284.
 **Steps:**
