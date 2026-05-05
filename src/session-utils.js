@@ -14,21 +14,37 @@ function sessionsDir(projectPath) {
   return safe.findSessionsDir(projectPath);
 }
 
-// #254: per-model max-tokens lookup. The context bar previously hardcoded
-// 200000 as the denominator; that's wrong for Claude 4.x [1m] variants,
-// modern Gemini, and large-context GPT-5 — overstates fill, fires warning
-// thresholds early. This table reflects publicly-documented context windows
-// at time of writing; the [1m] suffix in the model id is the trigger for
-// the 1M extended-context variants that Anthropic added in late 2025.
+// #286: per-model context-window lookup, config-driven.
+// Map of model-id substring → context-window tokens lives in
+// config/defaults.json under "modelContextWindows" (hot-reloaded).
+// Longest matching substring wins, so e.g. "claude-opus-4-7[1m]" beats
+// "claude-opus" for sessions running the 1M extended-context variant.
+// User overrides for new models or changed limits go in defaults.json
+// without a code change.
 function modelMaxTokens(model) {
   if (!model) return 200000;
   const m = String(model).toLowerCase();
-  if (m.includes('[1m]')) return 1000000;
-  if (m.includes('gemini-2.5-pro')) return 2000000;
-  if (m.includes('gemini-2.5') || m.includes('gemini-2.0') || m.includes('gemini-1.5')) return 1000000;
-  if (m.includes('gpt-5')) return 400000;
-  if (m.includes('gpt-4o') || m.includes('gpt-4-turbo')) return 128000;
-  if (m.includes('claude-opus') || m.includes('claude-sonnet') || m.includes('claude-haiku')) return 200000;
+  // Two-tier config: runtime override (settings DB) wins over built-in
+  // defaults.json. Settings DB key is "model_context_windows", a JSON
+  // object same shape as the built-in map. Empty/missing → use defaults.
+  let baseMap = require('./config').get('modelContextWindows', {});
+  if (!baseMap || typeof baseMap !== 'object') baseMap = {};
+  let overrideMap = {};
+  try {
+    const raw = db.getSetting('model_context_windows', null);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') overrideMap = parsed;
+    }
+  } catch { /* invalid JSON in settings — fall back to defaults silently */ }
+  const map = { ...baseMap, ...overrideMap };
+  // Sort keys longest-first so more-specific matches beat broader ones.
+  const keys = Object.keys(map)
+    .filter(k => !k.startsWith('_') && typeof map[k] === 'number')
+    .sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    if (m.includes(key.toLowerCase())) return map[key];
+  }
   return 200000;
 }
 
