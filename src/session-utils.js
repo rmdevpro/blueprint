@@ -930,6 +930,7 @@ async function getSessionInfo(sessionId, opts = {}) {
   // that have transmitted at least one turn since the collector was
   // wired up, this is the truth. Older/never-touched sessions fall
   // through to the per-CLI helper's value, which may be null.
+  let liveStatusModel = null;
   if (cliType === 'claude') {
     const live = _readClaudeStatusLineState(sessionId);
     if (live && live.context_window) {
@@ -938,7 +939,10 @@ async function getSessionInfo(sessionId, opts = {}) {
       if (typeof cw.context_window_size === 'number') merged.max_tokens = cw.context_window_size;
       if (typeof cw.current_usage === 'number') merged.input_tokens = cw.current_usage;
       else if (typeof cw.total_input_tokens === 'number') merged.input_tokens = cw.total_input_tokens;
-      if (live.model && live.model.id) merged.model = live.model.id;
+      if (live.model && live.model.id) {
+        merged.model = live.model.id;
+        liveStatusModel = live.model.id;
+      }
       tokens = merged;
     }
   }
@@ -957,7 +961,10 @@ async function getSessionInfo(sessionId, opts = {}) {
     state: dbRow.state || (dbRow.archived ? 'archived' : 'active'),
     archived: !!dbRow.archived,
     model_override: dbRow.model_override || null,
-    model: dbRow.model_override || fileMeta?.model || tokens.model || null,
+    // #286: when the CLI's live statusLine reports a model, prefer it
+    // over the JSONL's stale snapshot. dbRow.model_override still wins
+    // (explicit user choice).
+    model: dbRow.model_override || liveStatusModel || fileMeta?.model || tokens.model || null,
     input_tokens: tokens.input_tokens || 0,
     max_tokens: typeof tokens.max_tokens === 'number' ? tokens.max_tokens : null,
     message_count: fileMeta?.messageCount || 0,
