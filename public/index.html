@@ -4360,29 +4360,35 @@ build/**</textarea>
       return div.innerHTML;
     }
 
-    // ── File drag-and-drop onto terminal ─────────────
-    const terminalArea = document.getElementById('terminal-area');
-    terminalArea.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'copy';
-      terminalArea.classList.add('drag-over');
-    });
-    terminalArea.addEventListener('dragleave', (e) => {
-      if (!terminalArea.contains(e.relatedTarget)) terminalArea.classList.remove('drag-over');
-    });
-    terminalArea.addEventListener('drop', (e) => {
-      e.preventDefault();
-      terminalArea.classList.remove('drag-over');
-      const path = e.dataTransfer.getData('text/plain').trim();
-      if (!path) return;
-      if (activeTabId && tabs.has(activeTabId)) {
-        const tab = tabs.get(activeTabId);
-        if (tab.ws && tab.ws.readyState === WebSocket.OPEN) {
-          tab.ws.send(path);
+    // ── File drag-and-drop onto terminal (#288: side-panel parity) ──
+    function _wireFileDropOnTerminalArea(area, panel) {
+      area.addEventListener('dragover', (e) => {
+        if (!e.dataTransfer.types.includes('text/plain')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        area.classList.add('drag-over');
+      });
+      area.addEventListener('dragleave', (e) => {
+        if (!area.contains(e.relatedTarget)) area.classList.remove('drag-over');
+      });
+      area.addEventListener('drop', (e) => {
+        if (!e.dataTransfer.types.includes('text/plain')) return;
+        e.preventDefault();
+        area.classList.remove('drag-over');
+        const path = e.dataTransfer.getData('text/plain').trim();
+        if (!path) return;
+        const tabId = _activeIdForPanel(panel);
+        if (tabId && tabs.has(tabId)) {
+          const tab = tabs.get(tabId);
+          if (tab.ws && tab.ws.readyState === WebSocket.OPEN) {
+            tab.ws.send(path);
+          }
+          if (tab.term) tab.term.focus();
         }
-        tab.term.focus();
-      }
-    });
+      });
+    }
+    _wireFileDropOnTerminalArea(document.getElementById('terminal-area'), 'primary');
+    _wireFileDropOnTerminalArea(document.getElementById('side-terminal-area'), 'side');
 
     // ── Resize observer for terminal area ────────────
     const resizeObserver = new ResizeObserver(() => {
