@@ -477,15 +477,17 @@
       font-size: 12px; color: var(--text-secondary);
       border-right: 1px solid var(--border);
       cursor: pointer; white-space: nowrap; user-select: none;
-      flex-shrink: 0; max-width: 200px;
+      /* Browser-style tab shrinking (#251). At 40px, only the icon fits. */
+      flex: 1 1 0%; min-width: 40px; max-width: 200px; overflow: hidden;
     }
+    .tab .tab-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .tab.drop-before { box-shadow: inset 3px 0 0 var(--accent); }
+    .tab.drop-after { box-shadow: inset -3px 0 0 var(--accent); }
     .tab:hover { background: var(--bg-hover); color: var(--text-primary); }
     .tab.active {
       background: var(--bg-primary); color: var(--text-primary);
       border-bottom: 2px solid var(--accent); margin-bottom: -1px;
     }
-    .tab .tab-name { overflow: hidden; text-overflow: ellipsis; }
-
     .tab .tab-status {
       width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
     }
@@ -2030,6 +2032,19 @@ build/**</textarea>
       const el = document.createElement('div');
       el.className = 'tab' + (isActive ? ' active' : '') + (tab.dirty ? ' tab-dirty' : '');
       el.dataset.tabId = id;
+      el.draggable = true;
+      el.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('application/x-tab-id', id);
+        e.dataTransfer.effectAllowed = 'move';
+        document.body.classList.add('tab-dragging');
+        document.getElementById('side-edge-dropzone')?.classList.add('dragging');
+      });
+      el.addEventListener('dragend', () => {
+        document.body.classList.remove('tab-dragging');
+        document.getElementById('side-edge-dropzone')?.classList.remove('dragging');
+        // Clear any leftover insert markers
+        document.querySelectorAll('.tab.drop-before, .tab.drop-after').forEach(t => t.classList.remove('drop-before', 'drop-after'));
+      });
       const icon = (() => {
         if (tab.type === 'file') return '<span class="file-tab-icon">&#128196;</span>';
         const cli = tab.cli_type || 'claude';
@@ -2095,6 +2110,132 @@ build/**</textarea>
       _renderOneTabBar('side');
       _updateSidePanelVisibility();
     }
+
+    // ── Move tab between panels (#251) ─────────────────────────────────
+    function moveTabToPanel(tabId, targetPanel) {
+      const tab = tabs.get(tabId);
+      if (!tab) return;
+      const sourcePanel = tab.panel || 'primary';
+      if (sourcePanel === targetPanel) return;
+
+      // Re-parent the pane element to the target terminal area
+      const targetAreaId = targetPanel === 'side' ? 'side-terminal-area' : 'terminal-area';
+      const area = document.getElementById(targetAreaId);
+      if (tab.paneEl && area) {
+        const wasActiveOnPane = tab.paneEl.classList.contains('active');
+        area.appendChild(tab.paneEl);
+        // Active flag stays on the pane element through appendChild — no change needed.
+      }
+
+      // Update tab's panel + persistence
+      tab.panel = targetPanel;
+      tabPanelAssignments[tabId] = targetPanel;
+      try { localStorage.setItem('tabPanelAssignments', JSON.stringify(tabPanelAssignments)); } catch {}
+
+      // Active-tab pointers: if we moved THE active tab in the source panel,
+      // pick another tab in source; if target had no active tab, this becomes it.
+      if (_activeIdForPanel(sourcePanel) === tabId) {
+        const remaining = [...tabs.entries()].filter(([id, t]) => id !== tabId && (t.panel || 'primary') === sourcePanel);
+        _setActiveIdForPanel(sourcePanel, remaining.length ? remaining[remaining.length - 1][0] : null);
+      }
+      if (!_activeIdForPanel(targetPanel)) {
+        _setActiveIdForPanel(targetPanel, tabId);
+      }
+
+      // Auto-open / auto-close the side panel based on whether it now has tabs
+      _updateSidePanelVisibility();
+
+      // Re-render the source-panel's previously-active tab so the right
+      // pane shows after we removed the moved tab from sourcePanel
+      const srcActive = _activeIdForPanel(sourcePanel);
+      if (srcActive && (sourcePanel === 'primary' || sourcePanel === 'side')) {
+        // re-show the new active in source panel
+        for (const [id, t] of tabs) {
+          if ((t.panel || 'primary') !== sourcePanel) continue;
+          if (t.paneEl) t.paneEl.classList.toggle('active', id === srcActive);
+        }
+      } else if (sourcePanel === 'primary') {
+        showEmptyState('primary');
+      }
+
+      // Make the moved tab active in its new panel
+      switchTab(tabId);
+
+      // Refit terminals after the layout change
+      setTimeout(() => {
+        for (const t of tabs.values()) {
+          if (t.fitAddon) try { t.fitAddon.fit(); } catch {}
+        }
+      }, 50);
+
+      renderTabs();
+      updateStatusBar();
+    }
+
+    // ── Drop zone wiring (#251) ────────────────────────────────────────
+    function _wireDropZones() {
+      const wireBar = (barId, panel) => {
+        const bar = document.getElementById(barId);
+        if (!bar) return;
+        bar.addEventListener('dragover', (e) => {
+          if (!e.dataTransfer.types.includes('application/x-tab-id')) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          // If hovering over a tab, mark insert-before/after
+          const overTab = e.target.closest('.tab');
+          document.querySelectorAll(`#${barId} .tab.drop-before, #${barId} .tab.drop-after`).forEach(t => t.classList.remove('drop-before', 'drop-after'));
+          if (overTab) {
+            const r = overTab.getBoundingClientRect();
+            const before = (e.clientX - r.left) < r.width / 2;
+            overTab.classList.add(before ? 'drop-before' : 'drop-after');
+            bar.classList.remove('drag-over');
+          } else {
+            bar.classList.add('drag-over');
+          }
+        });
+        bar.addEventListener('dragleave', (e) => {
+          if (!bar.contains(e.relatedTarget)) {
+            bar.classList.remove('drag-over');
+            bar.querySelectorAll('.tab.drop-before, .tab.drop-after').forEach(t => t.classList.remove('drop-before', 'drop-after'));
+          }
+        });
+        bar.addEventListener('drop', (e) => {
+          e.preventDefault();
+          bar.classList.remove('drag-over');
+          bar.querySelectorAll('.tab.drop-before, .tab.drop-after').forEach(t => t.classList.remove('drop-before', 'drop-after'));
+          const id = e.dataTransfer.getData('application/x-tab-id');
+          if (!id || !tabs.has(id)) return;
+          const tab = tabs.get(id);
+          if ((tab.panel || 'primary') !== panel) {
+            moveTabToPanel(id, panel);
+          }
+          // Reorder within the same panel will be wired in commit 5.
+        });
+      };
+      wireBar('tab-bar', 'primary');
+      wireBar('side-tab-bar', 'side');
+
+      // Edge drop zone: opens side and moves tab there
+      const edge = document.getElementById('side-edge-dropzone');
+      if (edge) {
+        edge.addEventListener('dragover', (e) => {
+          if (!e.dataTransfer.types.includes('application/x-tab-id')) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          edge.classList.add('drag-over');
+        });
+        edge.addEventListener('dragleave', () => edge.classList.remove('drag-over'));
+        edge.addEventListener('drop', (e) => {
+          e.preventDefault();
+          edge.classList.remove('drag-over');
+          const id = e.dataTransfer.getData('application/x-tab-id');
+          if (!id || !tabs.has(id)) return;
+          const tab = tabs.get(id);
+          if ((tab.panel || 'primary') !== 'side') moveTabToPanel(id, 'side');
+        });
+      }
+    }
+    _wireDropZones();
 
     // ── Terminal Connection ───────────────────────────
 
