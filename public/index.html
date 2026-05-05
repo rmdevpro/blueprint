@@ -1051,6 +1051,25 @@ build/**</textarea>
       try { return JSON.parse(localStorage.getItem('tabPanelAssignments') || '{}'); }
       catch { return {}; }
     })();
+    const tabOrders = (() => {
+      try {
+        const o = JSON.parse(localStorage.getItem('tabOrders') || '{}');
+        return { primary: Array.isArray(o.primary) ? o.primary : [], side: Array.isArray(o.side) ? o.side : [] };
+      } catch { return { primary: [], side: [] }; }
+    })();
+    function _persistTabOrders() {
+      try { localStorage.setItem('tabOrders', JSON.stringify(tabOrders)); } catch {}
+    }
+    function _appendToOrder(panel, tabId) {
+      tabOrders[panel] = tabOrders[panel].filter(id => id !== tabId);
+      tabOrders[panel].push(tabId);
+      _persistTabOrders();
+    }
+    function _removeFromAllOrders(tabId) {
+      tabOrders.primary = tabOrders.primary.filter(id => id !== tabId);
+      tabOrders.side = tabOrders.side.filter(id => id !== tabId);
+      _persistTabOrders();
+    }
     let projectState = [];
     let programState = [];
     const expandedPrograms = new Set(JSON.parse(localStorage.getItem('expandedPrograms') || '["__unassigned__"]'));
@@ -1890,6 +1909,7 @@ build/**</textarea>
         panel: tabPanelAssignments[tabId] === 'side' ? 'side' : 'primary',
       };
       tabs.set(tabId, tab);
+      _appendToOrder(tab.panel || 'primary', tabId);
 
       switchTab(tabId);
       connectTab(tabId);
@@ -1991,6 +2011,9 @@ build/**</textarea>
       }
       tab.paneEl.remove();
       tabs.delete(tabId);
+      _removeFromAllOrders(tabId);
+      delete tabPanelAssignments[tabId];
+      try { localStorage.setItem('tabPanelAssignments', JSON.stringify(tabPanelAssignments)); } catch {}
 
       // Switch to another tab in the same panel, or show empty state for that panel
       const wasActiveInPanel = _activeIdForPanel(panel) === tabId;
@@ -2087,8 +2110,18 @@ build/**</textarea>
       const panelBtn = panel === 'primary' ? document.getElementById('panel-toggle') : null;
       bar.innerHTML = '';
       const activeId = _activeIdForPanel(panel);
-      for (const [id, tab] of tabs) {
-        if ((tab.panel || 'primary') !== panel) continue;
+      // Sort tabs in this panel by tabOrders[panel] (entries not in the
+      // order list go at the end, in insertion order).
+      const inPanel = [...tabs.entries()].filter(([, t]) => (t.panel || 'primary') === panel);
+      const order = tabOrders[panel] || [];
+      inPanel.sort(([a], [b]) => {
+        const ai = order.indexOf(a); const bi = order.indexOf(b);
+        if (ai === -1 && bi === -1) return 0;
+        if (ai === -1) return 1;
+        if (bi === -1) return -1;
+        return ai - bi;
+      });
+      for (const [id, tab] of inPanel) {
         bar.appendChild(_makeTabEl(id, tab, id === activeId));
       }
       if (panel === 'primary') {
@@ -2127,10 +2160,12 @@ build/**</textarea>
         // Active flag stays on the pane element through appendChild — no change needed.
       }
 
-      // Update tab's panel + persistence
+      // Update tab's panel + persistence (panel assignment + order)
       tab.panel = targetPanel;
       tabPanelAssignments[tabId] = targetPanel;
       try { localStorage.setItem('tabPanelAssignments', JSON.stringify(tabPanelAssignments)); } catch {}
+      _removeFromAllOrders(tabId);
+      _appendToOrder(targetPanel, tabId);
 
       // Active-tab pointers: if we moved THE active tab in the source panel,
       // pick another tab in source; if target had no active tab, this becomes it.
@@ -2202,14 +2237,44 @@ build/**</textarea>
         bar.addEventListener('drop', (e) => {
           e.preventDefault();
           bar.classList.remove('drag-over');
+          // Determine drop target tab + position before clearing markers
+          const overTab = e.target.closest('.tab');
+          let targetTabId = null;
+          let dropBefore = true;
+          if (overTab) {
+            const r = overTab.getBoundingClientRect();
+            dropBefore = (e.clientX - r.left) < r.width / 2;
+            targetTabId = overTab.dataset.tabId;
+          }
           bar.querySelectorAll('.tab.drop-before, .tab.drop-after').forEach(t => t.classList.remove('drop-before', 'drop-after'));
           const id = e.dataTransfer.getData('application/x-tab-id');
           if (!id || !tabs.has(id)) return;
           const tab = tabs.get(id);
-          if ((tab.panel || 'primary') !== panel) {
+          const sourcePanel = tab.panel || 'primary';
+          if (sourcePanel !== panel) {
             moveTabToPanel(id, panel);
+            // After moving, place the moved tab adjacent to the target if there was one
+            if (targetTabId && targetTabId !== id) {
+              tabOrders[panel] = tabOrders[panel].filter(x => x !== id);
+              const ti = tabOrders[panel].indexOf(targetTabId);
+              if (ti !== -1) {
+                tabOrders[panel].splice(dropBefore ? ti : ti + 1, 0, id);
+                _persistTabOrders();
+                renderTabs();
+              }
+            }
+          } else if (targetTabId && targetTabId !== id) {
+            // Reorder within the same panel
+            tabOrders[panel] = tabOrders[panel].filter(x => x !== id);
+            const ti = tabOrders[panel].indexOf(targetTabId);
+            if (ti !== -1) {
+              tabOrders[panel].splice(dropBefore ? ti : ti + 1, 0, id);
+            } else {
+              tabOrders[panel].push(id);
+            }
+            _persistTabOrders();
+            renderTabs();
           }
-          // Reorder within the same panel will be wired in commit 5.
         });
       };
       wireBar('tab-bar', 'primary');
@@ -3387,6 +3452,7 @@ build/**</textarea>
         panel: tabPanelAssignments[tabId] === 'primary' ? 'primary' : 'side',
       };
       tabs.set(tabId, tab);
+      _appendToOrder(tab.panel, tabId);
 
       try {
         if (editorType === 'image') {
