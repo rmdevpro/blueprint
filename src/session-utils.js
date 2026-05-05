@@ -937,8 +937,20 @@ async function getSessionInfo(sessionId, opts = {}) {
       const cw = live.context_window;
       const merged = { ...tokens };
       if (typeof cw.context_window_size === 'number') merged.max_tokens = cw.context_window_size;
-      if (typeof cw.current_usage === 'number') merged.input_tokens = cw.current_usage;
-      else if (typeof cw.total_input_tokens === 'number') merged.input_tokens = cw.total_input_tokens;
+      // current_usage may be a number (early-docs interpretation) or an
+      // object with the per-category breakdown (observed in practice).
+      // The doc-recommended "used" total excludes output_tokens — it's
+      // input + cache_creation + cache_read against context_window_size.
+      if (typeof cw.current_usage === 'number') {
+        merged.input_tokens = cw.current_usage;
+      } else if (cw.current_usage && typeof cw.current_usage === 'object') {
+        const u = cw.current_usage;
+        merged.input_tokens = (u.input_tokens || 0) +
+          (u.cache_creation_input_tokens || 0) +
+          (u.cache_read_input_tokens || 0);
+      } else if (typeof cw.total_input_tokens === 'number') {
+        merged.input_tokens = cw.total_input_tokens;
+      }
       if (live.model && live.model.id) {
         merged.model = live.model.id;
         liveStatusModel = live.model.id;
