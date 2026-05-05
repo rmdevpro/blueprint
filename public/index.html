@@ -2302,6 +2302,54 @@ build/**</textarea>
     }
     _wireDropZones();
 
+    // ── Resize divider + ResizeObserver fit (#251) ────────────────────────
+    function _refitAllTerminals() {
+      for (const t of tabs.values()) {
+        if (t.fitAddon) try { t.fitAddon.fit(); } catch {}
+      }
+    }
+    (function initSideDivider() {
+      const divider = document.getElementById('side-divider');
+      const panel = document.getElementById('side-panel');
+      if (!divider || !panel) return;
+      let startX = 0; let startWidth = 0; let dragging = false;
+      divider.addEventListener('mousedown', (e) => {
+        dragging = true;
+        startX = e.clientX;
+        startWidth = panel.offsetWidth || sidePanelWidth;
+        divider.classList.add('dragging');
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'col-resize';
+        e.preventDefault();
+      });
+      document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        // Drag right → shrinks side (panel is on the right side of divider)
+        const delta = startX - e.clientX;
+        const max = Math.floor(window.innerWidth * 0.45);
+        let w = startWidth + delta;
+        if (w < 150) w = 150;
+        if (w > max) w = max;
+        sidePanelWidth = w;
+        panel.style.width = w + 'px';
+      });
+      document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        divider.classList.remove('dragging');
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+        try { localStorage.setItem('sidePanelWidth', String(sidePanelWidth)); } catch {}
+        _refitAllTerminals();
+      });
+      // Refit on container size changes (window resize, files panel toggle, etc.)
+      try {
+        const ro = new ResizeObserver(() => _refitAllTerminals());
+        ro.observe(document.getElementById('terminal-area'));
+        ro.observe(document.getElementById('side-terminal-area'));
+      } catch {}
+    })();
+
     // ── Terminal Connection ───────────────────────────
 
     function connectTab(tabId) {
