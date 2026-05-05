@@ -576,7 +576,11 @@ function _getCodexTokenUsage(sessionId) {
 }
 
 async function getTokenUsage(sessionId, project) {
-  if (sessionId.startsWith('new_')) return { input_tokens: 0, model: null, max_tokens: 200000 };
+  // #286: Claude max_tokens is plan-effective and only knowable from
+  // the live statusLine state file. Helper returns null for max_tokens
+  // when no live source has reported; getSessionInfo overrides with
+  // the state file when present. UI renders "?" for null.
+  if (sessionId.startsWith('new_')) return { input_tokens: 0, model: null, max_tokens: null };
 
   // Check CLI type from DB
   const session = db.getSession(sessionId);
@@ -627,19 +631,21 @@ async function getTokenUsage(sessionId, project) {
     return {
       input_tokens: inputTokens,
       model,
-      max_tokens: model?.includes('opus') || model?.includes('1m') ? 1000000 : 200000,
+      // null — getSessionInfo overrides with the live statusLine
+      // state file when present; UI renders "?" otherwise.
+      max_tokens: null,
     };
   } catch (err) {
     if (err.code === 'ENOENT') {
       /* expected: session file may not exist yet */
-      return { input_tokens: 0, model: null, max_tokens: 200000 };
+      return { input_tokens: 0, model: null, max_tokens: null };
     }
     logger.error('Unexpected error in getTokenUsage', {
       module: 'session-utils',
       sessionId: sessionId.substring(0, 8),
       err: err.message,
     });
-    return { input_tokens: 0, model: null, max_tokens: 200000 };
+    return { input_tokens: 0, model: null, max_tokens: null };
   }
 }
 
