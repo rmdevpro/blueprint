@@ -5134,6 +5134,19 @@ for (const p of projects) assert(trust[p] === 'TRUST_FOLDER');
 **Verify:** Sync runs without error. Status refreshes after completion.
 
 ---
+### KB-08: Fork button creates GitHub fork and re-points origin
+**Issue:** #271.
+**Setup:** A second GitHub account (not the upstream owner) with a non-suspended PAT scoped to `repo` + `workflow`. Add it via Settings → Git Accounts and set it as the KB account. The fork target (`<username>/blueprint_workbench_kb`) must not already exist.
+**Steps:**
+1. Open Settings → General → Knowledge Base.
+2. Click "Fork to my account".
+3. After completion, GitHub API check: `curl -H "Authorization: Bearer <pat>" https://api.github.com/repos/<username>/blueprint_workbench_kb` — verify `fork:true` and `parent.full_name == "rmdevpro/workbench-kb"`.
+4. `docker exec ${WORKBENCH_CONTAINER} git -C /data/knowledge-base remote -v` — verify `origin` points at the fork URL (with credentials inlined) and `upstream` still points at `https://github.com/rmdevpro/workbench-kb`.
+5. `curl ${WORKBENCH_URL}/api/kb/status | jq .originUrl` — returns the fork's public URL (no credentials).
+6. `curl ${WORKBENCH_URL}/api/settings | jq .kb_repo_url` — returns the fork's public URL.
+**Verify:** Fork created on GitHub, local clone re-pointed at fork, upstream preserved, status + settings reflect fork URL.
+
+---
 ### KB-07: Sync interval setting persists
 **Issue:** #272.
 **Steps:**
