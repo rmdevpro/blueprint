@@ -216,11 +216,13 @@
 
     /* ── Right Panel ────────────────────────────────── */
     #right-panel {
-      width: 0; overflow: hidden; background: var(--bg-secondary);
-      border-left: 1px solid var(--border); transition: width 0.2s;
+      width: 28px; min-width: 28px; overflow: hidden; background: var(--bg-secondary);
+      border-left: 1px solid var(--border); transition: width 0.2s, min-width 0.2s;
       display: flex; flex-direction: column;
     }
     #right-panel.open { width: 320px; min-width: 320px; }
+    #right-panel:not(.open) #panel-header,
+    #right-panel:not(.open) #panel-content { display: none; }
 
     #panel-header {
       padding: 12px 16px; border-bottom: 1px solid var(--border);
@@ -323,10 +325,9 @@
     #task-detail-history .hist-item { padding:4px 0; border-bottom:1px solid var(--border); }
 
     #panel-toggle {
-      position: absolute; right: 0; top: 50%; transform: translateY(-50%);
-      background: var(--bg-secondary); border: 1px solid var(--border);
-      border-right: none; border-radius: 4px 0 0 4px;
-      color: var(--text-muted); cursor: pointer; padding: 8px 4px; font-size: 12px; z-index: 10;
+      width: 28px; height: 36px; flex-shrink: 0;
+      background: var(--bg-secondary); border: none; border-bottom: 1px solid var(--border);
+      color: var(--text-muted); cursor: pointer; padding: 0; font-size: 14px;
     }
     #panel-toggle:hover { color: var(--text-primary); }
 
@@ -588,9 +589,7 @@
 
   <div id="main">
     <div id="primary-panel">
-      <div id="tab-bar" style="position:relative">
-        <button id="panel-toggle" onclick="togglePanel()" title="Notes &amp; Tasks">&#9776;</button>
-      </div>
+      <div id="tab-bar" style="position:relative"></div>
       <div id="terminal-area">
         <div id="empty-state">
           <div>Select a session or create a new one</div>
@@ -611,6 +610,7 @@
   </div>
 
   <div id="right-panel">
+    <button id="panel-toggle" onclick="togglePanel()" title="Notes &amp; Tasks">&#9776;</button>
     <div id="panel-header">
       <button class="panel-tab active" data-panel="files" onclick="switchPanel('files')">Files</button>
       <button class="panel-tab" data-panel="tasks" onclick="switchPanel('tasks')">Tasks</button>
@@ -2107,7 +2107,6 @@ build/**</textarea>
       const barId = panel === 'side' ? 'side-tab-bar' : 'tab-bar';
       const bar = document.getElementById(barId);
       if (!bar) return;
-      const panelBtn = panel === 'primary' ? document.getElementById('panel-toggle') : null;
       bar.innerHTML = '';
       const activeId = _activeIdForPanel(panel);
       // Sort tabs in this panel by tabOrders[panel] (entries not in the
@@ -2123,18 +2122,6 @@ build/**</textarea>
       });
       for (const [id, tab] of inPanel) {
         bar.appendChild(_makeTabEl(id, tab, id === activeId));
-      }
-      if (panel === 'primary') {
-        if (panelBtn) {
-          bar.appendChild(panelBtn);
-        } else {
-          const btn = document.createElement('button');
-          btn.id = 'panel-toggle';
-          btn.onclick = togglePanel;
-          btn.title = 'Notes & Tasks';
-          btn.innerHTML = '&#9776;';
-          bar.appendChild(btn);
-        }
       }
     }
 
