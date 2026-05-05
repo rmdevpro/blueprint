@@ -2011,11 +2011,11 @@ function registerCoreRoutes(
       // #156: route through getSessionInfo so the cache dedupes against parallel
       // sidebar polls. Project param is no longer needed (session_full has the path).
       const info = await sessionUtils.getSessionInfo(sessionId);
-      if (!info) return res.json({ input_tokens: 0, model: null, max_tokens: 200000 });
+      if (!info) return res.json({ input_tokens: 0, model: null, max_tokens: null });
       res.json({ input_tokens: info.input_tokens, model: info.model, max_tokens: info.max_tokens });
     } catch (err) {
       logger.error('Error getting token usage', { module: 'routes', err: err.message });
-      res.json({ input_tokens: 0, model: null, max_tokens: 200000 });
+      res.json({ input_tokens: 0, model: null, max_tokens: null });
     }
   });
 

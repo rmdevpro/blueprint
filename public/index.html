@@ -4457,8 +4457,12 @@ build/**</textarea>
       }
 
       const inputTokens = statusData.input_tokens || 0;
-      const maxTokens = statusData.max_tokens || 200000;
-      const pct = maxTokens > 0 ? Math.min(100, (inputTokens / maxTokens) * 100) : 0;
+      // #286: max_tokens may be null when no live source is available
+      // (e.g., Claude session that hasn't fired its first statusLine
+      // callback yet). Render "?" rather than a fabricated denominator.
+      const maxTokens = (typeof statusData.max_tokens === 'number' && statusData.max_tokens > 0)
+        ? statusData.max_tokens : null;
+      const pct = maxTokens ? Math.min(100, (inputTokens / maxTokens) * 100) : null;
 
       const modelShort = model.includes('opus') ? 'Opus' :
         model.includes('sonnet') ? 'Sonnet' :
@@ -4467,9 +4471,12 @@ build/**</textarea>
         model.includes('gpt') ? model.substring(0, 10) :
         model.substring(0, 15);
 
-      const fillClass = pct < 60 ? 'context-fill-green' : pct < 85 ? 'context-fill-amber' : 'context-fill-red';
+      const fillClass = pct == null ? 'context-fill-green' :
+        pct < 60 ? 'context-fill-green' : pct < 85 ? 'context-fill-amber' : 'context-fill-red';
       const tokenStr = inputTokens > 1000 ? `${Math.round(inputTokens / 1000)}k` : inputTokens;
-      const maxStr = maxTokens > 1000 ? `${Math.round(maxTokens / 1000)}k` : maxTokens;
+      const maxStr = maxTokens == null ? '?' : (maxTokens > 1000 ? `${Math.round(maxTokens / 1000)}k` : maxTokens);
+      const pctStr = pct == null ? '?' : `${pct.toFixed(0)}%`;
+      const fillWidth = pct == null ? 0 : pct;
 
       // Only show thinking level for Claude sessions
       const thinkingLevel = cliType === 'claude' ? (db_getSetting('thinking_level') || 'none') : 'none';
@@ -4480,8 +4487,8 @@ build/**</textarea>
         <span class="status-item">
           <span class="label">Context:</span>
           <span class="value">${tokenStr} / ${maxStr}</span>
-          <span class="context-bar"><span class="fill ${fillClass}" style="width:${pct}%"></span></span>
-          <span class="value">${pct.toFixed(0)}%</span>
+          <span class="context-bar"><span class="fill ${fillClass}" style="width:${fillWidth}%"></span></span>
+          <span class="value">${pctStr}</span>
         </span>
         <span class="status-item" style="margin-left:auto">
           <span class="value">${tab.status}</span>

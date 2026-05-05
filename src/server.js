@@ -300,6 +300,12 @@ if (require.main === module) {
             err: err.message,
           }),
         );
+        watchers.registerClaudeStatusLine().catch((err) =>
+          logger.error('Post-startup Claude statusLine registration failed', {
+            module: 'server',
+            err: err.message,
+          }),
+        );
         watchers.registerGeminiMcp().catch((err) =>
           logger.error('Post-startup MCP registration failed (Gemini)', {
             module: 'server',

@@ -14,38 +14,28 @@ function sessionsDir(projectPath) {
   return safe.findSessionsDir(projectPath);
 }
 
-// #286: per-model context-window lookup, config-driven.
-// Map of model-id substring → context-window tokens lives in
-// config/defaults.json under "modelContextWindows" (hot-reloaded).
-// Longest matching substring wins, so e.g. "claude-opus-4-7[1m]" beats
-// "claude-opus" for sessions running the 1M extended-context variant.
-// User overrides for new models or changed limits go in defaults.json
-// without a code change.
-function modelMaxTokens(model) {
-  if (!model) return 200000;
-  const m = String(model).toLowerCase();
-  // Two-tier config: runtime override (settings DB) wins over built-in
-  // defaults.json. Settings DB key is "model_context_windows", a JSON
-  // object same shape as the built-in map. Empty/missing → use defaults.
-  let baseMap = require('./config').get('modelContextWindows', {});
-  if (!baseMap || typeof baseMap !== 'object') baseMap = {};
-  let overrideMap = {};
+// #286: read Claude's live session state, written by the
+// statusLine collector script (scripts/statusline-collector.js).
+// The collector receives a JSON payload from the CLI after each
+// assistant turn / permission change / vim-mode toggle and persists
+// it to /data/.claude/statusline-state-<session_id>.json. The
+// context_window.context_window_size field is the *plan-effective*
+// cap the CLI itself reports in /context — the only authoritative
+// source for the denominator (the model API returns the theoretical
+// max, which is wrong for plan-tier-capped sessions).
+function _readClaudeStatusLineState(sessionId) {
+  if (!sessionId) return null;
   try {
-    const raw = db.getSetting('model_context_windows', null);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') overrideMap = parsed;
-    }
-  } catch { /* invalid JSON in settings — fall back to defaults silently */ }
-  const map = { ...baseMap, ...overrideMap };
-  // Sort keys longest-first so more-specific matches beat broader ones.
-  const keys = Object.keys(map)
-    .filter(k => !k.startsWith('_') && typeof map[k] === 'number')
-    .sort((a, b) => b.length - a.length);
-  for (const key of keys) {
-    if (m.includes(key.toLowerCase())) return map[key];
+    const fs = require('fs');
+    const statePath = join(CLAUDE_HOME, `statusline-state-${sessionId}.json`);
+    const raw = fs.readFileSync(statePath, 'utf-8');
+    return JSON.parse(raw);
+  } catch (err) {
+    if (err.code === 'ENOENT') return null;
+    /* corrupt JSON or read error — log once-ish and continue with fallback */
+    logger.warn('statusline-state read failed', { module: 'session-utils', sessionId: sessionId.substring(0, 8), err: err.message });
+    return null;
   }
-  return 200000;
 }
 
 async function parseSessionFile(filepath) {
@@ -887,10 +877,10 @@ async function getSessionInfo(sessionId, opts = {}) {
 
   const cliType = dbRow.cli_type || 'claude';
   let fileMeta = null;
-  // #254: max_tokens seed is overwritten below once the per-CLI helper
-  // returns a model. If no model can be determined, modelMaxTokens(null)
-  // returns 200000 — same as the prior hardcoded default.
-  let tokens = { input_tokens: 0, model: null, max_tokens: 200000 };
+  // Initial seed; per-CLI helpers below replace it with their best
+  // available values. For Claude the live statusline-state file
+  // (#286) overrides this entirely when present.
+  let tokens = { input_tokens: 0, model: null, max_tokens: null };
 
   if (cliType === 'claude') {
     const sDir = sessionsDir(dbRow.project_path);
@@ -933,14 +923,24 @@ async function getSessionInfo(sessionId, opts = {}) {
     if (includeTokens) tokens = _getCodexTokenUsage(sessionId);
   }
 
-  // #254: override the per-CLI helper's max_tokens with a model-aware value.
-  // The per-CLI helpers historically defaulted to 200000 regardless of model;
-  // here we look up the actual context window for the resolved model id so
-  // the context bar denominator matches reality (Claude [1m] gets 1M, Gemini
-  // gets the right large window, etc.).
-  const modelForMax = tokens.model || fileMeta?.model;
-  if (modelForMax) {
-    tokens = { ...tokens, max_tokens: modelMaxTokens(modelForMax) };
+  // #286: for Claude, prefer the CLI's own live state (statusline-state
+  // file written by scripts/statusline-collector.js). It carries the
+  // plan-effective context_window_size — the only authoritative source.
+  // The CLI publishes this after each assistant turn, so for sessions
+  // that have transmitted at least one turn since the collector was
+  // wired up, this is the truth. Older/never-touched sessions fall
+  // through to the per-CLI helper's value, which may be null.
+  if (cliType === 'claude') {
+    const live = _readClaudeStatusLineState(sessionId);
+    if (live && live.context_window) {
+      const cw = live.context_window;
+      const merged = { ...tokens };
+      if (typeof cw.context_window_size === 'number') merged.max_tokens = cw.context_window_size;
+      if (typeof cw.current_usage === 'number') merged.input_tokens = cw.current_usage;
+      else if (typeof cw.total_input_tokens === 'number') merged.input_tokens = cw.total_input_tokens;
+      if (live.model && live.model.id) merged.model = live.model.id;
+      tokens = merged;
+    }
   }
 
   const tmux = safe.tmuxNameFor(sessionId);
@@ -959,7 +959,7 @@ async function getSessionInfo(sessionId, opts = {}) {
     model_override: dbRow.model_override || null,
     model: dbRow.model_override || fileMeta?.model || tokens.model || null,
     input_tokens: tokens.input_tokens || 0,
-    max_tokens: tokens.max_tokens || 200000,
+    max_tokens: typeof tokens.max_tokens === 'number' ? tokens.max_tokens : null,
     message_count: fileMeta?.messageCount || 0,
     timestamp: fileMeta?.timestamp || dbRow.updated_at,
     notes: dbRow.notes || '',
@@ -987,6 +987,5 @@ module.exports = {
   getSessionInfo,
   invalidateSessionInfoCache,
   getSessionSlug,
-  modelMaxTokens,
   CLAUDE_HOME,
 };

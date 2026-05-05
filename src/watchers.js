@@ -549,6 +549,42 @@ module.exports = function createWatchers({
     }
   }
 
+  // #286: register the statusLine collector so Claude pipes its live
+  // session JSON (including the plan-effective context_window_size) to
+  // a script we control. Idempotent: skip if our entry is already there
+  // and pointing at the right path.
+  async function registerClaudeStatusLine() {
+    const settingsFile = join(CLAUDE_HOME, 'settings.json');
+    let cfg = {};
+    try {
+      cfg = JSON.parse(await fsp.readFile(settingsFile, 'utf-8'));
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        /* will create below */
+      } else if (err instanceof SyntaxError) {
+        logger.error('settings.json is corrupt — cannot register statusLine without overwriting user config', { module: 'watchers', op: 'registerClaudeStatusLine' });
+        return;
+      } else {
+        logger.warn('Failed to read settings.json for statusLine', { module: 'watchers', err: err.message });
+      }
+    }
+
+    const expectedCommand = `node ${join(__dirname, '..', 'scripts', 'statusline-collector.js')}`;
+    const existing = cfg.statusLine;
+    const isStale = existing && (existing.command !== expectedCommand || existing.type !== 'command');
+
+    if (!existing || isStale) {
+      cfg.statusLine = { type: 'command', command: expectedCommand };
+      try {
+        await fsp.mkdir(CLAUDE_HOME, { recursive: true });
+        await fsp.writeFile(settingsFile, JSON.stringify(cfg, null, 2));
+        logger.info('Registered Claude statusLine', { module: 'watchers' });
+      } catch (err) {
+        logger.error('Could not write statusLine to settings.json', { module: 'watchers', err: err.message });
+      }
+    }
+  }
+
   async function ensureSettings() {
     const settingsFile = join(CLAUDE_HOME, 'settings.json');
     try {
@@ -585,6 +621,7 @@ module.exports = function createWatchers({
     startGeminiSettingsWatcher,
     startCodexSettingsWatcher,
     registerMcpServer,
+    registerClaudeStatusLine,
     registerGeminiMcp,
     registerCodexMcp,
     registerCodexProvider,
