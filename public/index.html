@@ -441,10 +441,15 @@
     #auth-modal .step { color: var(--text-muted); font-size: 12px; margin-bottom: 4px; text-align: left; }
 
     /* ── Main Area ──────────────────────────────────── */
-    #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    #main { flex: 1; display: flex; flex-direction: row; min-width: 0; }
+    #primary-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
+    #side-divider { display: none; width: 5px; cursor: col-resize; background: var(--border); flex-shrink: 0; }
+    #side-divider.dragging, #side-divider:hover { background: var(--accent); }
+    #side-panel { display: none; flex-direction: column; min-width: 0; min-height: 0; position: relative; flex-shrink: 0; }
+    #side-panel.active, #side-divider.active { display: flex; }
 
     /* ── Tab Bar ────────────────────────────────────── */
-    #tab-bar {
+    #tab-bar, #side-tab-bar {
       display: flex;
       background: var(--bg-secondary);
       border-bottom: 1px solid var(--border);
@@ -452,7 +457,19 @@
       overflow-x: auto;
       overflow-y: hidden;
     }
-    #tab-bar::-webkit-scrollbar { height: 0; }
+    #tab-bar::-webkit-scrollbar, #side-tab-bar::-webkit-scrollbar { height: 0; }
+    /* Drop-zone visual when dragging a tab over a tab bar */
+    #tab-bar.drag-over, #side-tab-bar.drag-over { outline: 2px solid var(--accent); outline-offset: -2px; }
+    /* Edge drop zone — visible only while a tab is being dragged */
+    #side-edge-dropzone {
+      position: absolute; top: 36px; right: 0; bottom: 0; width: 40px;
+      pointer-events: none; z-index: 5;
+    }
+    #side-edge-dropzone.dragging { pointer-events: auto; }
+    #side-edge-dropzone.drag-over {
+      background: linear-gradient(to right, transparent, rgba(88, 166, 255, 0.18));
+      border-right: 2px solid var(--accent);
+    }
 
     .tab {
       display: flex; align-items: center; gap: 6px;
@@ -485,8 +502,13 @@
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
     /* ── Terminal Area ──────────────────────────────── */
-    #terminal-area { flex: 1; position: relative; background: var(--bg-primary); }
-    #terminal-area.drag-over { outline: 2px solid var(--accent); outline-offset: -2px; }
+    #terminal-area, #side-terminal-area { flex: 1; position: relative; background: var(--bg-primary); min-height: 0; }
+    #terminal-area.drag-over, #side-terminal-area.drag-over { outline: 2px solid var(--accent); outline-offset: -2px; }
+    #side-empty-state {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-muted); font-size: 12px; pointer-events: none;
+    }
 
     .terminal-pane {
       position: absolute; top: 0; left: 0; right: 0; bottom: 28px;
@@ -563,15 +585,26 @@
   </div>
 
   <div id="main">
-    <div id="tab-bar" style="position:relative">
-      <button id="panel-toggle" onclick="togglePanel()" title="Notes &amp; Tasks">&#9776;</button>
-    </div>
-    <div id="terminal-area">
-      <div id="empty-state">
-        <div>Select a session or create a new one</div>
-        <div class="hint">Pick a project from the sidebar to get started</div>
+    <div id="primary-panel">
+      <div id="tab-bar" style="position:relative">
+        <button id="panel-toggle" onclick="togglePanel()" title="Notes &amp; Tasks">&#9776;</button>
       </div>
-      <div id="status-bar" class="status-bar"></div>
+      <div id="terminal-area">
+        <div id="empty-state">
+          <div>Select a session or create a new one</div>
+          <div class="hint">Pick a project from the sidebar to get started</div>
+        </div>
+        <div id="status-bar" class="status-bar"></div>
+      </div>
+      <div id="side-edge-dropzone"></div>
+    </div>
+    <div id="side-divider"></div>
+    <div id="side-panel">
+      <div id="side-tab-bar"></div>
+      <div id="side-terminal-area">
+        <div id="side-empty-state">Drag a tab here</div>
+        <div id="side-status-bar" class="status-bar"></div>
+      </div>
     </div>
   </div>
 
@@ -1006,7 +1039,16 @@ build/**</textarea>
     // ── State ────────────────────────────────────────
     const tabs = new Map();
     window.tabs = tabs; // expose for test instrumentation
-    let activeTabId = null;
+    let activeTabId = null;          // primary panel's active tab (kept as the original name for legacy callers)
+    let activeTabSideId = null;      // side panel's active tab
+    let focusedPanel = 'primary';    // 'primary' | 'side' — last panel the user clicked into
+    let sidePanelOpen = false;       // mirrors whether any tab has panel:'side'
+    let sidePanelWidth = parseInt(localStorage.getItem('sidePanelWidth') || '480', 10);
+    // Per-session panel assignment + per-panel order persisted across reloads (#251)
+    const tabPanelAssignments = (() => {
+      try { return JSON.parse(localStorage.getItem('tabPanelAssignments') || '{}'); }
+      catch { return {}; }
+    })();
     let projectState = [];
     let programState = [];
     const expandedPrograms = new Set(JSON.parse(localStorage.getItem('expandedPrograms') || '["__unassigned__"]'));
@@ -1835,6 +1877,9 @@ build/**</textarea>
         term, fitAddon, ws: null, status: 'disconnected',
         paneEl, reconnectTimer: null, reconnectDelay: 1000, heartbeat: null,
         dataDisposable: null, resizeDisposable: null,
+        // #251: which panel this tab lives in. Defaults to primary; can be
+        // 'side' if a previous session opened it there (persistence).
+        panel: tabPanelAssignments[tabId] === 'side' ? 'side' : 'primary',
       };
       tabs.set(tabId, tab);
 
@@ -3142,6 +3187,9 @@ build/**</textarea>
         id: tabId, type: 'file', name: fileName, filePath,
         editorType, paneEl, dirty: false, editor: null,
         status: 'connected',
+        // #251: documents/artifacts default to side panel. CLI sessions stay
+        // in primary. Persistence overrides if the user moved this tab.
+        panel: tabPanelAssignments[tabId] === 'primary' ? 'primary' : 'side',
       };
       tabs.set(tabId, tab);
 
