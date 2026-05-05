@@ -5527,13 +5527,13 @@ for (const p of projects) assert(trust[p] === 'TRUST_FOLDER');
 ---
 ### TAB-SPLIT-04: Drop a tab on the far-right edge opens the side panel
 **Issue:** #251.
-**Setup:** A CLI tab in primary; side panel hidden.
+**Setup:** A tab in primary; side panel hidden.
 **Steps:**
 1. Inspect `#side-edge-dropzone` element exists with absolute positioning on the right edge of `#primary-panel`.
-2. Begin a drag on a tab element (`dragstart` fires).
-3. The dropzone's `pointer-events` should switch from `none` to `auto` (CSS class `dragging` applied).
+2. Begin a drag on a tab element (`dispatchEvent(new DragEvent('dragstart', {dataTransfer}))` fires).
+3. The dropzone's `pointer-events` should switch from `none` to `auto` (CSS class `dragging` applied — assert via `edge.classList.contains('dragging')`).
 4. Dispatch `dragover` then `drop` (with `application/x-tab-id` set) on the dropzone.
-**Verify:** After drop, the moved tab now has `panel === 'side'`, the side panel is visible, and the tab appears in `#side-tab-bar`. `localStorage.tabPanelAssignments[<id>] === 'side'`.
+**Verify:** After drop, the moved tab now has `panel === 'side'`, the side panel is visible, and the tab appears in `#side-tab-bar`. `localStorage.tabPanelAssignments[<id>] === 'side'`. Verified end-to-end on M5.
 
 ---
 ### TAB-SPLIT-05: Cross-panel drop moves the tab + reparents pane
