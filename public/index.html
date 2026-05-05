@@ -2170,7 +2170,8 @@ build/**</textarea>
               if (msg.type === 'pong') return;
               if (msg.type === 'token_update') {
                 tab._statusData = msg.data;
-                if (tabId === activeTabId) updateStatusBar();
+                const panel = _panelOf(tabId);
+                if (tabId === _activeIdForPanel(panel)) updateStatusBar(panel);
                 // Debounced sidebar refresh on token updates (e.g. after compaction)
                 clearTimeout(window._tokenRefreshTimer);
                 window._tokenRefreshTimer = setTimeout(loadState, 2000);
@@ -2178,7 +2179,8 @@ build/**</textarea>
               }
               if (msg.type === 'settings_update') {
                 tab._settingsData = msg;
-                if (tabId === activeTabId) updateStatusBar();
+                const panel = _panelOf(tabId);
+                if (tabId === _activeIdForPanel(panel)) updateStatusBar(panel);
                 return;
               }
               if (msg.type === 'error') {
@@ -4151,15 +4153,26 @@ build/**</textarea>
 
     // ── Status Bar ────────────────────────────────────
 
-    function updateStatusBar() {
-      const bar = document.getElementById('status-bar');
-      if (!activeTabId || !tabs.has(activeTabId)) {
+    function updateStatusBar(panel) {
+      // Update both panels by default — caller can pass a specific panel.
+      if (!panel) {
+        updateStatusBar('primary');
+        updateStatusBar('side');
+        return;
+      }
+      const barId = panel === 'side' ? 'side-status-bar' : 'status-bar';
+      const bar = document.getElementById(barId);
+      if (!bar) return;
+      const activeId = _activeIdForPanel(panel);
+      const tab = activeId ? tabs.get(activeId) : null;
+      // Status bar is shown only when this panel's active tab is a CLI session.
+      // Documents and empty panels → hide.
+      if (!tab || tab.type === 'file') {
         bar.classList.remove('active');
         return;
       }
       bar.classList.add('active');
 
-      const tab = tabs.get(activeTabId);
       const cliType = tab.cli_type || 'claude';
       const statusData = tab._statusData || {};
 
@@ -4207,30 +4220,37 @@ build/**</textarea>
       `;
     }
 
-    async function pollTokenUsage() {
-      if (!activeTabId || !tabs.has(activeTabId)) return;
-      const tab = tabs.get(activeTabId);
+    async function pollTokenUsage(panel) {
+      // Default: poll both panels' active CLI tabs.
+      if (!panel) {
+        await pollTokenUsage('primary');
+        await pollTokenUsage('side');
+        return;
+      }
+      const activeId = _activeIdForPanel(panel);
+      if (!activeId || !tabs.has(activeId)) return;
+      const tab = tabs.get(activeId);
+      if (tab.type === 'file') return;
       if (!tab.project) return;
-      // Skip token API call for sessions with no JSONL
-      if (tab.id.startsWith('new_') || tab.id.startsWith('t_')) { updateStatusBar(); return; }
-
+      if (tab.id.startsWith('new_') || tab.id.startsWith('t_')) { updateStatusBar(panel); return; }
       try {
         const res = await fetch(`/api/sessions/${tab.id}/tokens?project=${encodeURIComponent(tab.project)}`);
         const data = await res.json();
         tab._statusData = data;
-        updateStatusBar();
+        updateStatusBar(panel);
       } catch {}
     }
 
     // Token updates pushed via WS (token_update messages). Keep pollTokenUsage
     // only for initial load and tab switches — no periodic interval needed.
 
-    // Update on tab switch
+    // Update on tab switch — refresh both panels' status bars.
     const _origSwitchTab2 = switchTab;
     switchTab = function(tabId) {
       _origSwitchTab2(tabId);
-      updateStatusBar();
-      pollTokenUsage();
+      const panel = _panelOf(tabId);
+      updateStatusBar(panel);
+      pollTokenUsage(panel);
     };
 
 
