@@ -1166,6 +1166,18 @@ build/**</textarea>
 
         const res = await fetch('/api/state');
         const data = await res.json();
+        // #287: a slow /api/state can return a snapshot computed BEFORE
+        // a recent program-assignment PUT landed; if we blindly assign
+        // the response, freshly-moved projects snap back to their old
+        // program. For each project with an in-flight assignment, force
+        // its program_id to the value we mutated to.
+        if (_pendingProgramAssignments.size && Array.isArray(data.projects)) {
+          for (const p of data.projects) {
+            if (_pendingProgramAssignments.has(p.name)) {
+              p.program_id = _pendingProgramAssignments.get(p.name);
+            }
+          }
+        }
         projectState = data.projects;
         programState = data.programs || [];
         if (data.workspace) window._workspace = data.workspace;
@@ -1567,12 +1579,22 @@ build/**</textarea>
     // /api/state round-trip (which is multi-second on installs with
     // many projects). PUT fires in the background; on failure we
     // restore the previous program_id and re-render.
+    //
+    // _pendingProgramAssignments tracks in-flight mutations so loadState
+    // doesn't overwrite a freshly-mutated project with a stale snapshot
+    // from an /api/state poll that was already in flight when the drop
+    // fired (the server-computed snapshot would still show the OLD
+    // program_id even though our PUT has since landed). Without this,
+    // the project visually snaps back to its old position 4–5s after
+    // the drop on hosts where /api/state is slow.
+    const _pendingProgramAssignments = new Map(); // projName → expected program_id
     async function _assignProjectToProgram(projName, newProgramId) {
       const proj = projectState.find(p => p.name === projName);
       if (!proj) return;
       const oldProgramId = proj.program_id ?? null;
       if ((oldProgramId ?? null) === (newProgramId ?? null)) return; // no-op drop
       proj.program_id = newProgramId;
+      _pendingProgramAssignments.set(projName, newProgramId);
       renderSidebar();
       try {
         const res = await fetch(`/api/projects/${encodeURIComponent(projName)}/program`, {
@@ -1580,6 +1602,23 @@ build/**</textarea>
           body: JSON.stringify({ program_id: newProgramId }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        // Re-assert in case a stale loadState landed between mutation and PUT
+        // success and clobbered our value. Then release the lock after a
+        // small grace period so any FURTHER stale GETs (issued before our
+        // PUT but still in flight) don't undo us either.
+        const stillProj = projectState.find(p => p.name === projName);
+        if (stillProj && (stillProj.program_id ?? null) !== (newProgramId ?? null)) {
+          stillProj.program_id = newProgramId;
+          renderSidebar();
+        }
+        // Hold the lock for /api/state's worst-case latency on this host.
+        // 7s covers M5/irina and is short enough that real subsequent
+        // loadStates after the grace period reflect server truth.
+        setTimeout(() => {
+          if (_pendingProgramAssignments.get(projName) === newProgramId) {
+            _pendingProgramAssignments.delete(projName);
+          }
+        }, 7000);
       } catch (err) {
         // Roll back the optimistic change
         const stillProj = projectState.find(p => p.name === projName);
@@ -1587,6 +1626,7 @@ build/**</textarea>
           stillProj.program_id = oldProgramId;
           renderSidebar();
         }
+        _pendingProgramAssignments.delete(projName);
         console.error('_assignProjectToProgram failed:', err);
       }
     }
