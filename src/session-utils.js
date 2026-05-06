@@ -490,17 +490,13 @@ async function summarizeSession(sessionId, project) {
   }
 }
 
-// #286: Gemini context-window lookup. Mirrors gemini-cli's own
-// tokenLimits.ts (packages/core/src/core/tokenLimits.ts) so we agree
-// with what the CLI is actually enforcing. Gemma-4 caps at 256k; all
-// supported gemini-* models share the 1M default. Substring match;
-// longest match wins.
+// #286: Gemini context-window. The workbench only spawns Gemini CLI
+// sessions, all of which use gemini-* models (gemini-2.5-pro,
+// gemini-3-flash-preview, etc.) that share the published 1,048,576
+// token context window. No plan-tier capping like Claude/Codex.
 function _geminiMaxTokens(model) {
   if (!model) return null;
-  const m = String(model).toLowerCase();
-  if (m.includes('gemma-4')) return 256000;
-  if (m.includes('gemini-')) return 1048576;
-  return null;
+  return String(model).toLowerCase().includes('gemini-') ? 1048576 : null;
 }
 
 function _getGeminiTokenUsage(sessionId) {
