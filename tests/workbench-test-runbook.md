@@ -5612,6 +5612,109 @@ for (const p of projects) assert(trust[p] === 'TRUST_FOLDER');
 **Verify:** Returns `8px` — the cumulative left indent for projects under a program is 8px (header at 0, children at 8). Sessions retain their existing offset under the project header. Total indent at session level stays manageable in a narrow sidebar.
 
 ---
+### CTX-CLAUDE-01: Claude max_tokens read from live statusLine state file
+**Issue:** #286.
+**Setup:** A Claude session that has had at least one assistant turn since the statusLine collector was wired in (post-server-restart). State file should exist at `/data/.claude/statusline-state-<session_id>.json`.
+**Steps:**
+1. `ssh <user>@<host> "docker exec workbench cat /data/.claude/statusline-state-<sid>.json | jq '.context_window.context_window_size, .model.id'"` — capture the live values the CLI reported.
+2. `curl ${WORKBENCH_URL}/api/sessions/<sid>/tokens | jq` — capture API response.
+**Verify:** API `max_tokens` equals the state file's `context_window_size`. API `model` equals state file `model.id` (including any `[1m]` suffix the JSONL doesn't carry). API `input_tokens` equals state file `current_usage.input_tokens + cache_creation_input_tokens + cache_read_input_tokens` per the docs (output excluded).
+
+---
+### CTX-CLAUDE-02: max_tokens becomes null when state file is removed
+**Issue:** #286.
+**Setup:** Same as CTX-CLAUDE-01 plus session-info cache TTL elapsed since last fetch.
+**Steps:**
+1. Delete `/data/.claude/statusline-state-<sid>.json`.
+2. Wait ≥35s (session-info cache TTL is 30s).
+3. `curl ${WORKBENCH_URL}/api/sessions/<sid>/tokens`.
+**Verify:** API returns `max_tokens: null`. `model` falls back to whatever the JSONL records (may differ from the live model id since JSONL is older). UI status bar renders `?` for the denominator.
+
+---
+### CTX-CLAUDE-03: Sending a new assistant turn rewrites the state file and restores live values
+**Issue:** #286.
+**Setup:** State file deleted per CTX-CLAUDE-02 — API returns null max_tokens.
+**Steps:**
+1. In the Claude session's tmux pane, type a prompt and press Enter.
+2. Wait for Claude to respond (status line at bottom of CLI pane updates).
+3. Verify `/data/.claude/statusline-state-<sid>.json` exists and is fresh.
+4. Wait ≥35s for cache TTL, then `curl ${WORKBENCH_URL}/api/sessions/<sid>/tokens`.
+**Verify:** State file rewritten by the collector. API `max_tokens` is back to the live `context_window_size`. UI status bar denominator reverts from `?` to the actual number.
+
+---
+### CTX-CODEX-01: Codex max_tokens read from rollout JSONL `model_context_window`
+**Issue:** #286.
+**Setup:** A Codex session whose rollout JSONL has at least one `event_msg/token_count` event (modern Codex CLI auto-emits these).
+**Steps:**
+1. Locate the active rollout JSONL: `~/.codex/sessions/YYYY/MM/DD/rollout-*-<cli_session_id>.jsonl`.
+2. Find the most recent `event_msg/token_count` line and read `payload.info.model_context_window` and `payload.info.last_token_usage.input_tokens`.
+3. `curl ${WORKBENCH_URL}/api/sessions/<sid>/tokens | jq`.
+**Verify:** API `max_tokens` equals the JSONL's `model_context_window` (may be a non-standard plan-effective number like 258400 — that's correct, it's the live cap). API `input_tokens` equals `last_token_usage.input_tokens`. API `model` equals the most recent `turn_context.payload.model`.
+
+---
+### CTX-CODEX-02: Codex falls back to `task_started.model_context_window` when token_count is absent
+**Issue:** #286.
+**Setup:** A Codex session whose JSONL has `task_started` events but no `token_count` events (older session, or one that errored before completing a turn).
+**Steps:**
+1. Verify with `grep -c '"type":"token_count"' <jsonl>` — expect 0.
+2. Verify `grep -m1 '"type":"task_started"' <jsonl>` returns a payload with `model_context_window`.
+3. `curl ${WORKBENCH_URL}/api/sessions/<sid>/tokens`.
+**Verify:** API `max_tokens` equals the value from `task_started.model_context_window`. `input_tokens` is 0 (no usage data available — don't fabricate). UI shows the right max but `0%` for current usage.
+
+---
+### CTX-GEMINI-01: Gemini max_tokens uses bundled tokenLimits map; used from messages[].tokens.input
+**Issue:** #286.
+**Setup:** A Gemini session whose chat JSON has at least one assistant message with a `tokens` object.
+**Steps:**
+1. Locate session file: `~/.gemini/tmp/<project>/chats/session-*-<cli_session_id_short>.json` (or `.jsonl` for newer Gemini CLI).
+2. `jq '.messages[] | select(.type == "gemini") | .tokens.input' <file> | tail -1` — capture the latest used count.
+3. Note the model id from `.messages[] | select(.type == "gemini") | .model | last`.
+4. `curl ${WORKBENCH_URL}/api/sessions/<sid>/tokens`.
+**Verify:** API `max_tokens` is `1048576` for any `gemini-*` model id, `256000` for any `gemma-4-*`, else null. API `input_tokens` matches the latest `messages[].tokens.input` value. API `model` matches the latest gemini message's `model` field.
+
+---
+### CTX-UI-01: Status bar renders Model + Context + percentage from live data
+**Issue:** #286.
+**Setup:** A CLI session with a known live max_tokens (any of the three CLIs).
+**Steps:**
+1. Open the workbench in a browser.
+2. Click into the session to make it the active tab.
+3. Wait ≥2s for `pollTokenUsage('primary')` to complete.
+4. Read the status bar: `document.querySelector('#status-bar').textContent`.
+**Verify:** Status bar contains `Model: <short>` (e.g., "Opus", "Sonnet", "Haiku", "gemini-3-flash-preview", "gpt-5.4"), `Context: <used>k / <max>k`, `<NN>%`, and the connection status ("connected" or similar). Values match the API's `/api/sessions/<sid>/tokens` response. Percentage = `Math.round(used/max*100)`.
+
+---
+### CTX-UI-02: Status bar denominator shows `?` when max_tokens is null
+**Issue:** #286.
+**Setup:** A CLI session whose live source has no max value yet (e.g., Claude with state file deleted, or a fresh Codex session before its first `task_started` event).
+**Steps:**
+1. Click into the session.
+2. Wait ≥2s for poll.
+3. Read status bar text.
+**Verify:** Status bar shows `<used>k / ?` and `?` for the percentage. The fill bar shows zero width but the green class is applied (no fake red/amber from misleading division). No fabricated default like 200k or 1M is shown.
+
+---
+### CTX-UI-03: Side panel status bar reports its own panel's active CLI (not primary's)
+**Issue:** #286, #251.
+**Setup:** A primary-panel CLI tab and a side-panel CLI tab on different models with different max_tokens (e.g., primary = Claude/1M, side = Codex/258k).
+**Steps:**
+1. Open both tabs side-by-side via the split-tab feature.
+2. Wait for both panels' status bars to populate.
+3. Read both: `document.querySelector('#status-bar').textContent` and `document.querySelector('#side-status-bar').textContent`.
+**Verify:** Each status bar reflects its own panel's active CLI's values — the primary bar is Claude/1M, the side bar is Codex/258k. Switching the active tab in either panel updates only that panel's status bar.
+
+---
+### CTX-UI-04: Token count refreshes after a new assistant turn (live polling)
+**Issue:** #286.
+**Setup:** Active Claude tab in primary panel, current input_tokens visible in status bar.
+**Steps:**
+1. Note the current `Context: Xk / Yk Z%` value.
+2. Send a non-trivial prompt (≥50 tokens of new content).
+3. Wait for Claude to respond AND ≥30s after response (the longer of `pollTokenUsage` interval and session-info cache TTL).
+4. Re-read status bar.
+**Verify:** `Xk` (used) increases (the new turn's input tokens added). `Yk` (max) is unchanged unless the live source genuinely reports a different cap (e.g., model switch). Percentage updates accordingly.
+
+---
 ## Troubleshooting
 
 | Symptom | Likely Cause | Action |
