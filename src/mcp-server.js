@@ -125,10 +125,9 @@ const TOOLS = [
     session_id: P.session_id, project: P.project,
   }, ['session_id']),
   T('session_prepare_pre_compact', 'Return the pre-compact checklist prompt — call before /compact in a long session.', {}),
-  T('session_resume_post_compact', 'Return the resume prompt for after a /compact, with the last N JSONL lines injected as context. Output is hard-capped at max_chars (default 16384) to stay readable in a single tool result; if the requested tail exceeds the cap, only the most recent lines that fit are kept.', {
+  T('session_resume_post_compact', 'Return the resume prompt for after a /compact. Writes the last N JSONL lines verbatim to a temp file under /tmp and returns a prompt that points at that path; the model reads the file with Read offset/limit. No truncation — tail_lines is honored exactly.', {
     session_id: P.session_id,
-    tail_lines: { type: 'number', description: 'Lines of session tail to consider (default 15). Each Claude JSONL line can be 1-3 KiB after stripping; large defaults blow past the Read cap. Use a small number for long sessions.' },
-    max_chars: { type: 'number', description: 'Hard cap on injected-tail char count (default 16384). The tail is trimmed line-by-line from the start to fit; the cap takes precedence over tail_lines.' },
+    tail_lines: { type: 'number', description: 'Lines of session tail to write to the temp file (default 60). Honored exactly — no size cap. The model reads the file in chunks via Read offset/limit.' },
   }, ['session_id']),
   T('session_export', 'Export a session — raw JSONL for Claude, structured summary for Gemini/Codex.', {
     session_id: P.session_id, project: P.project,

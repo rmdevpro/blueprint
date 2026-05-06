@@ -2036,14 +2036,26 @@ function registerCoreRoutes(
       }
       if (mode === 'resume') {
         let tail = '';
+        let lineCount = 0;
         try {
           const content = await readFile(sessionFile, 'utf-8');
           const lines = content.trim().split('\n').filter(Boolean);
-          tail = formatSessionTail(lines.slice(-tailLines));
+          const kept = lines.slice(-tailLines);
+          tail = kept.join('\n');
+          lineCount = kept.length;
         } catch (err) {
           tail = '(could not read session file: ' + err.message + ')';
         }
-        return res.json({ prompt: config.getPrompt('session-resume', { SESSION_TAIL: tail }) });
+        const tailPath = join('/tmp', `workbench-resume-${sessionId}-${Date.now()}.txt`);
+        require('fs').writeFileSync(tailPath, tail, 'utf-8');
+        const byteCount = Buffer.byteLength(tail, 'utf-8');
+        return res.json({
+          prompt: config.getPrompt('session-resume', {
+            TAIL_PATH: tailPath,
+            LINE_COUNT: String(lineCount),
+            BYTE_COUNT: String(byteCount),
+          }),
+        });
       }
       if (mode === 'transition') {
         return res.json({ prompt: config.getPrompt('session-transition', {}) });
@@ -2217,27 +2229,6 @@ function registerCoreRoutes(
   registerWebhookRoutes(app);
 
   return { checkAuthStatus, trustDir };
-}
-
-function formatSessionTail(lines) {
-  const turns = [];
-  for (const line of lines) {
-    try {
-      const entry = JSON.parse(line);
-      if (entry.type === 'user' && entry.message?.content) {
-        const text = Array.isArray(entry.message.content)
-          ? entry.message.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
-          : String(entry.message.content);
-        if (text.trim()) turns.push(`**User:** ${text.trim()}`);
-      } else if (entry.type === 'assistant' && entry.message?.content) {
-        const text = Array.isArray(entry.message.content)
-          ? entry.message.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
-          : String(entry.message.content);
-        if (text.trim()) turns.push(`**Assistant:** ${text.trim()}`);
-      }
-    } catch { /* skip malformed lines */ }
-  }
-  return turns.join('\n\n');
 }
 
 module.exports = registerCoreRoutes;
