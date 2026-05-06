@@ -5388,8 +5388,14 @@ build/**</textarea>
         const isFirst = accounts.length === 0;
         const account = { id: _genUUIDv4(), name, host, username, token, isKB: isFirst };
         accounts.push(account);
-        await saveSetting('git_accounts', accounts);
-        if (isFirst) await saveSetting('kb_repo_url', kbUrlForAccount(account));
+        // #292: saveSetting returns false on PUT failure (it surfaces its own
+        // error via showSettingsError/alert). Bail out before clearing inputs
+        // and re-rendering the table — otherwise the UI looks like success.
+        if (!await saveSetting('git_accounts', accounts)) return;
+        if (isFirst && !await saveSetting('kb_repo_url', kbUrlForAccount(account))) {
+          renderGitAccounts(accounts);
+          return;
+        }
         document.getElementById('git-account-name').value = '';
         document.getElementById('git-account-username').value = '';
         document.getElementById('git-account-token').value = '';
@@ -5508,7 +5514,13 @@ build/**</textarea>
       let banner = document.getElementById('settings-error-banner');
       if (!banner) {
         const modal = document.querySelector('#settings-modal .modal-content');
-        if (!modal) { console.error(msg); return; }
+        if (!modal) {
+          // #292: previously a silent console.error — failures vanished if the
+          // settings modal had closed by the time the PUT response arrived.
+          // Fall back to alert so the user actually sees the error.
+          alert(String(msg));
+          return;
+        }
         banner = document.createElement('div');
         banner.id = 'settings-error-banner';
         banner.style.cssText = `
