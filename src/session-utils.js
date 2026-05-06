@@ -490,6 +490,19 @@ async function summarizeSession(sessionId, project) {
   }
 }
 
+// #286: Gemini context-window lookup. Mirrors gemini-cli's own
+// tokenLimits.ts (packages/core/src/core/tokenLimits.ts) so we agree
+// with what the CLI is actually enforcing. Gemma-4 caps at 256k; all
+// supported gemini-* models share the 1M default. Substring match;
+// longest match wins.
+function _geminiMaxTokens(model) {
+  if (!model) return null;
+  const m = String(model).toLowerCase();
+  if (m.includes('gemma-4')) return 256000;
+  if (m.includes('gemini-')) return 1048576;
+  return null;
+}
+
 function _getGeminiTokenUsage(sessionId) {
   const geminiSessions = discoverGeminiSessions();
   const session = db.getSession(sessionId);
@@ -499,9 +512,8 @@ function _getGeminiTokenUsage(sessionId) {
   if (cliSessId) {
     target = geminiSessions.find(g => g.sessionId === cliSessId);
   }
-  if (!target) return { input_tokens: 0, model: null, max_tokens: 1000000 };
+  if (!target) return { input_tokens: 0, model: null, max_tokens: null };
 
-  // Gemini JSON files may include usage data in messages
   try {
     const fs = require('fs');
     const data = JSON.parse(fs.readFileSync(target.filePath, 'utf-8'));
@@ -509,10 +521,22 @@ function _getGeminiTokenUsage(sessionId) {
     let inputTokens = 0;
     let model = target.model || null;
 
-    // Look for usage info in gemini responses (from end)
+    // Walk from latest gemini message back to find the most recent
+    // tokens block. Gemini CLI writes a per-turn breakdown:
+    //   tokens: { input, output, cached, thoughts, tool, total }
+    // The "input" field is the cumulative chat-history token count
+    // sent to the model on this turn — the right denominator-paired
+    // numerator for context-fill display. Older sessions used a
+    // separate `usage` field; keep that as a fallback.
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
-      if (msg.type === 'gemini' && msg.usage) {
+      if (msg.type !== 'gemini') continue;
+      if (msg.tokens && typeof msg.tokens.input === 'number') {
+        inputTokens = msg.tokens.input;
+        if (msg.model) model = msg.model;
+        break;
+      }
+      if (msg.usage) {
         inputTokens = msg.usage.input_tokens || msg.usage.prompt_token_count || 0;
         if (msg.model) model = msg.model;
         break;
@@ -522,10 +546,10 @@ function _getGeminiTokenUsage(sessionId) {
     return {
       input_tokens: inputTokens,
       model,
-      max_tokens: 1000000, // Gemini models have 1M context
+      max_tokens: _geminiMaxTokens(model),
     };
   } catch {
-    return { input_tokens: 0, model: target.model || null, max_tokens: 1000000 };
+    return { input_tokens: 0, model: target.model || null, max_tokens: _geminiMaxTokens(target.model) };
   }
 }
 
@@ -543,35 +567,61 @@ function _getCodexTokenUsage(sessionId) {
       return rolloutId === cliSessId;
     });
   }
-  if (!target) return { input_tokens: 0, model: null, max_tokens: 200000 };
+  if (!target) return { input_tokens: 0, model: null, max_tokens: null };
 
-  // Codex JSONL may include usage in turn_context or response entries
+  // #286: Codex's plan-effective cap and live used count are both
+  // in the rollout JSONL — the latest event_msg/token_count event
+  // carries payload.info.model_context_window (the cap the CLI is
+  // actively enforcing, e.g. 258400 for Plus tier) plus
+  // payload.info.last_token_usage.input_tokens (the latest turn's
+  // input, which equals current context occupancy since each turn
+  // resends the full history). Live model is in turn_context.payload.
+  // Older sessions may lack token_count entirely; fall back to
+  // task_started for the cap when present.
   try {
     const fs = require('fs');
     const content = fs.readFileSync(target.filePath, 'utf-8');
     const lines = content.trim().split('\n');
     let inputTokens = 0;
+    let maxTokens = null;
     let model = target.model || null;
+    let modelFromTurnCtx = false;
 
     for (let i = lines.length - 1; i >= 0; i--) {
       if (!lines[i].trim()) continue;
       try {
         const entry = JSON.parse(lines[i]);
-        if (entry.type === 'turn_context' && entry.payload?.usage) {
-          inputTokens = entry.payload.usage.input_tokens || entry.payload.usage.total_tokens || 0;
-          if (entry.payload.model) model = entry.payload.model;
-          break;
+        const p = entry.payload || {};
+        // Latest token_count: covers both used and max (preferred source)
+        if (entry.type === 'event_msg' && p.type === 'token_count') {
+          const info = p.info || {};
+          if (!inputTokens && info.last_token_usage && typeof info.last_token_usage.input_tokens === 'number') {
+            inputTokens = info.last_token_usage.input_tokens;
+          }
+          if (maxTokens == null && typeof info.model_context_window === 'number') {
+            maxTokens = info.model_context_window;
+          }
         }
+        // task_started: fallback cap source
+        if (maxTokens == null && entry.type === 'event_msg' && p.type === 'task_started' && typeof p.model_context_window === 'number') {
+          maxTokens = p.model_context_window;
+        }
+        // turn_context: latest live model
+        if (!modelFromTurnCtx && entry.type === 'turn_context' && p.model) {
+          model = p.model;
+          modelFromTurnCtx = true;
+        }
+        if (inputTokens && maxTokens != null && modelFromTurnCtx) break;
       } catch { /* skip malformed */ }
     }
 
     return {
       input_tokens: inputTokens,
       model,
-      max_tokens: 200000, // Codex/GPT default
+      max_tokens: maxTokens,
     };
   } catch {
-    return { input_tokens: 0, model: target.model || null, max_tokens: 200000 };
+    return { input_tokens: 0, model: target.model || null, max_tokens: null };
   }
 }
 
