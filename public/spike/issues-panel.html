@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Spike: Issues-as-Tasks Panel</title>
+<style>
+  :root {
+    --bg: #1a1a1a; --bg2: #222; --bg3: #2a2a2a;
+    --fg: #e0e0e0; --muted: #888; --accent: #6cf;
+    --open: #2ea043; --closed: #8957e5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font: 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; height: 100vh; }
+  body { display: grid; grid-template-rows: auto 1fr; }
+  header { padding: 8px 12px; background: var(--bg2); border-bottom: 1px solid #333; display: flex; gap: 12px; align-items: center; }
+  header h1 { margin: 0; font-size: 14px; font-weight: 600; }
+  header .summary { color: var(--muted); font-size: 11px; }
+  header .filters { margin-left: auto; display: flex; gap: 8px; }
+  header select, header input { background: var(--bg3); color: var(--fg); border: 1px solid #444; padding: 3px 6px; font: inherit; border-radius: 3px; }
+  main { overflow: auto; padding: 0; }
+  .group { margin: 0; }
+  .group-header { padding: 6px 12px; background: var(--bg2); color: var(--muted); font-size: 11px; text-transform: uppercase; cursor: pointer; user-select: none; border-bottom: 1px solid #333; }
+  .group-header:hover { color: var(--fg); }
+  .group-header .count { background: #333; padding: 1px 6px; border-radius: 8px; margin-left: 6px; }
+  .group.collapsed .issues { display: none; }
+  .issue { display: flex; align-items: center; gap: 8px; padding: 4px 12px; border-bottom: 1px solid #2a2a2a; cursor: pointer; }
+  .issue:hover { background: var(--bg3); }
+  .issue .num { color: var(--muted); font-family: 'SF Mono', Menlo, monospace; font-size: 11px; min-width: 50px; }
+  .issue .state { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .issue.OPEN .state { background: var(--open); }
+  .issue.CLOSED .state { background: var(--closed); }
+  .issue.CLOSED .title { color: var(--muted); text-decoration: line-through; }
+  .issue .title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .issue .labels { display: flex; gap: 4px; flex: none; }
+  .issue .label { font-size: 10px; padding: 1px 6px; border-radius: 8px; }
+  .issue .meta { color: var(--muted); font-size: 11px; flex: none; min-width: 70px; text-align: right; }
+  .issue .assignees { display: flex; gap: 2px; }
+  .issue .avatar { width: 16px; height: 16px; border-radius: 50%; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Spike: Issues-as-Tasks Panel</h1>
+  <span class="summary" id="summary"></span>
+  <div class="filters">
+    Group by:
+    <select id="groupBy">
+      <option value="state">State (Open/Closed)</option>
+      <option value="label">Label</option>
+      <option value="prefix">Title prefix (feat/fix/bug)</option>
+      <option value="none">None (flat)</option>
+    </select>
+    State:
+    <select id="stateFilter">
+      <option value="OPEN" selected>Open only</option>
+      <option value="CLOSED">Closed only</option>
+      <option value="all">All</option>
+    </select>
+    <input type="text" id="search" placeholder="Search title…" />
+  </div>
+</header>
+<main id="panel"></main>
+<script>
+let ISSUES = [];
+fetch('issues.json').then(r => r.json()).then(data => { ISSUES = data; render(); });
+
+function getPrefix(title) {
+  const m = /^(\w+)(?:\([^)]*\))?:/.exec(title);
+  return m ? m[1].toLowerCase() : '(no prefix)';
+}
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+function lblColor(hex) { return '#' + hex; }
+function lblTextColor(hex) {
+  const r = parseInt(hex.slice(0,2),16), g = parseInt(hex.slice(2,4),16), b = parseInt(hex.slice(4,6),16);
+  return (r*0.299 + g*0.587 + b*0.114) > 150 ? '#000' : '#fff';
+}
+
+function render() {
+  const groupBy = document.getElementById('groupBy').value;
+  const stateF = document.getElementById('stateFilter').value;
+  const search = document.getElementById('search').value.toLowerCase();
+  let filtered = ISSUES.filter(i =>
+    (stateF === 'all' || i.state === stateF) &&
+    (!search || i.title.toLowerCase().includes(search))
+  );
+  document.getElementById('summary').textContent =
+    `${filtered.length} of ${ISSUES.length} issues`;
+
+  const groups = {};
+  for (const i of filtered) {
+    let keys;
+    if (groupBy === 'state') keys = [i.state];
+    else if (groupBy === 'label') keys = i.labels.nodes.length ? i.labels.nodes.map(l => l.name) : ['(no label)'];
+    else if (groupBy === 'prefix') keys = [getPrefix(i.title)];
+    else keys = ['All issues'];
+    for (const k of keys) {
+      if (!groups[k]) groups[k] = [];
+      groups[k].push(i);
+    }
+  }
+  const sortedKeys = Object.keys(groups).sort((a,b) => groups[b].length - groups[a].length);
+
+  const html = sortedKeys.map(k => {
+    const list = groups[k].sort((a,b) => b.number - a.number);
+    return `<section class="group">
+      <div class="group-header" onclick="this.parentNode.classList.toggle('collapsed')">
+        ${escapeHtml(k)}<span class="count">${list.length}</span>
+      </div>
+      <div class="issues">
+        ${list.map(i => `
+          <div class="issue ${i.state}" onclick="window.open('https://github.com/rmdevpro/agentic-workbench/issues/${i.number}','_blank')">
+            <span class="state"></span>
+            <span class="num">#${i.number}</span>
+            <span class="title">${escapeHtml(i.title)}</span>
+            <span class="labels">${i.labels.nodes.map(l => `<span class="label" style="background:${lblColor(l.color)};color:${lblTextColor(l.color)}">${escapeHtml(l.name)}</span>`).join('')}</span>
+            <span class="meta">${i.comments.totalCount ? '💬' + i.comments.totalCount : ''}</span>
+            <span class="assignees">${i.assignees.nodes.map(a => `<img class="avatar" src="${a.avatarUrl}" title="${a.login}" alt="">`).join('')}</span>
+          </div>`).join('')}
+      </div>
+    </section>`;
+  }).join('');
+  document.getElementById('panel').innerHTML = html;
+}
+document.getElementById('groupBy').addEventListener('change', render);
+document.getElementById('stateFilter').addEventListener('change', render);
+document.getElementById('search').addEventListener('input', render);
+</script>
+</body>
+</html>
