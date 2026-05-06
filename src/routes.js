@@ -1456,11 +1456,21 @@ function registerCoreRoutes(
   // Build a tree shaped { programs: [ { id, name, projects: [ { id, name, path, has_repo, tasks: [ { ..., subtasks: [...] } ] } ] } ] }
   // Tasks within each project are top-level (parent_task_id IS NULL); subtasks
   // are nested recursively under their parent.
-  function buildProjectTaskTree({ filter = 'todo', showArchived = false } = {}) {
+  function buildProjectTaskTree({ filter = 'open', showArchived = false } = {}) {
     const programs = db.getAllPrograms('all');
     const projects = db.getProjects();
-    let tasks = filter === 'all' ? db.getAllTasks('all') : db.getAllTasks(filter);
-    if (!showArchived) tasks = tasks.filter(t => !t.archived);
+    let tasks;
+    if (filter === 'open') {
+      // Open = any non-terminal status
+      tasks = db.getAllTasks('all').filter(t => ['todo', 'active', 'blocked'].includes(t.status));
+    } else if (filter === 'archived-flag') {
+      // Show only archived tasks (archived=1) — different from old 'archived' status
+      tasks = db.getAllTasks('all').filter(t => !!t.archived);
+    } else {
+      tasks = filter === 'all' ? db.getAllTasks('all') : db.getAllTasks(filter);
+    }
+    // For archived-flag mode, don't filter out archived. Otherwise, hide them by default.
+    if (filter !== 'archived-flag' && !showArchived) tasks = tasks.filter(t => !t.archived);
     const projTasks = new Map(); // project_id -> task array
     for (const t of tasks) {
       if (!projTasks.has(t.project_id)) projTasks.set(t.project_id, []);
@@ -1506,7 +1516,7 @@ function registerCoreRoutes(
   }
 
   app.get('/api/tasks/tree', (req, res) => {
-    const filter = req.query.filter || 'todo';
+    const filter = req.query.filter || 'open';
     const showArchived = req.query.show_archived === '1';
     res.json(buildProjectTaskTree({ filter, showArchived }));
   });

@@ -639,10 +639,10 @@
     <div id="panel-content">
       <div id="panel-tasks" class="panel-section" style="display:none">
         <div id="task-filter-bar">
-          <button class="filter-btn task-filter active" data-task-filter="todo" onclick="setTaskFilter('todo')">Active</button>
+          <button class="filter-btn task-filter active" data-task-filter="open" onclick="setTaskFilter('open')">Active</button>
           <button class="filter-btn task-filter" data-task-filter="all" onclick="setTaskFilter('all')">All</button>
           <button class="filter-btn task-filter" data-task-filter="done" onclick="setTaskFilter('done')">Done</button>
-          <button class="filter-btn task-filter" data-task-filter="archived" onclick="setTaskFilter('archived')">Archive</button>
+          <button class="filter-btn task-filter" data-task-filter="archived-flag" onclick="setTaskFilter('archived-flag')">Archived</button>
         </div>
         <div id="task-tree"></div>
       </div>
@@ -2954,7 +2954,7 @@ build/**</textarea>
 
 
     // ── Task Tree ────────────────────────────────────────
-    let taskFilter = 'todo';
+    let taskFilter = 'open';
     let editingTaskId = null;
 
     function setTaskFilter(filter) {
