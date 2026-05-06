@@ -227,38 +227,42 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_logs_module_ts ON logs(module, ts);
 `);
 
-// #303 task system v2 data migration: backfill project_id, github_issue, rank
-// for any tasks predating the schema change. Idempotent — only touches rows
-// whose new columns are still NULL.
+// #303 task system v2 data migration:
+//   1. Backfill project_id, github_issue, archived for any tasks still on the
+//      pre-v2 schema (project_id IS NULL).
+//   2. Densify rank within every (project_id, parent_task_id) bucket on every
+//      startup — keeps rank dense even if a previous migration left gaps from
+//      sort_order seed values, deletes, or partial migrations.
 (function migrateTasksToProjectBased() {
-  const needsMigration = db.prepare("SELECT COUNT(*) AS c FROM tasks WHERE project_id IS NULL").get().c;
-  if (!needsMigration) return;
-  const projects = db.prepare('SELECT id, path FROM projects ORDER BY length(path) DESC').all();
-  const tasks = db.prepare('SELECT id, folder_path, title, status, sort_order FROM tasks WHERE project_id IS NULL').all();
-  const setProjectId = db.prepare('UPDATE tasks SET project_id = ? WHERE id = ?');
-  const setIssue = db.prepare('UPDATE tasks SET github_issue = ? WHERE id = ?');
-  const setRank = db.prepare('UPDATE tasks SET rank = ? WHERE id = ?');
-  const setArchivedDone = db.prepare("UPDATE tasks SET archived = 1, status = 'done' WHERE id = ?");
-  for (const t of tasks) {
-    // Resolve project_id by longest-prefix match on folder_path
-    let pid = null;
-    for (const p of projects) {
-      if (t.folder_path === p.path || t.folder_path.startsWith(p.path + '/')) { pid = p.id; break; }
+  const needsBackfill = db.prepare("SELECT COUNT(*) AS c FROM tasks WHERE project_id IS NULL").get().c;
+  if (needsBackfill > 0) {
+    const projects = db.prepare('SELECT id, path FROM projects ORDER BY length(path) DESC').all();
+    const tasks = db.prepare('SELECT id, folder_path, title, status FROM tasks WHERE project_id IS NULL').all();
+    const setProjectId = db.prepare('UPDATE tasks SET project_id = ? WHERE id = ?');
+    const setIssue = db.prepare('UPDATE tasks SET github_issue = ? WHERE id = ?');
+    const setArchivedDone = db.prepare("UPDATE tasks SET archived = 1, status = 'done' WHERE id = ?");
+    for (const t of tasks) {
+      let pid = null;
+      for (const p of projects) {
+        if (t.folder_path === p.path || t.folder_path.startsWith(p.path + '/')) { pid = p.id; break; }
+      }
+      if (pid != null) setProjectId.run(pid, t.id);
+      if (t.status === 'archived') setArchivedDone.run(t.id);
+      const m = /^Issue\s+#(\d+):/i.exec(t.title || '');
+      if (m) setIssue.run(`rmdevpro/agentic-workbench#${m[1]}`, t.id);
     }
-    if (pid != null) setProjectId.run(pid, t.id);
-    // Map legacy archived status to archived flag + done
-    if (t.status === 'archived') setArchivedDone.run(t.id);
-    // Parse github_issue from title pattern "Issue #N: ..."
-    const m = /^Issue\s+#(\d+):/i.exec(t.title || '');
-    if (m) setIssue.run(`rmdevpro/agentic-workbench#${m[1]}`, t.id);
   }
-  // Densify rank within each (project_id, parent_task_id) bucket using prior sort_order
+  // Densify rank within every bucket on every boot.
+  const setRank = db.prepare('UPDATE tasks SET rank = ? WHERE id = ?');
   const buckets = db.prepare("SELECT DISTINCT project_id, COALESCE(parent_task_id, 0) AS pti FROM tasks WHERE project_id IS NOT NULL").all();
-  const getBucket = db.prepare(`SELECT id FROM tasks WHERE project_id = ? AND COALESCE(parent_task_id, 0) = ? ORDER BY sort_order ASC, id ASC`);
+  const getBucket = db.prepare(`SELECT id, rank, sort_order FROM tasks WHERE project_id = ? AND COALESCE(parent_task_id, 0) = ? ORDER BY rank ASC, sort_order ASC, id ASC`);
   for (const b of buckets) {
     const rows = getBucket.all(b.project_id, b.pti);
     let r = 1;
-    for (const row of rows) { setRank.run(r++, row.id); }
+    for (const row of rows) {
+      if (row.rank !== r) setRank.run(r, row.id);
+      r++;
+    }
   }
 })();
 
