@@ -1685,18 +1685,28 @@ function registerCoreRoutes(
     if (!key) return res.status(400).json({ error: 'key required' });
 
     // #291: Additional Paths is for directories OUTSIDE the workspace.
-    // Paths under WORKSPACE are already covered by the recursive scan.
+    // Reject only NEWLY-introduced redundant paths so pre-existing entries
+    // (added before this validation) don't block all future saves —
+    // the user removes those via the per-row × button.
     if (key === 'vector_additional_paths') {
       const arr = Array.isArray(value) ? value : [];
       const ws = safe.WORKSPACE;
-      const redundant = arr.filter(p => {
+      const isRedundant = (p) => {
         if (typeof p !== 'string' || !p.trim()) return false;
         const norm = pathResolve(p);
         return norm === ws || norm.startsWith(ws + '/');
-      });
-      if (redundant.length) {
+      };
+      let prev = [];
+      try {
+        const raw = db.getSetting('vector_additional_paths', '[]');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) prev = parsed;
+      } catch { /* fall through with prev = [] */ }
+      const newlyAdded = arr.filter(p => !prev.includes(p));
+      const offending = newlyAdded.filter(isRedundant);
+      if (offending.length) {
         return res.status(400).json({
-          error: `Paths under ${ws} are already scanned (Additional Paths is for paths outside the workspace): ${redundant.join(', ')}`,
+          error: `Paths under ${ws} are already scanned (Additional Paths is for paths outside the workspace): ${offending.join(', ')}`,
         });
       }
     }
