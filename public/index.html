@@ -1167,14 +1167,31 @@ build/**</textarea>
         const res = await fetch('/api/state');
         const data = await res.json();
         // #287: a slow /api/state can return a snapshot computed BEFORE
-        // a recent program-assignment PUT landed; if we blindly assign
-        // the response, freshly-moved projects snap back to their old
-        // program. For each project with an in-flight assignment, force
-        // its program_id to the value we mutated to.
-        if (_pendingProgramAssignments.size && Array.isArray(data.projects)) {
+        // a recent PUT landed; if we blindly assign the response, the
+        // entity snaps back to its pre-mutation state. For each entity
+        // with an in-flight edit, force its fields to the locally-
+        // mutated values before assigning data.projects to projectState.
+        if (Array.isArray(data.projects)) {
           for (const p of data.projects) {
             if (_pendingProgramAssignments.has(p.name)) {
               p.program_id = _pendingProgramAssignments.get(p.name);
+            }
+            if (_pendingProjectEdits.has(p.name)) {
+              const edit = _pendingProjectEdits.get(p.name);
+              if (edit.name != null) p.name = edit.name;
+              if (edit.state != null) p.state = edit.state;
+              if (edit.notes != null) p.notes = edit.notes;
+            }
+            if (Array.isArray(p.sessions) && _pendingSessionEdits.size) {
+              for (const s of p.sessions) {
+                if (_pendingSessionEdits.has(s.id)) {
+                  const edit = _pendingSessionEdits.get(s.id);
+                  if (edit.name != null) s.name = edit.name;
+                  if (edit.state != null) s.state = edit.state;
+                  if (edit.notes != null) s.notes = edit.notes;
+                  if (edit.archived != null) s.archived = !!edit.archived;
+                }
+              }
             }
           }
         }
@@ -1574,20 +1591,15 @@ build/**</textarea>
       return overlay;
     }
 
-    // #287: optimistic assign-project-to-program. Mutate projectState
-    // immediately so the sidebar re-renders without waiting for the
-    // /api/state round-trip (which is multi-second on installs with
-    // many projects). PUT fires in the background; on failure we
-    // restore the previous program_id and re-render.
-    //
-    // _pendingProgramAssignments tracks in-flight mutations so loadState
-    // doesn't overwrite a freshly-mutated project with a stale snapshot
-    // from an /api/state poll that was already in flight when the drop
-    // fired (the server-computed snapshot would still show the OLD
-    // program_id even though our PUT has since landed). Without this,
-    // the project visually snaps back to its old position 4–5s after
-    // the drop on hosts where /api/state is slow.
+    // #287: optimistic mutations for sidebar entities. Each Map tracks
+    // in-flight changes so loadState doesn't overwrite freshly-mutated
+    // entities with a stale /api/state snapshot (multi-second on slow
+    // hosts). After a PUT succeeds we hold the lock for ~7s past the
+    // worst-case /api/state latency, then release.
     const _pendingProgramAssignments = new Map(); // projName → expected program_id
+    const _pendingProjectEdits = new Map();       // projName → { name?, state?, notes? }
+    const _pendingSessionEdits = new Map();       // sessionId → { name?, state?, notes?, archived? }
+    const PENDING_LOCK_MS = 7000;
     async function _assignProjectToProgram(projName, newProgramId) {
       const proj = projectState.find(p => p.name === projName);
       if (!proj) return;
@@ -2611,19 +2623,55 @@ build/**</textarea>
         state: document.getElementById('cfg-state').value,
         notes: document.getElementById('cfg-notes').value,
       };
-
-      await fetch(`/api/sessions/${sessionId}/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
-      });
-
+      // Locate the session in projectState and mutate optimistically so the
+      // sidebar reflects the change immediately, before the PUT round-trip
+      // and any in-flight loadState completes.
+      let foundSession = null;
+      for (const p of projectState) {
+        const s = p.sessions?.find(s => s.id === sessionId);
+        if (s) { foundSession = s; break; }
+      }
+      const before = foundSession ? { name: foundSession.name, state: foundSession.state, notes: foundSession.notes } : null;
+      if (foundSession) {
+        if (config.name) foundSession.name = config.name;
+        foundSession.state = config.state;
+        foundSession.notes = config.notes;
+        // archived flag is the legacy mirror of state === 'archived'
+        foundSession.archived = config.state === 'archived';
+      }
+      _pendingSessionEdits.set(sessionId, { name: config.name, state: config.state, notes: config.notes, archived: config.state === 'archived' });
       const tab = tabs.get(sessionId);
       if (tab && config.name) tab.name = config.name;
-
-      document.getElementById(overlayId).remove();
-      loadState();
+      renderSidebar._lastHash = '';
+      renderSidebar();
       renderTabs();
+      document.getElementById(overlayId).remove();
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}/config`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setTimeout(() => {
+          const cur = _pendingSessionEdits.get(sessionId);
+          if (cur && cur.name === config.name && cur.state === config.state) {
+            _pendingSessionEdits.delete(sessionId);
+          }
+        }, PENDING_LOCK_MS);
+      } catch (err) {
+        // Rollback
+        if (foundSession && before) {
+          foundSession.name = before.name;
+          foundSession.state = before.state;
+          foundSession.notes = before.notes;
+          foundSession.archived = before.state === 'archived';
+        }
+        _pendingSessionEdits.delete(sessionId);
+        renderSidebar._lastHash = '';
+        renderSidebar();
+        console.error('saveSessionConfig failed:', err);
+      }
     }
 
     async function openProjectConfig(projectName) {
@@ -2705,24 +2753,82 @@ build/**</textarea>
         state: document.getElementById('proj-cfg-state').value,
         notes: document.getElementById('proj-cfg-notes').value,
       };
-      await fetch(`/api/projects/${encodeURIComponent(projectName)}/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
-      });
+      const proj = projectState.find(p => p.name === projectName);
+      const before = proj ? { name: proj.name, state: proj.state, notes: proj.notes } : null;
+      // Note: when name changes, the canonical key flips. Track BOTH so a
+      // pending entry under the old name still suppresses stale loadState
+      // reverts that arrive keyed by old name, and a new entry under the
+      // new name covers responses keyed by the new name.
+      if (proj) {
+        if (config.name) proj.name = config.name;
+        proj.state = config.state;
+        proj.notes = config.notes;
+      }
+      _pendingProjectEdits.set(projectName, { name: config.name, state: config.state, notes: config.notes });
+      if (config.name && config.name !== projectName) {
+        _pendingProjectEdits.set(config.name, { name: config.name, state: config.state, notes: config.notes });
+      }
+      renderSidebar._lastHash = '';
+      renderSidebar();
       document.getElementById(overlayId).remove();
-      loadState();
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(projectName)}/config`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setTimeout(() => {
+          _pendingProjectEdits.delete(projectName);
+          if (config.name && config.name !== projectName) _pendingProjectEdits.delete(config.name);
+        }, PENDING_LOCK_MS);
+      } catch (err) {
+        if (proj && before) {
+          proj.name = before.name;
+          proj.state = before.state;
+          proj.notes = before.notes;
+        }
+        _pendingProjectEdits.delete(projectName);
+        if (config.name && config.name !== projectName) _pendingProjectEdits.delete(config.name);
+        renderSidebar._lastHash = '';
+        renderSidebar();
+        console.error('saveProjectConfig failed:', err);
+      }
     }
 
     async function archiveSession(sessionId, archived) {
+      // Optimistic mutate + lock so the sidebar reflects archive/unarchive
+      // immediately rather than after the multi-second /api/state poll.
+      let foundSession = null;
+      for (const p of projectState) {
+        const s = p.sessions?.find(s => s.id === sessionId);
+        if (s) { foundSession = s; break; }
+      }
+      const before = foundSession ? { state: foundSession.state, archived: !!foundSession.archived } : null;
+      const newState = archived ? 'archived' : 'active';
+      if (foundSession) {
+        foundSession.state = newState;
+        foundSession.archived = !!archived;
+      }
+      _pendingSessionEdits.set(sessionId, { state: newState, archived: !!archived });
+      renderSidebar._lastHash = '';
+      renderSidebar();
       try {
-        await fetch(`/api/sessions/${sessionId}/archive`, {
+        const res = await fetch(`/api/sessions/${sessionId}/archive`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ archived }),
         });
-        loadState();
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setTimeout(() => _pendingSessionEdits.delete(sessionId), PENDING_LOCK_MS);
       } catch (err) {
+        if (foundSession && before) {
+          foundSession.state = before.state;
+          foundSession.archived = before.archived;
+        }
+        _pendingSessionEdits.delete(sessionId);
+        renderSidebar._lastHash = '';
+        renderSidebar();
         console.error('Failed to archive:', err);
       }
     }
