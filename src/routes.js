@@ -10,7 +10,7 @@ const {
   appendFile,
   access,
 } = require('fs/promises');
-const { join, basename } = require('path');
+const { join, basename, resolve: pathResolve } = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
@@ -1683,6 +1683,23 @@ function registerCoreRoutes(
   app.put('/api/settings', async (req, res) => {
     const { key, value } = req.body;
     if (!key) return res.status(400).json({ error: 'key required' });
+
+    // #291: Additional Paths is for directories OUTSIDE the workspace.
+    // Paths under WORKSPACE are already covered by the recursive scan.
+    if (key === 'vector_additional_paths') {
+      const arr = Array.isArray(value) ? value : [];
+      const ws = safe.WORKSPACE;
+      const redundant = arr.filter(p => {
+        if (typeof p !== 'string' || !p.trim()) return false;
+        const norm = pathResolve(p);
+        return norm === ws || norm.startsWith(ws + '/');
+      });
+      if (redundant.length) {
+        return res.status(400).json({
+          error: `Paths under ${ws} are already scanned (Additional Paths is for paths outside the workspace): ${redundant.join(', ')}`,
+        });
+      }
+    }
 
     // #180: validate API key / provider changes synchronously before persisting,
     // so a bad key doesn't leave the runtime silently broken. Skip validation when

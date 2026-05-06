@@ -957,7 +957,7 @@ build/**</textarea>
 
       <div class="settings-group">
         <h3>Additional Paths</h3>
-        <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px">Extra directories to index (outside workspace)</p>
+        <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px">Extra directories indexed for the <strong>documents</strong> and <strong>code</strong> collections. Must be outside <code style="background:var(--bg-primary);padding:1px 4px;border-radius:3px">/data/workspace</code> — workspace files are already scanned.</p>
         <div id="vector-additional-paths"></div>
         <div style="display:flex;gap:4px;margin-top:4px">
           <input id="vector-new-path" type="text" placeholder="/path/to/directory" style="flex:1;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace">
@@ -5218,12 +5218,19 @@ build/**</textarea>
       const input = document.getElementById('vector-new-path');
       const path = input.value.trim();
       if (!path) return;
+      // #291: paths under the workspace are already scanned recursively.
+      // Reject client-side with a clear message; server has the same check.
+      const ws = window._workspace || '/data/workspace';
+      if (path === ws || path.startsWith(ws + '/')) {
+        showSettingsError(`Paths under ${ws} are already scanned. Additional Paths is for paths outside the workspace.`);
+        return;
+      }
       const res = await fetch('/api/settings');
       const s = await res.json();
       const paths = s.vector_additional_paths || [];
       if (!paths.includes(path)) {
         paths.push(path);
-        await saveSetting('vector_additional_paths', paths);
+        if (!await saveSetting('vector_additional_paths', paths)) return;
       }
       input.value = '';
       renderVectorPaths(paths);

@@ -856,7 +856,10 @@ async function scanDocs() {
 async function scanCode() {
   const cfg = getCollectionConfig('code');
   if (!cfg.enabled) return 0;
-  return scanCollection(COLLECTIONS.code, [WORKSPACE], cfg.patterns || ['*.js', '*.py'], cfg.dims);
+  // #291: previously hardcoded [WORKSPACE], so Additional Paths set in
+  // Settings was silently ignored for the code collection. Match scanDocs.
+  const dirs = [WORKSPACE, ...getAdditionalPaths().filter(p => existsSync(p))];
+  return scanCollection(COLLECTIONS.code, dirs, cfg.patterns || ['*.js', '*.py'], cfg.dims);
 }
 
 async function scanClaudeSessions() {
