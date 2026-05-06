@@ -5251,24 +5251,51 @@ build/**</textarea>
         </tbody></table>`;
     }
 
+    // #289: crypto.randomUUID() is only available in secure contexts
+    // (HTTPS or localhost). Workbench is commonly served plain HTTP on
+    // a LAN IP, where crypto.randomUUID is undefined. crypto.getRandomValues
+    // is available in non-secure contexts and is enough to build an RFC-4122
+    // v4 UUID by hand.
+    function _genUUIDv4() {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return window.crypto.randomUUID();
+      }
+      const buf = new Uint8Array(16);
+      window.crypto.getRandomValues(buf);
+      buf[6] = (buf[6] & 0x0f) | 0x40; // version 4
+      buf[8] = (buf[8] & 0x3f) | 0x80; // variant 10
+      const hex = [...buf].map(b => b.toString(16).padStart(2, '0')).join('');
+      return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+    }
+
     async function addGitAccount() {
-      const name = document.getElementById('git-account-name').value.trim();
-      const host = document.getElementById('git-account-host').value.trim();
-      const username = document.getElementById('git-account-username').value.trim();
-      const token = document.getElementById('git-account-token').value.trim();
-      if (!name || !host || !username || !token) return;
-      const res = await fetch('/api/settings');
-      const s = await res.json();
-      const accounts = s.git_accounts || [];
-      const isFirst = accounts.length === 0;
-      const account = { id: crypto.randomUUID(), name, host, username, token, isKB: isFirst };
-      accounts.push(account);
-      await saveSetting('git_accounts', accounts);
-      if (isFirst) await saveSetting('kb_repo_url', kbUrlForAccount(account));
-      document.getElementById('git-account-name').value = '';
-      document.getElementById('git-account-username').value = '';
-      document.getElementById('git-account-token').value = '';
-      renderGitAccounts(accounts);
+      // #289: surface failures instead of letting async rejections vanish.
+      try {
+        const name = document.getElementById('git-account-name').value.trim();
+        const host = document.getElementById('git-account-host').value.trim();
+        const username = document.getElementById('git-account-username').value.trim();
+        const token = document.getElementById('git-account-token').value.trim();
+        if (!name || !host || !username || !token) return;
+        const res = await fetch('/api/settings');
+        const s = await res.json();
+        const accounts = s.git_accounts || [];
+        const isFirst = accounts.length === 0;
+        const account = { id: _genUUIDv4(), name, host, username, token, isKB: isFirst };
+        accounts.push(account);
+        await saveSetting('git_accounts', accounts);
+        if (isFirst) await saveSetting('kb_repo_url', kbUrlForAccount(account));
+        document.getElementById('git-account-name').value = '';
+        document.getElementById('git-account-username').value = '';
+        document.getElementById('git-account-token').value = '';
+        renderGitAccounts(accounts);
+      } catch (err) {
+        console.error('addGitAccount failed:', err);
+        if (typeof showSettingsError === 'function') {
+          showSettingsError(`Add account failed: ${err.message}`);
+        } else {
+          alert(`Add account failed: ${err.message}`);
+        }
+      }
     }
 
     async function deleteGitAccount(id) {
