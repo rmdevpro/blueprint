@@ -5715,6 +5715,90 @@ for (const p of projects) assert(trust[p] === 'TRUST_FOLDER');
 **Verify:** `Xk` (used) increases (the new turn's input tokens added). `Yk` (max) is unchanged unless the live source genuinely reports a different cap (e.g., model switch). Percentage updates accordingly.
 
 ---
+### DRAG-PROG-01: Project → Program drop renders instantly, no snap-back
+**Issue:** #287.
+**Setup:** A project in Unassigned and a program with at least one other project. \`/api/state\` on this host should be slow enough that a poll outlasts a PUT (M5/irina ≈ 4–5s).
+**Steps (browser):**
+1. Open the workbench UI in headless Playwright.
+2. Expand both the target program and Unassigned so both rows are in the DOM.
+3. Locate the project's \`.project-header\` element and the target program's \`.program-header\` element.
+4. Use \`browser_drag\` (real mouse drag) to drag the project header onto the program header.
+5. Read the new DOM position of the project's \`.project-header\` immediately after drag. Wait 8s. Read again.
+6. During that 8s window, at least one \`/api/state\` poll fires; verify the project has not snapped back.
+**Verify:** Drop → DOM re-render in ≤100ms. Project's \`.project-header\` is now under the target program's \`.program-children\` element. After the 8s wait (which spans the in-flight \`/api/state\` poll), the project is still under the target program. Server-side \`projectState[].program_id\` matches the target program id.
+
+---
+### SESS-EDIT-01: Session rename / state change renders instantly, no snap-back
+**Issue:** #287 (extension).
+**Setup:** Any session in any project on a host where \`/api/state\` takes ≥3 seconds.
+**Steps (browser):**
+1. Click the ✎ session-config button to open the rename modal.
+2. Type a new name in the \`#cfg-name\` input and click Save.
+3. Capture \`performance.now()\` around the click; read the rendered name in \`.session-item .session-name\` immediately after. Wait 8s. Read again.
+**Verify:** Save → rendered name updated in ≤100ms. After the 8s wait (which spans an in-flight \`/api/state\` poll), the session row still shows the new name. \`projectState\` reflects the new value. The same flow with the State select (active/archived/hidden) gives the same instant + persistent behavior.
+
+---
+### PROJ-EDIT-01: Project rename / state change renders instantly, no snap-back
+**Issue:** #287 (extension).
+**Setup:** Any project on a slow-state host.
+**Steps (browser):**
+1. Click the ✎ project-config button (the pencil on a project row).
+2. Modify Name, State, or Notes; click Save.
+3. Capture timing as in SESS-EDIT-01.
+**Verify:** Save → rendered project name/state updated in ≤100ms. After the 8s wait, the project row still shows the new value. For renames specifically, both old and new project names should be in \`_pendingProjectEdits\` for the lock window so a stale response keyed by either name is reconciled correctly.
+
+---
+### GIT-ACCT-01: Add Git Account works on plain HTTP (non-secure context)
+**Issue:** #289.
+**Setup:** Workbench served over plain HTTP (e.g., \`http://192.168.1.120:7860/\`), where \`isSecureContext === false\` and \`crypto.randomUUID\` is undefined. A valid GitHub PAT for any account.
+**Steps (browser):**
+1. Open Settings → General → Git Accounts.
+2. Type Label, Username, PAT into the add-row. Host is pre-filled with \`github.com\`.
+3. Click Add.
+**Verify:** A new row appears in the Git Accounts table within 1–2s. \`fetch('/api/settings').then(r => r.json()).then(s => s.git_accounts)\` returns the new account with all fields populated, including a non-empty UUID v4 \`id\` (8-4-4-4-12 hex layout). For the FIRST account added, \`kb_repo_url\` is also derived to \`https://<host>/<username>/blueprint_workbench_kb\`. No silent rejection, no JS console error about \`crypto.randomUUID is not a function\`.
+
+---
+### KB-AUTOSYNC-01: Creating a file in Knowledge Base auto-commits and pushes to fork
+**Issue:** #271 / #290.
+**Setup:** A KB account with a valid PAT is configured (GIT-ACCT-01). \`/api/kb/fork\` has been clicked and the fork exists on GitHub. \`/data/knowledge-base\` is initialized as a git repo with \`origin\` pointing at the fork. The KB watcher is running.
+**Steps (browser):**
+1. Open the right-side files panel and expand the Knowledge Base mount.
+2. Right-click a directory inside KB → New File → name it (e.g., \`autosync-test.md\`).
+3. Open it in the editor and type a few lines; save.
+4. Capture the latest fork commit SHA on GitHub (via the GitHub API with the configured PAT).
+5. Wait 15s (covers 8s debounce + commit + push).
+6. Re-fetch latest fork commit SHA.
+**Verify:** A new commit by \`Workbench Bot\` with message \`kb: update <filename>\` exists on the fork's \`main\` branch within ~10s. The new file is fetchable from \`/repos/<user>/<repo>/contents/<filename>\` (HTTP 200, content matches what was typed). \`/api/kb/status\` shows \`lastPushAt\` updated, \`ahead\` returned to 0.
+
+---
+### KB-AUTOSYNC-02: Editing a KB file produces a new commit on the fork
+**Issue:** #271 / #290.
+**Setup:** Continuation from KB-AUTOSYNC-01 with the test file present on the fork.
+**Steps (browser):**
+1. Open the test file's tab in the editor; modify content; save.
+2. Capture the fork commit count before; wait 15s; capture after.
+3. Fetch the file's content from the GitHub Contents API.
+**Verify:** A second commit by \`Workbench Bot\` with the same \`kb: update <filename>\` message appears within ~10s. The fork's served file contents match the edited content (decode the API's \`content\` field from base64).
+
+---
+### KB-AUTOSYNC-03: Deleting a KB file removes it from the fork
+**Issue:** #271 / #290.
+**Setup:** Continuation from KB-AUTOSYNC-02.
+**Steps (browser):**
+1. Right-click the test file in the file tree → Delete → confirm.
+2. Wait 15s.
+3. Fetch the file's content from the GitHub Contents API.
+**Verify:** A third commit by \`Workbench Bot\` appears. The Contents API returns 404 for the file path. \`/api/kb/status.ahead\` returns to 0.
+
+---
+### KB-STATUS-01: KB status reports ahead/behind vs both origin and upstream
+**Issue:** #271.
+**Setup:** KB initialized, fork configured. Make a local commit (e.g., via KB-AUTOSYNC-01) but block its push by stopping the watcher OR by capturing an intermediate state.
+**Steps (browser):**
+1. \`fetch('/api/kb/status')\` and inspect the response.
+**Verify:** Response contains \`initialized\`, \`ahead\`, \`behind\` (vs origin/main), \`upstreamAhead\`, \`upstreamBehind\` (vs upstream/main), \`originUrl\` (token-stripped, no embedded credentials), \`lastPushAt\`, \`lastPullAt\`, \`lastError\`. Numbers reflect the actual repo state.
+
+---
 ## Troubleshooting
 
 | Symptom | Likely Cause | Action |
