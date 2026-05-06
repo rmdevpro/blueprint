@@ -199,8 +199,13 @@ module.exports = function createKbWatcher({ db, logger, config }) {
         try { await g.addRemote('upstream', KB_UPSTREAM_URL); }
         catch (_e) { /* race or already there */ }
       }
+      // simple-git's .fetch('upstream') was observed to no-op silently
+      // on this codebase — refs/remotes/upstream/main was never populated
+      // and the subsequent merge --ff-only failed with "upstream/main not
+      // something we can merge". Use raw() to invoke `git fetch upstream`
+      // directly so the underlying git binary handles the refspec.
       try {
-        await g.fetch('upstream');
+        await g.raw(['fetch', 'upstream']);
       } catch (err) {
         setStatus({ lastError: `Fetch upstream failed: ${err.message}` });
         return;
