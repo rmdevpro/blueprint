@@ -1437,197 +1437,157 @@ function registerCoreRoutes(
 
   // ── Tasks ─────────────────────────────────────────────────────────────────
 
-  function normalizeFolderPath(p) {
-    if (!p || p === '/') return '/';
-    return '/' + p.replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/');
+  // ── Tasks v2 — project-based, subtasks, status lifecycle, rank ──────────
+  // Per #303 / #304 / #305 / #306 / #302 / #307. Folder-path tasks were
+  // replaced by project-anchored tasks with parent_task_id for hierarchy.
+
+  function _projectHasRepoPath(projectPath) {
+    if (!projectPath) return false;
+    const fs = require('fs');
+    const path = require('path');
+    let cur = projectPath;
+    while (cur && cur !== '/' && cur.length > 1) {
+      try { if (fs.existsSync(path.join(cur, '.git'))) return true; } catch { /* ignore */ }
+      cur = path.dirname(cur);
+    }
+    return false;
   }
 
-  function buildTaskTree(tasks, virtualFolders = []) {
-    const root = { path: '/', name: 'Workspace', tasks: [], children: {} };
-    function ensurePath(p) {
-      const parts = p.replace(/^\//, '').split('/').filter(Boolean);
-      let node = root;
-      for (const part of parts) {
-        if (!node.children[part]) {
-          node.children[part] = {
-            path: node.path === '/' ? '/' + part : node.path + '/' + part,
-            name: part, tasks: [], children: {},
-          };
-        }
-        node = node.children[part];
+  // Build a tree shaped { programs: [ { id, name, projects: [ { id, name, path, has_repo, tasks: [ { ..., subtasks: [...] } ] } ] } ] }
+  // Tasks within each project are top-level (parent_task_id IS NULL); subtasks
+  // are nested recursively under their parent.
+  function buildProjectTaskTree({ filter = 'todo', showArchived = false } = {}) {
+    const programs = db.getAllPrograms('all');
+    const projects = db.getProjects();
+    let tasks = filter === 'all' ? db.getAllTasks('all') : db.getAllTasks(filter);
+    if (!showArchived) tasks = tasks.filter(t => !t.archived);
+    const projTasks = new Map(); // project_id -> task array
+    for (const t of tasks) {
+      if (!projTasks.has(t.project_id)) projTasks.set(t.project_id, []);
+      projTasks.get(t.project_id).push(t);
+    }
+    // For each project, build the subtask tree
+    function nestSubtasks(taskArr) {
+      const byParent = new Map();
+      for (const t of taskArr) {
+        const k = t.parent_task_id ?? 0;
+        if (!byParent.has(k)) byParent.set(k, []);
+        byParent.get(k).push(t);
       }
-      return node;
+      function decorate(parentId) {
+        const arr = (byParent.get(parentId) || []).sort((a, b) => (a.rank || 0) - (b.rank || 0));
+        return arr.map(t => ({ ...t, subtasks: decorate(t.id) }));
+      }
+      return decorate(0);
     }
-    // First pass: register virtual folders so they appear even with no tasks.
-    for (const f of virtualFolders) {
-      const node = ensurePath(f.path);
-      node.virtual = true;
-      node.folder_id = f.id;
-      node.description = f.description || '';
-      node.status = f.status;
-      // Prefer the virtual folder's display name when present.
-      if (f.name) node.name = f.name;
-    }
-    // Second pass: place tasks under their folder paths.
-    for (const task of tasks) {
-      const node = ensurePath(task.folder_path);
-      node.tasks.push(task);
-    }
-    // Prune empty branches — but keep virtual folders even when empty.
-    function prune(node) {
-      for (const key of Object.keys(node.children)) {
-        prune(node.children[key]);
-        const child = node.children[key];
-        const empty = child.tasks.length === 0 && Object.keys(child.children).length === 0;
-        if (empty && !child.virtual) delete node.children[key];
+    const programMap = new Map();
+    for (const p of programs) programMap.set(p.id, { id: p.id, name: p.name, status: p.status, projects: [] });
+    const orphanProjects = []; // projects with program_id null
+    for (const proj of projects) {
+      const projNode = {
+        id: proj.id,
+        name: proj.name,
+        path: proj.path,
+        program_id: proj.program_id,
+        has_repo: _projectHasRepoPath(proj.path),
+        tasks: nestSubtasks(projTasks.get(proj.id) || []),
+      };
+      if (proj.program_id != null && programMap.has(proj.program_id)) {
+        programMap.get(proj.program_id).projects.push(projNode);
+      } else {
+        orphanProjects.push(projNode);
       }
     }
-    prune(root);
-    return root;
+    const programList = Array.from(programMap.values()).filter(pr => pr.projects.length > 0);
+    if (orphanProjects.length) {
+      programList.push({ id: null, name: 'Unassigned', status: 'active', projects: orphanProjects });
+    }
+    return { programs: programList };
   }
 
   app.get('/api/tasks/tree', (req, res) => {
     const filter = req.query.filter || 'todo';
-    const showArchivedFolders = req.query.show_archived_folders === '1';
-    const tasks = db.getAllTasks(filter);
-    const folders = db.getAllTaskFolders(showArchivedFolders ? 'all' : 'active');
-    res.json({ tree: buildTaskTree(tasks, folders) });
-  });
-
-  // ── Task folders (virtual, decoupled from filesystem) ────────────────────
-  function _normalizeVirtualPath(p) {
-    if (!p) return '/';
-    return ('/' + String(p).split('/').filter(Boolean).join('/')) || '/';
-  }
-  function _parentPath(p) {
-    const parts = String(p).split('/').filter(Boolean);
-    parts.pop();
-    return parts.length ? '/' + parts.join('/') : '/';
-  }
-
-  app.get('/api/task-folders', (req, res) => {
-    const filter = req.query.filter || 'all';
-    res.json({ folders: db.getAllTaskFolders(filter) });
-  });
-
-  app.post('/api/task-folders', (req, res) => {
-    const { parent_path, name, description } = req.body || {};
-    if (!name || !String(name).trim()) return res.status(400).json({ error: 'name required' });
-    const cleanName = String(name).trim();
-    if (cleanName.includes('/')) return res.status(400).json({ error: 'name must not contain "/"' });
-    const parent = _normalizeVirtualPath(parent_path);
-    const path = parent === '/' ? '/' + cleanName : parent + '/' + cleanName;
-    if (db.getTaskFolderByPath(path)) return res.status(409).json({ error: 'folder already exists at this path' });
-    const folder = db.addTaskFolder(path, cleanName, description ? String(description) : '');
-    fireEvent('task_folder_added', { folder_id: folder.id, path });
-    res.json(folder);
-  });
-
-  app.put('/api/task-folders/:id', (req, res) => {
-    const id = Number(req.params.id);
-    const folder = db.getTaskFolder(id);
-    if (!folder) return res.status(404).json({ error: 'folder not found' });
-    const { name, description, status } = req.body || {};
-    if (status !== undefined) {
-      if (!['active', 'archived'].includes(status))
-        return res.status(400).json({ error: 'invalid status' });
-      db.setTaskFolderStatus(id, status);
-    }
-    if (name !== undefined || description !== undefined) {
-      db.updateTaskFolder(
-        id,
-        name !== undefined ? String(name).trim() : folder.name,
-        description !== undefined ? String(description) : folder.description,
-      );
-    }
-    res.json(db.getTaskFolder(id));
-  });
-
-  app.delete('/api/task-folders/:id', (req, res) => {
-    const id = Number(req.params.id);
-    const folder = db.getTaskFolder(id);
-    if (!folder) return res.status(404).json({ error: 'folder not found' });
-    const parent = _parentPath(folder.path);
-    // Move every task and every nested virtual folder up to the parent —
-    // prefix replace covers the entire subtree atomically.
-    db.reparentSubtree(folder.path, parent);
-    db.deleteTaskFolder(id);
-    fireEvent('task_folder_deleted', { folder_id: id, path: folder.path, to: parent });
-    res.json({ deleted: true, to: parent });
-  });
-
-  app.get('/api/task-folders/:id/task-counts', (req, res) => {
-    const id = Number(req.params.id);
-    const folder = db.getTaskFolder(id);
-    if (!folder) return res.status(404).json({ error: 'folder not found' });
-    // Count tasks in the entire subtree (this folder and any nested folders).
-    const all = db.getAllTasks('all');
-    const prefix = folder.path === '/' ? '/' : folder.path + '/';
-    const counts = { active: 0, done: 0, archived: 0 };
-    let total = 0;
-    for (const t of all) {
-      if (t.folder_path !== folder.path && !t.folder_path.startsWith(prefix)) continue;
-      total++;
-      if (t.status === 'done') counts.done++;
-      else if (t.status === 'archived') counts.archived++;
-      else counts.active++;
-    }
-    res.json({ folder, counts, total });
+    const showArchived = req.query.show_archived === '1';
+    res.json(buildProjectTaskTree({ filter, showArchived }));
   });
 
   app.post('/api/tasks', (req, res) => {
-    const { folder_path, title, description, created_by } = req.body;
+    const { project_id, parent_task_id, github_issue, title, description, status, created_by } = req.body || {};
     if (!title) return res.status(400).json({ error: 'title required' });
     if (title.length > TASK_TITLE_MAX_LEN) return res.status(400).json({ error: 'title too long' });
     if (description && description.length > TASK_DESC_MAX_LEN) return res.status(400).json({ error: 'description too long' });
-    const path = normalizeFolderPath(folder_path);
-    if (path.length > TASK_FOLDER_MAX_LEN) return res.status(400).json({ error: 'folder_path too long' });
-    const task = db.addTask(path, title, description || '', null, created_by || 'human');
-    fireEvent('task_added', { task_id: task.id, folder_path: path, title });
-    res.json(task);
+    let project = null;
+    if (project_id != null) project = db.getProjectById(Number(project_id));
+    if (!project && parent_task_id != null) {
+      const parent = db.getTask(Number(parent_task_id));
+      if (parent) project = db.getProjectById(parent.project_id);
+    }
+    if (!project) return res.status(400).json({ error: 'project_id or valid parent_task_id required' });
+    const issue = github_issue ? String(github_issue).trim() : null;
+    if (!issue && _projectHasRepoPath(project.path)) {
+      return res.status(400).json({ error: `github_issue required for tasks in repo-backed project "${project.name}"` });
+    }
+    if (parent_task_id != null) {
+      const parent = db.getTask(Number(parent_task_id));
+      if (!parent) return res.status(404).json({ error: 'parent_task_id not found' });
+      if (parent.project_id !== project.id) {
+        return res.status(400).json({ error: 'parent_task_id must be in the same project' });
+      }
+    }
+    try {
+      const task = db.addTask({
+        projectId: project.id,
+        parentTaskId: parent_task_id == null ? null : Number(parent_task_id),
+        githubIssue: issue,
+        title,
+        description: description || '',
+        status: status || 'todo',
+        createdBy: created_by || 'human',
+      });
+      fireEvent('task_added', { task_id: task.id, project_id: project.id, title });
+      res.json(task);
+    } catch (e) {
+      if (e.code === 'task_validation') return res.status(400).json({ error: e.message });
+      throw e;
+    }
   });
 
   app.get('/api/tasks/:id', (req, res) => {
     const task = db.getTask(Number(req.params.id));
     if (!task) return res.status(404).json({ error: 'task not found' });
     const history = db.getTaskHistory(task.id);
-    res.json({ ...task, history });
-  });
-
-  app.put('/api/tasks/reorder', (req, res) => {
-    const { orders } = req.body;
-    if (!Array.isArray(orders)) return res.status(400).json({ error: 'orders array required' });
-    db.reorderTasks(orders);
-    res.json({ reordered: true });
-  });
-
-  app.put('/api/tasks/:id/move', (req, res) => {
-    const id = Number(req.params.id);
-    const { folder_path, sort_order } = req.body;
-    if (!folder_path) return res.status(400).json({ error: 'folder_path required' });
-    const path = normalizeFolderPath(folder_path);
-    db.moveTask(id, path, sort_order);
-    res.json({ moved: true });
+    const subtasks = db.getSubtasks(task.id);
+    res.json({ ...task, history, subtasks });
   });
 
   app.put('/api/tasks/:id', (req, res) => {
     const id = Number(req.params.id);
     const task = db.getTask(id);
     if (!task) return res.status(404).json({ error: 'task not found' });
-    const { title, description, status } = req.body;
-    if (title !== undefined) {
-      if (!title || title.length > TASK_TITLE_MAX_LEN) return res.status(400).json({ error: 'invalid title' });
-      db.updateTaskTitle(id, title);
+    const { title, description, github_issue, status, archived, rank, parent_task_id, project_id } = req.body || {};
+    try {
+      if (title !== undefined) {
+        if (!title || title.length > TASK_TITLE_MAX_LEN) return res.status(400).json({ error: 'invalid title' });
+      }
+      if (description !== undefined && description.length > TASK_DESC_MAX_LEN) return res.status(400).json({ error: 'description too long' });
+      if (title !== undefined || description !== undefined || github_issue !== undefined) {
+        db.updateTaskFields(id, { title, description, github_issue });
+      }
+      if (status !== undefined) db.setTaskStatus(id, status);
+      if (archived !== undefined) db.setTaskArchived(id, !!archived);
+      if (rank !== undefined) db.setTaskRank(id, Number(rank));
+      if (parent_task_id !== undefined || project_id !== undefined) {
+        db.reparentTask(id, {
+          parentTaskId: parent_task_id === undefined ? null : parent_task_id,
+          projectId: project_id,
+        });
+      }
+      res.json(db.getTask(id));
+    } catch (e) {
+      if (e.code === 'task_validation') return res.status(400).json({ error: e.message });
+      if (e.code === 'not_found') return res.status(404).json({ error: e.message });
+      throw e;
     }
-    if (description !== undefined) {
-      if (description.length > TASK_DESC_MAX_LEN) return res.status(400).json({ error: 'description too long' });
-      db.updateTaskDescription(id, description);
-    }
-    if (status !== undefined) {
-      if (!['todo', 'done', 'archived'].includes(status)) return res.status(400).json({ error: 'invalid status' });
-      db.updateTaskStatus(id, status);
-    }
-    res.json(db.getTask(id));
   });
 
   app.delete('/api/tasks/:id', (req, res) => {

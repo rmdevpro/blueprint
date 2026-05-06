@@ -89,6 +89,12 @@ try {
   /* column exists or programs table not yet created — schema below adds both
      in the right order on a fresh DB, and the ALTER is a no-op idempotently */
 }
+// #303 task system v2: project-based tasks, subtasks, status lifecycle, rank.
+try { db.exec('ALTER TABLE tasks ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE'); } catch (_e) { /* column exists */ }
+try { db.exec('ALTER TABLE tasks ADD COLUMN parent_task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE'); } catch (_e) { /* column exists */ }
+try { db.exec('ALTER TABLE tasks ADD COLUMN github_issue TEXT'); } catch (_e) { /* column exists */ }
+try { db.exec('ALTER TABLE tasks ADD COLUMN archived INTEGER DEFAULT 0'); } catch (_e) { /* column exists */ }
+try { db.exec('ALTER TABLE tasks ADD COLUMN rank INTEGER DEFAULT 1'); } catch (_e) { /* column exists */ }
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS programs (
@@ -149,9 +155,14 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     folder_path TEXT NOT NULL DEFAULT '/',
+    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+    parent_task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+    github_issue TEXT,
     title TEXT NOT NULL,
     description TEXT DEFAULT '',
     status TEXT DEFAULT 'todo',
+    archived INTEGER DEFAULT 0,
+    rank INTEGER DEFAULT 1,
     sort_order INTEGER DEFAULT 0,
     created_by TEXT DEFAULT 'human',
     created_at TEXT DEFAULT (datetime('now')),
@@ -159,7 +170,8 @@ db.exec(`
     completed_at TEXT
   );
 
-  CREATE INDEX IF NOT EXISTS idx_tasks_folder ON tasks(folder_path);
+  CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
+  CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id);
   CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 
   CREATE TABLE IF NOT EXISTS task_history (
@@ -214,6 +226,41 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_logs_level_ts  ON logs(level, ts);
   CREATE INDEX IF NOT EXISTS idx_logs_module_ts ON logs(module, ts);
 `);
+
+// #303 task system v2 data migration: backfill project_id, github_issue, rank
+// for any tasks predating the schema change. Idempotent — only touches rows
+// whose new columns are still NULL.
+(function migrateTasksToProjectBased() {
+  const needsMigration = db.prepare("SELECT COUNT(*) AS c FROM tasks WHERE project_id IS NULL").get().c;
+  if (!needsMigration) return;
+  const projects = db.prepare('SELECT id, path FROM projects ORDER BY length(path) DESC').all();
+  const tasks = db.prepare('SELECT id, folder_path, title, status, sort_order FROM tasks WHERE project_id IS NULL').all();
+  const setProjectId = db.prepare('UPDATE tasks SET project_id = ? WHERE id = ?');
+  const setIssue = db.prepare('UPDATE tasks SET github_issue = ? WHERE id = ?');
+  const setRank = db.prepare('UPDATE tasks SET rank = ? WHERE id = ?');
+  const setArchivedDone = db.prepare("UPDATE tasks SET archived = 1, status = 'done' WHERE id = ?");
+  for (const t of tasks) {
+    // Resolve project_id by longest-prefix match on folder_path
+    let pid = null;
+    for (const p of projects) {
+      if (t.folder_path === p.path || t.folder_path.startsWith(p.path + '/')) { pid = p.id; break; }
+    }
+    if (pid != null) setProjectId.run(pid, t.id);
+    // Map legacy archived status to archived flag + done
+    if (t.status === 'archived') setArchivedDone.run(t.id);
+    // Parse github_issue from title pattern "Issue #N: ..."
+    const m = /^Issue\s+#(\d+):/i.exec(t.title || '');
+    if (m) setIssue.run(`rmdevpro/agentic-workbench#${m[1]}`, t.id);
+  }
+  // Densify rank within each (project_id, parent_task_id) bucket using prior sort_order
+  const buckets = db.prepare("SELECT DISTINCT project_id, COALESCE(parent_task_id, 0) AS pti FROM tasks WHERE project_id IS NOT NULL").all();
+  const getBucket = db.prepare(`SELECT id FROM tasks WHERE project_id = ? AND COALESCE(parent_task_id, 0) = ? ORDER BY sort_order ASC, id ASC`);
+  for (const b of buckets) {
+    const rows = getBucket.all(b.project_id, b.pti);
+    let r = 1;
+    for (const row of rows) { setRank.run(r++, row.id); }
+  }
+})();
 
 // ── Prepared Statements ────────────────────────────────────────────────────
 const stmts = {
@@ -272,21 +319,27 @@ const stmts = {
   setProjectState: db.prepare('UPDATE projects SET state = ? WHERE id = ?'),
   renameProject: db.prepare('UPDATE projects SET name = ? WHERE id = ?'),
 
-  getAllTasks: db.prepare('SELECT * FROM tasks ORDER BY folder_path, sort_order ASC, id ASC'),
-  getTasksByStatus: db.prepare('SELECT * FROM tasks WHERE status = ? ORDER BY folder_path, sort_order ASC, id ASC'),
-  getTasksByFolder: db.prepare('SELECT * FROM tasks WHERE folder_path = ? ORDER BY sort_order ASC, id ASC'),
+  // ── Tasks v2 (project-based) ─────────────────────────────────────────────
+  getAllTasksV2: db.prepare('SELECT * FROM tasks ORDER BY project_id, COALESCE(parent_task_id, 0), rank ASC, id ASC'),
+  getTasksByStatusV2: db.prepare('SELECT * FROM tasks WHERE status = ? ORDER BY project_id, COALESCE(parent_task_id, 0), rank ASC, id ASC'),
+  getTasksByProject: db.prepare('SELECT * FROM tasks WHERE project_id = ? ORDER BY COALESCE(parent_task_id, 0), rank ASC, id ASC'),
+  getTopLevelTasks: db.prepare('SELECT * FROM tasks WHERE project_id = ? AND parent_task_id IS NULL ORDER BY rank ASC, id ASC'),
+  getSubtasks: db.prepare('SELECT * FROM tasks WHERE parent_task_id = ? ORDER BY rank ASC, id ASC'),
+  countOpenSubtasks: db.prepare("SELECT COUNT(*) AS c FROM tasks WHERE parent_task_id = ? AND status NOT IN ('done', 'cancelled')"),
   getTask: db.prepare('SELECT * FROM tasks WHERE id = ?'),
-  addTask: db.prepare('INSERT INTO tasks (folder_path, title, description, sort_order, created_by) VALUES (?, ?, ?, ?, ?)'),
-  updateTaskTitle: db.prepare("UPDATE tasks SET title = ?, updated_at = datetime('now') WHERE id = ?"),
-  updateTaskDescription: db.prepare("UPDATE tasks SET description = ?, updated_at = datetime('now') WHERE id = ?"),
-  updateTaskStatusDone: db.prepare("UPDATE tasks SET status = 'done', completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?"),
-  updateTaskStatusOther: db.prepare("UPDATE tasks SET status = ?, completed_at = NULL, updated_at = datetime('now') WHERE id = ?"),
-  moveTask: db.prepare("UPDATE tasks SET folder_path = ?, sort_order = ?, updated_at = datetime('now') WHERE id = ?"),
-  reorderTask: db.prepare("UPDATE tasks SET sort_order = ?, updated_at = datetime('now') WHERE id = ?"),
+  addTaskV2: db.prepare('INSERT INTO tasks (project_id, parent_task_id, github_issue, title, description, status, archived, rank, created_by, sort_order, folder_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT path FROM projects WHERE id = ?), \'/\'))'),
+  updateTaskFields: db.prepare("UPDATE tasks SET title = COALESCE(?, title), description = COALESCE(?, description), github_issue = COALESCE(?, github_issue), updated_at = datetime('now') WHERE id = ?"),
+  updateTaskStatus: db.prepare("UPDATE tasks SET status = ?, completed_at = CASE WHEN ? = 'done' THEN datetime('now') ELSE NULL END, updated_at = datetime('now') WHERE id = ?"),
+  updateTaskArchived: db.prepare("UPDATE tasks SET archived = ?, updated_at = datetime('now') WHERE id = ?"),
+  reparentTask: db.prepare("UPDATE tasks SET parent_task_id = ?, project_id = ?, rank = ?, updated_at = datetime('now') WHERE id = ?"),
+  setTaskRank: db.prepare("UPDATE tasks SET rank = ?, updated_at = datetime('now') WHERE id = ?"),
+  shiftRanksUp: db.prepare("UPDATE tasks SET rank = rank + 1 WHERE project_id = ? AND COALESCE(parent_task_id, 0) = ? AND rank >= ? AND rank < ? AND id != ?"),
+  shiftRanksDown: db.prepare("UPDATE tasks SET rank = rank - 1 WHERE project_id = ? AND COALESCE(parent_task_id, 0) = ? AND rank > ? AND rank <= ? AND id != ?"),
+  densifyRanks: db.prepare("UPDATE tasks SET rank = rank - 1 WHERE project_id = ? AND COALESCE(parent_task_id, 0) = ? AND rank > ?"),
+  maxRankInBucket: db.prepare("SELECT COALESCE(MAX(rank), 0) AS m FROM tasks WHERE project_id = ? AND COALESCE(parent_task_id, 0) = ?"),
   deleteTask: db.prepare('DELETE FROM tasks WHERE id = ?'),
   addTaskHistory: db.prepare('INSERT INTO task_history (task_id, event_type, old_value, new_value, created_by) VALUES (?, ?, ?, ?, ?)'),
   getTaskHistory: db.prepare('SELECT * FROM task_history WHERE task_id = ? ORDER BY created_at DESC, id DESC'),
-  maxSortOrder: db.prepare('SELECT MAX(sort_order) as max_sort FROM tasks WHERE folder_path = ?'),
 
   getAllTaskFolders: db.prepare('SELECT * FROM task_folders ORDER BY path ASC'),
   getTaskFoldersByStatus: db.prepare('SELECT * FROM task_folders WHERE status = ? ORDER BY path ASC'),
@@ -443,71 +496,185 @@ module.exports = {
     stmts.setSessionNotes.run(notes, sessionId);
   },
 
-  // ── Tasks ────────────────────────────────────────────────────────────────
+  // ── Tasks v2 (project-based, subtasks, status lifecycle, rank) ──────────
+  // Status enum: 'todo' | 'active' | 'blocked' | 'done' | 'cancelled'
+  // archived: 0|1 — separate visibility flag
+  // rank: 1-based dense priority within (project_id, parent_task_id) bucket
+
   getAllTasks(filter) {
-    if (!filter || filter === 'all') return stmts.getAllTasks.all();
-    return stmts.getTasksByStatus.all(filter);
+    if (!filter || filter === 'all') return stmts.getAllTasksV2.all();
+    return stmts.getTasksByStatusV2.all(filter);
   },
-  getTasksByFolder(folderPath) {
-    return stmts.getTasksByFolder.all(folderPath);
+  getTasksByProject(projectId) {
+    return stmts.getTasksByProject.all(projectId);
+  },
+  getTopLevelTasks(projectId) {
+    return stmts.getTopLevelTasks.all(projectId);
+  },
+  getSubtasks(parentTaskId) {
+    return stmts.getSubtasks.all(parentTaskId);
+  },
+  countOpenSubtasks(parentTaskId) {
+    return stmts.countOpenSubtasks.get(parentTaskId).c;
   },
   getTask(id) {
     return stmts.getTask.get(id);
   },
-  addTask(folderPath, title, description = '', sortOrder, createdBy = 'human') {
-    if (sortOrder == null) {
-      const row = stmts.maxSortOrder.get(folderPath);
-      sortOrder = (row?.max_sort ?? -1) + 1;
+  // Returns the ID set of every descendant of taskId (used for cycle prevention
+  // when re-parenting). Includes taskId itself.
+  collectDescendants(taskId) {
+    const set = new Set([taskId]);
+    const queue = [taskId];
+    while (queue.length) {
+      const cur = queue.shift();
+      for (const child of stmts.getSubtasks.all(cur)) {
+        if (!set.has(child.id)) { set.add(child.id); queue.push(child.id); }
+      }
     }
-    const info = stmts.addTask.run(folderPath, title, description, sortOrder, createdBy);
+    return set;
+  },
+  addTask({ projectId, parentTaskId = null, githubIssue = null, title, description = '', status = 'todo', createdBy = 'human' }) {
+    if (status === 'archived') status = 'done'; // legacy mapping
+    const archived = 0;
+    const bucketParent = parentTaskId ?? 0;
+    const max = stmts.maxRankInBucket.get(projectId, bucketParent).m;
+    const rank = max + 1;
+    const info = stmts.addTaskV2.run(
+      projectId, parentTaskId, githubIssue, title, description, status, archived, rank, createdBy, rank, projectId,
+    );
     const id = info.lastInsertRowid;
     stmts.addTaskHistory.run(id, 'created', null, title, createdBy);
-    return { id, folder_path: folderPath, title, description, status: 'todo', sort_order: sortOrder, created_by: createdBy };
+    return stmts.getTask.get(id);
   },
-  updateTaskTitle(id, title) {
+  updateTaskFields(id, { title, description, github_issue }) {
     const old = stmts.getTask.get(id);
-    if (!old) return;
-    stmts.updateTaskTitle.run(title, id);
-    stmts.addTaskHistory.run(id, 'renamed', old.title, title, 'human');
+    if (!old) return null;
+    stmts.updateTaskFields.run(
+      title === undefined ? null : title,
+      description === undefined ? null : description,
+      github_issue === undefined ? null : github_issue,
+      id,
+    );
+    if (title !== undefined && title !== old.title) {
+      stmts.addTaskHistory.run(id, 'renamed', old.title, title, 'human');
+    }
+    return stmts.getTask.get(id);
   },
-  updateTaskDescription(id, description) {
+  // Status transition with validations:
+  //  - 'archived' is no longer a status; use setTaskArchived for that
+  //  - moving to 'done' requires no open (non-cancelled, non-done) subtasks
+  // Throws an Error subclass with .code='task_validation' on rule violations.
+  setTaskStatus(id, status) {
     const old = stmts.getTask.get(id);
-    if (!old) return;
-    stmts.updateTaskDescription.run(description, id);
-    stmts.addTaskHistory.run(id, 'description_changed', null, null, 'human');
-  },
-  updateTaskStatus(id, status) {
-    const old = stmts.getTask.get(id);
-    if (!old) return;
+    if (!old) { const e = new Error('task not found'); e.code = 'not_found'; throw e; }
+    const valid = ['todo', 'active', 'blocked', 'done', 'cancelled'];
+    if (!valid.includes(status)) {
+      const e = new Error(`invalid status: ${status}. Must be one of ${valid.join(', ')}`);
+      e.code = 'task_validation';
+      throw e;
+    }
     if (status === 'done') {
-      stmts.updateTaskStatusDone.run(id);
-      stmts.addTaskHistory.run(id, 'completed', old.status, 'done', 'human');
-    } else {
-      stmts.updateTaskStatusOther.run(status, id);
-      const event = status === 'archived' ? 'archived' : 'reopened';
-      stmts.addTaskHistory.run(id, event, old.status, status, 'human');
+      const open = stmts.countOpenSubtasks.get(id).c;
+      if (open > 0) {
+        const e = new Error(`cannot mark task done: ${open} open subtask${open > 1 ? 's' : ''} remain`);
+        e.code = 'task_validation';
+        throw e;
+      }
     }
+    stmts.updateTaskStatus.run(status, status, id);
+    const event = status === 'done' ? 'completed' : 'status_changed';
+    stmts.addTaskHistory.run(id, event, old.status, status, 'human');
+    return stmts.getTask.get(id);
   },
-  moveTask(id, newFolderPath, sortOrder) {
+  setTaskArchived(id, archived) {
     const old = stmts.getTask.get(id);
-    if (!old) return;
-    if (sortOrder == null) {
-      const row = stmts.maxSortOrder.get(newFolderPath);
-      sortOrder = (row?.max_sort ?? -1) + 1;
+    if (!old) { const e = new Error('task not found'); e.code = 'not_found'; throw e; }
+    if (archived && !['done', 'cancelled'].includes(old.status)) {
+      const e = new Error(`cannot archive: status must be 'done' or 'cancelled' (current: ${old.status})`);
+      e.code = 'task_validation';
+      throw e;
     }
-    stmts.moveTask.run(newFolderPath, sortOrder, id);
-    stmts.addTaskHistory.run(id, 'moved', old.folder_path, newFolderPath, 'human');
+    stmts.updateTaskArchived.run(archived ? 1 : 0, id);
+    stmts.addTaskHistory.run(id, archived ? 'archived' : 'unarchived', String(old.archived || 0), String(archived ? 1 : 0), 'human');
+    return stmts.getTask.get(id);
   },
-  reorderTasks(orders) {
+  // Set rank to newRank (1-based) within the task's current sibling bucket.
+  // Shifts other siblings up/down to fit.
+  setTaskRank(id, newRank) {
+    const t = stmts.getTask.get(id);
+    if (!t) return null;
+    const bucketParent = t.parent_task_id ?? 0;
+    const max = stmts.maxRankInBucket.get(t.project_id, bucketParent).m;
+    const target = Math.max(1, Math.min(Number(newRank) || 1, max));
+    if (target === t.rank) return t;
     const run = db.transaction(() => {
-      for (const { id, sort_order } of orders) {
-        stmts.reorderTask.run(sort_order, id);
+      if (target < t.rank) {
+        stmts.shiftRanksUp.run(t.project_id, bucketParent, target, t.rank, id);
+      } else {
+        stmts.shiftRanksDown.run(t.project_id, bucketParent, t.rank, target, id);
+      }
+      stmts.setTaskRank.run(target, id);
+    });
+    run();
+    stmts.addTaskHistory.run(id, 'reranked', String(t.rank), String(target), 'human');
+    return stmts.getTask.get(id);
+  },
+  // Re-parent a task. Setting parentTaskId=null promotes to top-level within
+  // newProjectId (or current project if newProjectId omitted). Rank in the new
+  // bucket = (max + 1) — appended. Cascades project_id down the entire subtree
+  // when crossing projects. Cycle-checks: rejects if parentTaskId is the task
+  // itself or any of its descendants.
+  reparentTask(id, { parentTaskId = null, projectId = null }) {
+    const t = stmts.getTask.get(id);
+    if (!t) { const e = new Error('task not found'); e.code = 'not_found'; throw e; }
+    const newProjectId = projectId == null ? t.project_id : Number(projectId);
+    const newParent = parentTaskId == null ? null : Number(parentTaskId);
+    if (newParent != null) {
+      const desc = module.exports.collectDescendants(id);
+      if (desc.has(newParent)) {
+        const e = new Error('cannot reparent: target would create a cycle');
+        e.code = 'task_validation';
+        throw e;
+      }
+      const parentRow = stmts.getTask.get(newParent);
+      if (!parentRow) { const e = new Error('parent task not found'); e.code = 'task_validation'; throw e; }
+      if (parentRow.project_id !== newProjectId) {
+        // Force project to match parent's
+        const e = new Error('cannot reparent across projects without project_id matching the new parent');
+        e.code = 'task_validation';
+        throw e;
+      }
+    }
+    const bucketParent = newParent ?? 0;
+    const max = stmts.maxRankInBucket.get(newProjectId, bucketParent).m;
+    const newRank = max + 1;
+    const run = db.transaction(() => {
+      // Move the task itself
+      stmts.reparentTask.run(newParent, newProjectId, newRank, id);
+      // Densify the old bucket
+      stmts.densifyRanks.run(t.project_id, t.parent_task_id ?? 0, t.rank);
+      // Cascade project_id to all descendants if it changed
+      if (t.project_id !== newProjectId) {
+        const desc = Array.from(module.exports.collectDescendants(id)).filter((d) => d !== id);
+        const setProj = db.prepare("UPDATE tasks SET project_id = ?, updated_at = datetime('now') WHERE id = ?");
+        for (const d of desc) setProj.run(newProjectId, d);
       }
     });
     run();
+    stmts.addTaskHistory.run(id, 'reparented',
+      JSON.stringify({ project_id: t.project_id, parent: t.parent_task_id }),
+      JSON.stringify({ project_id: newProjectId, parent: newParent }),
+      'human');
+    return stmts.getTask.get(id);
   },
   deleteTask(id) {
-    stmts.deleteTask.run(id);
+    const t = stmts.getTask.get(id);
+    if (!t) return;
+    const run = db.transaction(() => {
+      stmts.deleteTask.run(id);
+      stmts.densifyRanks.run(t.project_id, t.parent_task_id ?? 0, t.rank);
+    });
+    run();
   },
   getTaskHistory(taskId) {
     return stmts.getTaskHistory.all(taskId);
@@ -515,45 +682,6 @@ module.exports = {
   addTaskComment(taskId, body, createdBy = 'human') {
     const info = stmts.addTaskHistory.run(taskId, 'comment', null, body, createdBy);
     return { id: info.lastInsertRowid, task_id: taskId, event_type: 'comment', new_value: body, created_by: createdBy };
-  },
-
-  getAllTaskFolders(filter) {
-    if (!filter || filter === 'all') return stmts.getAllTaskFolders.all();
-    return stmts.getTaskFoldersByStatus.all(filter);
-  },
-  getTaskFolder(id) {
-    return stmts.getTaskFolder.get(id);
-  },
-  getTaskFolderByPath(path) {
-    return stmts.getTaskFolderByPath.get(path);
-  },
-  addTaskFolder(path, name, description = '') {
-    const info = stmts.addTaskFolder.run(path, name, description);
-    return stmts.getTaskFolder.get(info.lastInsertRowid);
-  },
-  updateTaskFolder(id, name, description) {
-    stmts.updateTaskFolder.run(name, description, id);
-    return stmts.getTaskFolder.get(id);
-  },
-  setTaskFolderStatus(id, status) {
-    stmts.setTaskFolderStatus.run(status, status, id);
-    return stmts.getTaskFolder.get(id);
-  },
-  deleteTaskFolder(id) {
-    stmts.deleteTaskFolder.run(id);
-  },
-  reparentTasks(fromPath, toPath) {
-    stmts.reparentTasks.run(toPath, fromPath);
-  },
-  // Replace a path prefix on every task and every virtual folder rooted under
-  // `fromPath`. Used to "move" the entire subtree to `toPath` when a folder
-  // is deleted. Atomic via transaction.
-  reparentSubtree(fromPath, toPath) {
-    const run = db.transaction(() => {
-      stmts.reparentTasksUnderPrefix.run(toPath, fromPath, fromPath, fromPath);
-      stmts.reparentFoldersUnderPrefix.run(toPath, fromPath, fromPath);
-    });
-    run();
   },
 
   getSessionFull(id) {

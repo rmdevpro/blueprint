@@ -581,17 +581,49 @@ handlers.project_mcp_list_enabled = async (args) => {
   return { servers: db.getEnabledMcpForProject(proj.id) };
 };
 
-// ── task_* ───────────────────────────────────────────────────────────────────
+// ── task_* (v2 — project-based, subtasks, status lifecycle, rank) ─────────
+
+function _resolveProject(args) {
+  if (args.project_id != null) {
+    const p = db.getProjectById(Number(args.project_id));
+    if (!p) throw new ToolError(`project_id ${args.project_id} not found`, 404);
+    return p;
+  }
+  if (args.project_name) {
+    const p = db.getProject(args.project_name);
+    if (!p) throw new ToolError(`project "${args.project_name}" not found`, 404);
+    return p;
+  }
+  return null;
+}
+
+// Determine whether a project's path lives inside a git repo. Used to enforce
+// the "tasks in repo projects must have a github_issue" rule from #304.
+function _projectHasRepo(projectPath) {
+  if (!projectPath) return false;
+  const fs = require('fs');
+  const path = require('path');
+  let cur = projectPath;
+  while (cur && cur !== '/' && cur.length > 1) {
+    try { if (fs.existsSync(path.join(cur, '.git'))) return true; } catch { /* ignore */ }
+    cur = path.dirname(cur);
+  }
+  return false;
+}
 
 handlers.task_find = async (args = {}) => {
-  let tasks = args.folder_path
-    ? db.getTasksByFolder(args.folder_path)
-    : db.getAllTasks(args.filter || 'todo');
+  let tasks;
+  if (args.project_id != null) tasks = db.getTasksByProject(Number(args.project_id));
+  else tasks = db.getAllTasks(args.filter || 'todo');
   if (args.pattern) {
     let re;
     try { re = new RegExp(args.pattern, 'i'); }
     catch (e) { throw new ToolError(`invalid regex: ${e.message}`); }
     tasks = tasks.filter(t => re.test(t.title || '') || re.test(t.description || ''));
+  }
+  if (args.parent_task_id !== undefined) {
+    const p = args.parent_task_id;
+    tasks = tasks.filter(t => (p == null ? t.parent_task_id == null : t.parent_task_id === Number(p)));
   }
   return { tasks };
 };
@@ -606,27 +638,103 @@ handlers.task_get = async (args) => {
 handlers.task_add = async (args) => {
   require_(args, 'title');
   if (args.title.length > 500) throw new ToolError('title max 500 chars');
-  const folderPath = args.folder_path || '/';
-  return db.addTask(folderPath, args.title, args.description || '', null, 'agent');
+  let project = _resolveProject(args);
+  // If no project specified but a parent_task_id is, inherit project from parent
+  let parentTaskId = args.parent_task_id == null ? null : Number(args.parent_task_id);
+  if (!project && parentTaskId != null) {
+    const parent = db.getTask(parentTaskId);
+    if (!parent) throw new ToolError(`parent_task_id ${parentTaskId} not found`, 404);
+    project = db.getProjectById(parent.project_id);
+  }
+  if (!project) throw new ToolError('project_id or project_name required (or a valid parent_task_id)', 400);
+  // Enforce: tasks in repo-backed projects must have github_issue
+  const githubIssue = args.github_issue || null;
+  if (!githubIssue && _projectHasRepo(project.path)) {
+    throw new ToolError(`github_issue required for tasks in repo-backed project "${project.name}" (path: ${project.path})`, 400);
+  }
+  // If parent_task_id given, parent must be in same project
+  if (parentTaskId != null) {
+    const parent = db.getTask(parentTaskId);
+    if (!parent) throw new ToolError(`parent_task_id ${parentTaskId} not found`, 404);
+    if (parent.project_id !== project.id) {
+      throw new ToolError(`parent_task_id ${parentTaskId} is in project ${parent.project_id}, not ${project.id}`, 400);
+    }
+  }
+  return db.addTask({
+    projectId: project.id,
+    parentTaskId,
+    githubIssue,
+    title: args.title,
+    description: args.description || '',
+    status: args.status || 'todo',
+    createdBy: 'agent',
+  });
 };
 
 handlers.task_move = async (args) => {
   const id = requireTaskId(args);
-  require_(args, 'folder_path');
-  db.moveTask(id, args.folder_path);
-  return { moved: true, task_id: id, folder_path: args.folder_path };
+  // task_move now changes parent / project. parent_task_id is required.
+  // Use null to promote to top-level.
+  if (args.parent_task_id === undefined && args.project_id === undefined) {
+    throw new ToolError('task_move requires parent_task_id and/or project_id', 400);
+  }
+  try {
+    const out = db.reparentTask(id, {
+      parentTaskId: args.parent_task_id === undefined ? null : args.parent_task_id,
+      projectId: args.project_id,
+    });
+    return { moved: true, task: out };
+  } catch (e) {
+    if (e.code === 'task_validation') throw new ToolError(e.message, 400);
+    if (e.code === 'not_found') throw new ToolError(e.message, 404);
+    throw e;
+  }
 };
 
 handlers.task_update = async (args) => {
   const id = requireTaskId(args);
-  if (args.title !== undefined) db.updateTaskTitle(id, args.title);
-  if (args.description !== undefined) db.updateTaskDescription(id, args.description);
-  if (args.status !== undefined) {
-    if (!['todo', 'done', 'archived'].includes(args.status))
-      throw new ToolError(`invalid status: ${args.status}. Must be todo, done, or archived`);
-    db.updateTaskStatus(id, args.status);
+  const task = db.getTask(id);
+  if (!task) throw new ToolError('task not found', 404);
+  // Field updates
+  if (args.title !== undefined || args.description !== undefined || args.github_issue !== undefined) {
+    db.updateTaskFields(id, {
+      title: args.title,
+      description: args.description,
+      github_issue: args.github_issue,
+    });
   }
-  if (args.folder_path !== undefined) db.moveTask(id, args.folder_path);
+  // Status change with validation
+  if (args.status !== undefined) {
+    try { db.setTaskStatus(id, args.status); }
+    catch (e) {
+      if (e.code === 'task_validation') throw new ToolError(e.message, 400);
+      throw e;
+    }
+  }
+  // Archive flag with validation
+  if (args.archived !== undefined) {
+    try { db.setTaskArchived(id, !!args.archived); }
+    catch (e) {
+      if (e.code === 'task_validation') throw new ToolError(e.message, 400);
+      throw e;
+    }
+  }
+  // Rank
+  if (args.rank !== undefined) {
+    db.setTaskRank(id, Number(args.rank));
+  }
+  // Reparent
+  if (args.parent_task_id !== undefined || args.project_id !== undefined) {
+    try {
+      db.reparentTask(id, {
+        parentTaskId: args.parent_task_id === undefined ? null : args.parent_task_id,
+        projectId: args.project_id,
+      });
+    } catch (e) {
+      if (e.code === 'task_validation') throw new ToolError(e.message, 400);
+      throw e;
+    }
+  }
   return db.getTask(id) || { updated: true };
 };
 
@@ -638,6 +746,14 @@ handlers.task_comment_add = async (args) => {
   const task = db.getTask(id);
   if (!task) throw new ToolError('task not found', 404);
   return db.addTaskComment(id, body, args.created_by || 'agent');
+};
+
+handlers.task_delete = async (args) => {
+  const id = requireTaskId(args);
+  const task = db.getTask(id);
+  if (!task) throw new ToolError('task not found', 404);
+  db.deleteTask(id);
+  return { deleted: true, task_id: id };
 };
 
 // ── log_* ────────────────────────────────────────────────────────────────────

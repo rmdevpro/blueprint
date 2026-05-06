@@ -263,37 +263,53 @@
     .panel-home-btn:hover { color:var(--text-primary); border-color:var(--text-muted); }
     #panel-header { display:flex; align-items:center; gap:4px; }
 
-    #task-tree { overflow-y:auto; background:var(--bg-primary); border:1px solid var(--border); border-radius:6px; padding:4px; flex:1; min-height:0; }
-    #task-tree ul { list-style:none; padding-left:20px; margin:0; }
-    #task-tree > div > div > ul { padding-left:0; }
-    .task-folder-label {
-      display:inline-flex; align-items:center; gap:4px; padding:0 2px; cursor:pointer;
+    /* ── Task panel v2 (project-based, subtasks, status lifecycle, rank) ── */
+    #task-tree { overflow:auto; background:var(--bg-primary); border:1px solid var(--border); border-radius:6px; padding:4px; flex:1; min-height:0; }
+    #task-tree .program-header {
+      font-size:10px; text-transform:uppercase; color:var(--text-muted);
+      padding:6px 6px 2px; user-select:none; letter-spacing:0.4px;
+    }
+    #task-tree .project-row {
+      display:flex; align-items:center; gap:4px; padding:2px 6px; cursor:pointer;
       font-size:11px; line-height:18px; color:var(--text-primary); user-select:none;
-      text-decoration:none;
     }
-    .task-folder-label:hover { color:var(--accent); background:var(--bg-tertiary); }
-    .task-folder-label .folder-arrow { font-size:8px; transition:transform 0.15s; display:inline-block; width:10px; text-align:center; }
-    .task-folder.collapsed .folder-arrow { transform:rotate(-90deg); }
-    .task-folder.collapsed > div { display:none; }
-    .task-folder-label .folder-icon { margin-right:2px; font-size:11px; }
-    .task-folder-label .folder-count { font-size:10px; color:var(--text-muted); margin-left:4px; }
-    .task-folder.selected > .task-folder-label { color:var(--accent); font-weight:bold; }
+    #task-tree .project-row:hover { background:var(--bg-tertiary); }
+    #task-tree .project-row .arrow { font-size:8px; transition:transform 0.15s; display:inline-block; width:10px; text-align:center; }
+    #task-tree .project-row.collapsed .arrow { transform:rotate(-90deg); }
+    #task-tree .project-row .name { font-weight:600; }
+    #task-tree .project-row .count { font-size:10px; color:var(--text-muted); margin-left:auto; }
+    #task-tree .project-tasks { display:block; }
+    #task-tree .project-row.collapsed + .project-tasks { display:none; }
 
-    .task-node {
-      display:flex; align-items:flex-start; gap:4px; padding:0 2px; font-size:11px; line-height:18px; cursor:grab;
+    .task-row {
+      display:flex; align-items:center; gap:6px;
+      font-size:11px; line-height:20px; padding:0 6px;
+      cursor:grab; user-select:none; white-space:nowrap;
+      padding-left: calc(20px + var(--depth, 0) * 16px);
     }
-    .task-node:hover { background:var(--bg-hover); }
-    .task-node.done .task-label { text-decoration:line-through; color:var(--text-muted); }
-    .task-node.archived .task-label { color:var(--text-muted); font-style:italic; }
-    .task-node .task-index { color:var(--text-muted); font-size:10px; min-width:14px; text-align:right; }
-    .task-node .task-label { flex:1; cursor:default; }
-    .task-node .task-delete { visibility:hidden; background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:10px; padding:0 2px; }
-    .task-node:hover .task-delete { visibility:visible; }
-    .task-node .task-delete:hover { color:var(--danger); }
-    .task-node.drag-over-above { border-top:2px solid var(--accent); }
-    .task-node.drag-over-below { border-bottom:2px solid var(--accent); }
-    .task-folder.drag-over > .task-folder-label { background:var(--accent); color:var(--bg-primary); }
-    .task-node input[type=checkbox] { margin:0; width:12px; height:12px; }
+    .task-row:hover { background:var(--bg-hover); }
+    .task-row[draggable="true"]:active { cursor:grabbing; }
+    .task-row .indicator {
+      display:inline-block; width:14px; text-align:center; flex:none;
+      font-family: 'Apple Symbols', 'Segoe UI Symbol', 'Symbola', monospace;
+    }
+    .task-row .indicator.todo { color:var(--text-muted); }
+    .task-row .indicator.active { color:#3fb950; }     /* green for play */
+    .task-row .indicator.blocked { color:#f0883e; }    /* orange for stop */
+    .task-row .indicator.done { color:#3fb950; }       /* green check */
+    .task-row .indicator.cancelled { color:#f85149; }  /* red x */
+    .task-row .issue-num { color:var(--accent); font-family:'SF Mono', Menlo, monospace; font-size:10.5px; flex:none; cursor:pointer; }
+    .task-row .issue-num:hover { text-decoration:underline; }
+    .task-row .title { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+    .task-row.done .title, .task-row.cancelled .title { text-decoration:line-through; color:var(--text-muted); }
+    .task-row.archived { opacity:0.55; }
+    .task-row .caret { width:12px; text-align:center; font-size:8px; color:var(--text-muted); cursor:pointer; flex:none; }
+    .task-row.has-subtasks .caret { cursor:pointer; }
+    .task-row.collapsed-subtasks .caret { transform:rotate(-90deg); display:inline-block; }
+    .task-row.drag-over-as-child { background:var(--accent); color:var(--bg-primary); }
+    .task-row.drag-over-above { border-top:2px solid var(--accent); }
+    .task-row.drag-over-below { border-bottom:2px solid var(--accent); }
+    .subtask-children.collapsed { display:none; }
 
 
     /* ── File editor panes ── */
@@ -1007,10 +1023,32 @@ build/**</textarea>
         <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Title</label>
         <input id="task-detail-title" type="text" style="width:100%;padding:8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:14px">
       </div>
+      <div class="settings-group" style="margin-bottom:16px;display:flex;gap:12px">
+        <div style="flex:1">
+          <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Status</label>
+          <select id="task-detail-status" style="width:100%;padding:8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px">
+            <option value="todo">Todo</option>
+            <option value="active">Active</option>
+            <option value="blocked">Blocked</option>
+            <option value="done">Done</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div style="flex:1">
+          <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">GitHub Issue</label>
+          <input id="task-detail-github-issue" type="text" placeholder="owner/repo#N" style="width:100%;padding:8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px">
+        </div>
+        <div style="flex:0 0 auto;display:flex;align-items:flex-end;padding-bottom:6px">
+          <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input id="task-detail-archived" type="checkbox" style="margin:0">Archived
+          </label>
+        </div>
+      </div>
       <div class="settings-group" style="margin-bottom:16px">
         <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Notes</label>
         <textarea id="task-detail-description" rows="5" style="width:100%;padding:8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px;resize:vertical"></textarea>
       </div>
+      <div id="task-detail-error" style="display:none;color:#f85149;font-size:12px;margin-bottom:8px"></div>
       <div class="settings-group" style="margin-bottom:16px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
           <label style="font-size:12px;color:var(--text-secondary)">History</label>
@@ -2917,11 +2955,7 @@ build/**</textarea>
 
     // ── Task Tree ────────────────────────────────────────
     let taskFilter = 'todo';
-    // taskAutoNav removed — Home button is manual
-    let selectedTaskFolder = '/';
     let editingTaskId = null;
-    let taskTreeData = null;
-    const expandedTaskFolders = new Set();
 
     function setTaskFilter(filter) {
       taskFilter = filter;
@@ -2929,500 +2963,282 @@ build/**</textarea>
       loadTaskTree();
     }
 
-    // Task-by-folder lookup built from /api/tasks/tree
-    let _tasksByFolder = {};
-    // Virtual task folders: map parent_path -> [folder rows]. Populated on tree load.
-    let _virtualFoldersByParent = {};
-    let _virtualFoldersByPath = {};
+    // ── Task panel v2: project-based, subtasks, status lifecycle, rank ──
+    // Loaded tree: { programs: [ { id, name, projects: [ { id, name, has_repo, tasks: [ {..., subtasks:[...]} ] } ] } ] }
+    let _taskTreeData = { programs: [] };
+    const expandedProjects = new Set();
+    const collapsedTasks = new Set();
 
-    function _parentVirtualPath(p) {
-      const parts = String(p).split('/').filter(Boolean);
-      parts.pop();
-      return parts.length ? '/' + parts.join('/') : '/';
+    const STATUS_GLYPH = {
+      todo: '⏸', active: '⏵', blocked: '⏹', done: '✓', cancelled: '✗',
+    };
+
+    function escAttr(s) { return String(s).replace(/"/g, '&quot;'); }
+
+    function _parseGithubIssue(qualified) {
+      // "owner/repo#N" → { repo: "owner/repo", num: N, label: "#N", url: "..." }
+      if (!qualified) return null;
+      const m = /^([^/]+\/[^#]+)#(\d+)$/.exec(qualified);
+      if (!m) return null;
+      return {
+        repo: m[1], num: m[2], label: '#' + m[2],
+        url: 'https://github.com/' + m[1] + '/issues/' + m[2],
+      };
+    }
+
+    function _flattenTasksOf(project, out) {
+      function walk(arr) {
+        for (const t of arr) { out.push(t); if (t.subtasks) walk(t.subtasks); }
+      }
+      walk(project.tasks || []);
     }
 
     async function loadTaskTree() {
       try {
-        // Fetch tasks from DB and build folder lookup
-        const taskRes = await fetch(`/api/tasks/tree?filter=${taskFilter}`);
-        const taskData = await taskRes.json();
-        taskTreeData = taskData.tree;
-        _tasksByFolder = {};
-        _flattenTaskTree(taskData.tree, _tasksByFolder);
-
-        // Fetch virtual task folders so we can render them alongside FS dirs.
-        try {
-          const fRes = await fetch('/api/task-folders?filter=active');
-          const fData = await fRes.json();
-          _virtualFoldersByParent = {};
-          _virtualFoldersByPath = {};
-          for (const f of (fData.folders || [])) {
-            _virtualFoldersByPath[f.path] = f;
-            const parent = _parentVirtualPath(f.path);
-            (_virtualFoldersByParent[parent] = _virtualFoldersByParent[parent] || []).push(f);
-          }
-        } catch (e) {
-          _virtualFoldersByParent = {};
-          _virtualFoldersByPath = {};
-        }
-
-        // Fetch filesystem mounts (same as file browser and project picker)
-        let mounts = [];
-        try {
-          const mountRes = await fetch('/api/mounts');
-          mounts = await mountRes.json();
-        } catch {}
-        if (mounts.length === 0) mounts = [{ path: window._workspace || '/data/workspace' }];
-
-        const container = document.getElementById('task-tree');
-        container.innerHTML = '';
-
-        for (const mount of mounts) {
-          const section = document.createElement('div');
-          section.style.cssText = 'margin-bottom:4px';
-          const header = document.createElement('div');
-          header.style.cssText = 'font-size:12px;font-family:monospace;color:var(--text-secondary);padding:4px 6px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:4px';
-          const mountTaskCount = _countTasksUnderPath(mount.path);
-          header.innerHTML = `<span class="mount-arrow" style="font-size:10px;transition:transform 0.15s">&#9654;</span> ${escHtml(mount.path)}${mountTaskCount ? ' <span class="folder-count">' + mountTaskCount + '</span>' : ''}`;
-          const treeContainer = document.createElement('div');
-          treeContainer.style.cssText = 'display:none;padding-left:4px';
-          section.appendChild(header);
-          section.appendChild(treeContainer);
-          container.appendChild(section);
-
-          // Context menu on mount header
-          header.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            _showTaskContextMenu(e, mount.path, null);
-          });
-
-          header.addEventListener('click', async function() {
-            const arrow = header.querySelector('.mount-arrow');
-            if (treeContainer.style.display === 'none') {
-              treeContainer.style.display = '';
-              arrow.style.transform = 'rotate(90deg)';
-              expandedTaskFolders.add(mount.path);
-              selectedTaskFolder = mount.path;
-              if (!treeContainer.dataset.loaded) {
-                treeContainer.dataset.loaded = '1';
-                await _loadTaskFolder(mount.path, treeContainer);
-              }
-            } else {
-              treeContainer.style.display = 'none';
-              arrow.style.transform = '';
-              expandedTaskFolders.delete(mount.path);
-            }
-          });
-
-          // Auto-expand if was previously expanded
-          if (expandedTaskFolders.has(mount.path)) {
-            treeContainer.style.display = '';
-            header.querySelector('.mount-arrow').style.transform = 'rotate(90deg)';
-            treeContainer.dataset.loaded = '1';
-            _loadTaskFolder(mount.path, treeContainer);
-          }
-
-          // Drop on mount root
-          header.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
-          header.addEventListener('drop', async (e) => {
-            e.preventDefault();
-            const dragId = e.dataTransfer.getData('application/x-task-id');
-            if (!dragId) return;
-            await fetch(`/api/tasks/${dragId}/move`, {
-              method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ folder_path: mount.path }),
-            });
-            loadTaskTree();
-          });
-
-          // Auto-expand first mount only on initial load (when nothing is in expandedTaskFolders)
-          if (mounts.indexOf(mount) === 0 && expandedTaskFolders.size === 0) {
-            expandedTaskFolders.add(mount.path);
-            treeContainer.style.display = '';
-            header.querySelector('.mount-arrow').style.transform = 'rotate(90deg)';
-            treeContainer.dataset.loaded = '1';
-            _loadTaskFolder(mount.path, treeContainer);
-          }
-        }
+        const res = await fetch('/api/tasks/tree?filter=' + encodeURIComponent(taskFilter));
+        const data = await res.json();
+        _taskTreeData = data;
+        _renderTaskTree();
       } catch (err) {
         console.error('loadTaskTree error', err);
       }
     }
 
-    function _flattenTaskTree(node, map) {
-      if (node.tasks.length) map[node.path] = node.tasks;
-      for (const key of Object.keys(node.children || {})) {
-        _flattenTaskTree(node.children[key], map);
-      }
-    }
-
-    function _countTasksUnderPath(dirPath) {
-      let count = 0;
-      for (const [path, tasks] of Object.entries(_tasksByFolder)) {
-        if (path === dirPath || path.startsWith(dirPath.replace(/\/?$/, '/'))) count += tasks.length;
-      }
-      return count;
-    }
-
-    async function _loadTaskFolder(dirPath, container) {
-      const ul = document.createElement('ul');
-
-      // Render tasks for this folder path
-      const tasks = _tasksByFolder[dirPath] || [];
-      tasks.forEach((task, idx) => {
-        ul.appendChild(_createTaskNode(task, idx, dirPath));
-      });
-
-      // Browse real filesystem for subdirectories
-      try {
-        const res = await fetch(`/api/browse?path=${encodeURIComponent(dirPath)}`);
-        const data = await res.json();
-        const dirs = (data.entries || data).filter(e => e.type === 'directory').sort((a, b) => a.name.localeCompare(b.name));
-        for (const dir of dirs) {
-          const childPath = dirPath.replace(/\/?$/, '/') + dir.name;
-          const li = document.createElement('li');
-          li.className = 'task-folder' + (selectedTaskFolder === childPath ? ' selected' : '');
-          const taskCount = _countTasksUnderPath(childPath);
-          li.innerHTML = `<span class="task-folder-label">
-            <span class="folder-arrow">&#9656;</span>
-            ${escHtml(dir.name)}
-            ${taskCount ? '<span class="folder-count">' + taskCount + '</span>' : ''}
-          </span>`;
-          const childContainer = document.createElement('div');
-          childContainer.style.cssText = 'display:none';
-
-          li.querySelector('.task-folder-label').addEventListener('click', async (e) => {
-            e.stopPropagation();
-            selectedTaskFolder = childPath;
-            document.querySelectorAll('.task-folder.selected').forEach(f => f.classList.remove('selected'));
-            li.classList.add('selected');
-            if (childContainer.style.display === 'none') {
-              childContainer.style.display = '';
-              li.querySelector('.folder-arrow').style.transform = 'rotate(90deg)';
-              expandedTaskFolders.add(childPath);
-              if (!childContainer.dataset.loaded) {
-                childContainer.dataset.loaded = '1';
-                await _loadTaskFolder(childPath, childContainer);
-              }
-            } else {
-              childContainer.style.display = 'none';
-              li.querySelector('.folder-arrow').style.transform = '';
-              expandedTaskFolders.delete(childPath);
-            }
+    function _renderTaskTree() {
+      const container = document.getElementById('task-tree');
+      container.innerHTML = '';
+      const programs = (_taskTreeData.programs || []);
+      for (const program of programs) {
+        const phdr = document.createElement('div');
+        phdr.className = 'program-header';
+        phdr.textContent = program.name;
+        container.appendChild(phdr);
+        for (const project of (program.projects || [])) {
+          const projDiv = document.createElement('div');
+          const flat = [];
+          _flattenTasksOf(project, flat);
+          const collapsed = !expandedProjects.has(project.id);
+          const row = document.createElement('div');
+          row.className = 'project-row' + (collapsed ? ' collapsed' : '');
+          row.dataset.projectId = project.id;
+          row.innerHTML = '<span class="arrow">&#9656;</span>'
+            + '<span class="name">' + escHtml(project.name) + '</span>'
+            + (project.has_repo ? '' : ' <span style="font-size:9px;color:var(--text-muted)">(no repo)</span>')
+            + (flat.length ? '<span class="count">' + flat.length + '</span>' : '');
+          row.addEventListener('click', () => {
+            if (expandedProjects.has(project.id)) expandedProjects.delete(project.id);
+            else expandedProjects.add(project.id);
+            row.classList.toggle('collapsed');
+            tasksDiv.classList.toggle('collapsed-by-project');
+            _renderTaskTree();
           });
-
-          // Auto-expand if was previously expanded
-          if (expandedTaskFolders.has(childPath)) {
-            childContainer.style.display = '';
-            li.querySelector('.folder-arrow').style.transform = 'rotate(90deg)';
-            childContainer.dataset.loaded = '1';
-            _loadTaskFolder(childPath, childContainer);
-          }
-
-          // Context menu on folder
-          li.querySelector('.task-folder-label').addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            _showTaskContextMenu(e, childPath, null);
+          row.addEventListener('contextmenu', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            _showTaskContextMenu(e, { project, task: null });
           });
-
-          // Drop on folder = move task into it
-          const label = li.querySelector('.task-folder-label');
-          label.addEventListener('dragover', (e) => {
+          row.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; row.classList.add('drag-over-as-child'); });
+          row.addEventListener('dragleave', () => row.classList.remove('drag-over-as-child'));
+          row.addEventListener('drop', async (e) => {
             e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            li.classList.add('drag-over');
-          });
-          label.addEventListener('dragleave', () => li.classList.remove('drag-over'));
-          label.addEventListener('drop', async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            li.classList.remove('drag-over');
+            row.classList.remove('drag-over-as-child');
             const dragId = e.dataTransfer.getData('application/x-task-id');
             if (!dragId) return;
-            await fetch(`/api/tasks/${dragId}/move`, {
+            await fetch('/api/tasks/' + dragId, {
               method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ folder_path: childPath }),
+              body: JSON.stringify({ project_id: project.id, parent_task_id: null }),
             });
             loadTaskTree();
           });
-
-          li.appendChild(childContainer);
-          ul.appendChild(li);
-        }
-      } catch {}
-
-      // Append virtual task folders whose parent matches dirPath
-      const virtualKids = (_virtualFoldersByParent[dirPath] || []).slice().sort((a, b) => a.name.localeCompare(b.name));
-      for (const vfolder of virtualKids) {
-        const childPath = vfolder.path;
-        const li = document.createElement('li');
-        li.className = 'task-folder virtual' + (selectedTaskFolder === childPath ? ' selected' : '');
-        li.dataset.virtualFolderId = vfolder.id;
-        const taskCount = _countTasksUnderPath(childPath);
-        li.innerHTML = `<span class="task-folder-label">
-          <span class="folder-arrow">&#9656;</span>
-          <span class="folder-icon">📋</span>${escHtml(vfolder.name)}
-          ${taskCount ? '<span class="folder-count">' + taskCount + '</span>' : ''}
-        </span>`;
-        li.title = vfolder.description || '';
-        const childContainer = document.createElement('div');
-        childContainer.style.cssText = 'display:none';
-
-        li.querySelector('.task-folder-label').addEventListener('click', async (e) => {
-          e.stopPropagation();
-          selectedTaskFolder = childPath;
-          document.querySelectorAll('.task-folder.selected').forEach(f => f.classList.remove('selected'));
-          li.classList.add('selected');
-          if (childContainer.style.display === 'none') {
-            childContainer.style.display = '';
-            li.querySelector('.folder-arrow').style.transform = 'rotate(90deg)';
-            expandedTaskFolders.add(childPath);
-            if (!childContainer.dataset.loaded) {
-              childContainer.dataset.loaded = '1';
-              await _loadTaskFolder(childPath, childContainer);
-            }
-          } else {
-            childContainer.style.display = 'none';
-            li.querySelector('.folder-arrow').style.transform = '';
-            expandedTaskFolders.delete(childPath);
+          projDiv.appendChild(row);
+          const tasksDiv = document.createElement('div');
+          tasksDiv.className = 'project-tasks' + (collapsed ? ' collapsed-by-project' : '');
+          tasksDiv.style.display = collapsed ? 'none' : '';
+          for (const t of (project.tasks || [])) {
+            _appendTaskRow(tasksDiv, t, 0, project);
           }
-        });
-
-        if (expandedTaskFolders.has(childPath)) {
-          childContainer.style.display = '';
-          li.querySelector('.folder-arrow').style.transform = 'rotate(90deg)';
-          childContainer.dataset.loaded = '1';
-          _loadTaskFolder(childPath, childContainer);
+          projDiv.appendChild(tasksDiv);
+          container.appendChild(projDiv);
         }
-
-        li.querySelector('.task-folder-label').addEventListener('contextmenu', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          _showTaskContextMenu(e, childPath, null, vfolder);
-        });
-
-        const label = li.querySelector('.task-folder-label');
-        label.addEventListener('dragover', (e) => {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-          li.classList.add('drag-over');
-        });
-        label.addEventListener('dragleave', () => li.classList.remove('drag-over'));
-        label.addEventListener('drop', async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          li.classList.remove('drag-over');
-          const dragId = e.dataTransfer.getData('application/x-task-id');
-          if (!dragId) return;
-          await fetch(`/api/tasks/${dragId}/move`, {
-            method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ folder_path: childPath }),
-          });
-          loadTaskTree();
-        });
-
-        li.appendChild(childContainer);
-        ul.appendChild(li);
       }
-
-      container.appendChild(ul);
     }
 
-    function _createTaskNode(task, idx, folderPath) {
-      const li = document.createElement('li');
-      li.className = 'task-node' + (task.status === 'done' ? ' done' : '') + (task.status === 'archived' ? ' archived' : '');
-      li.dataset.taskId = task.id;
-      li.dataset.folderPath = folderPath;
-      li.draggable = true;
-      li.innerHTML = `
-        <input type="checkbox" style="cursor:pointer" ${task.status === 'done' ? 'checked' : ''}>
-        <span class="task-index">${idx + 1}</span>
-        <span class="task-label">${escHtml(task.title)}</span>
-        <button class="task-delete" title="Delete">&#10005;</button>
-      `;
-      li.querySelector('input[type=checkbox]').addEventListener('change', async (e) => {
-        const newStatus = e.target.checked ? 'done' : 'todo';
-        await fetch(`/api/tasks/${task.id}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: newStatus }),
+    function _appendTaskRow(container, task, depth, project) {
+      const hasSubs = (task.subtasks || []).length > 0;
+      const collapsed = collapsedTasks.has(task.id);
+      const issue = _parseGithubIssue(task.github_issue);
+      const row = document.createElement('div');
+      row.className = 'task-row ' + task.status + (task.archived ? ' archived' : '') + (hasSubs ? ' has-subtasks' : '') + (collapsed ? ' collapsed-subtasks' : '');
+      row.style.setProperty('--depth', String(depth));
+      row.dataset.taskId = task.id;
+      row.dataset.projectId = project.id;
+      row.draggable = true;
+      const caret = hasSubs ? '<span class="caret">&#9656;</span>' : '<span class="caret"></span>';
+      const indicator = '<span class="indicator ' + task.status + '" title="' + task.status + '">' + (STATUS_GLYPH[task.status] || '?') + '</span>';
+      const issueHtml = issue ? '<span class="issue-num" data-url="' + escAttr(issue.url) + '">' + issue.label + '</span>' : '';
+      const titleHtml = '<span class="title">' + escHtml(task.title) + '</span>';
+      row.innerHTML = caret + indicator + issueHtml + titleHtml;
+      // Caret toggles subtask visibility
+      row.querySelector('.caret').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!hasSubs) return;
+        if (collapsedTasks.has(task.id)) collapsedTasks.delete(task.id);
+        else collapsedTasks.add(task.id);
+        _renderTaskTree();
+      });
+      // Issue # → open in browser
+      const issueEl = row.querySelector('.issue-num');
+      if (issueEl) {
+        issueEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const url = issueEl.dataset.url;
+          if (url) window.open(url, '_blank');
         });
-        li.classList.toggle('done', newStatus === 'done');
-        task.status = newStatus;
+      }
+      // Double-click → edit modal
+      row.addEventListener('dblclick', () => openTaskDetail(task.id));
+      // Right-click → context menu
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        _showTaskContextMenu(e, { project, task });
       });
-      li.querySelector('.task-delete').addEventListener('click', async (e) => {
-        e.stopPropagation();
-        await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' });
-        li.remove();
-      });
-      li.addEventListener('dblclick', () => openTaskDetail(task.id));
-      // Context menu on task
-      li.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        _showTaskContextMenu(e, folderPath, task);
-      });
-      // Drag
-      li.addEventListener('dragstart', (e) => {
+      // Drag start
+      row.addEventListener('dragstart', (e) => {
         e.dataTransfer.setData('application/x-task-id', String(task.id));
         e.dataTransfer.effectAllowed = 'move';
       });
-      li.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        const rect = li.getBoundingClientRect();
-        const mid = rect.top + rect.height / 2;
-        li.classList.toggle('drag-over-above', e.clientY < mid);
-        li.classList.toggle('drag-over-below', e.clientY >= mid);
+      // Drop on a task = make subtask of that task
+      row.addEventListener('dragover', (e) => {
+        e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+        const rect = row.getBoundingClientRect();
+        const yOff = e.clientY - rect.top;
+        // Top 25% / bottom 25% = sibling reorder; middle = nest as subtask
+        row.classList.remove('drag-over-above', 'drag-over-below', 'drag-over-as-child');
+        if (yOff < rect.height * 0.25) row.classList.add('drag-over-above');
+        else if (yOff > rect.height * 0.75) row.classList.add('drag-over-below');
+        else row.classList.add('drag-over-as-child');
       });
-      li.addEventListener('dragleave', () => {
-        li.classList.remove('drag-over-above', 'drag-over-below');
+      row.addEventListener('dragleave', () => {
+        row.classList.remove('drag-over-above', 'drag-over-below', 'drag-over-as-child');
       });
-      li.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        li.classList.remove('drag-over-above', 'drag-over-below');
+      row.addEventListener('drop', async (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const above = row.classList.contains('drag-over-above');
+        const below = row.classList.contains('drag-over-below');
+        row.classList.remove('drag-over-above', 'drag-over-below', 'drag-over-as-child');
         const dragId = e.dataTransfer.getData('application/x-task-id');
         if (!dragId || dragId === String(task.id)) return;
-        await fetch(`/api/tasks/${dragId}/move`, {
+        let payload;
+        if (above || below) {
+          // Reorder as sibling: same parent + project as target task
+          payload = {
+            parent_task_id: task.parent_task_id || null,
+            project_id: task.project_id,
+            rank: above ? task.rank : (task.rank + 1),
+          };
+        } else {
+          // Nest: become subtask of target task
+          payload = {
+            parent_task_id: task.id,
+            project_id: task.project_id,
+          };
+        }
+        const r = await fetch('/api/tasks/' + dragId, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ folder_path: folderPath, sort_order: idx }),
+          body: JSON.stringify(payload),
         });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          alert('Could not move: ' + (err.error || r.statusText));
+        }
         loadTaskTree();
       });
-      return li;
+      container.appendChild(row);
+      if (hasSubs && !collapsed) {
+        const childWrap = document.createElement('div');
+        childWrap.className = 'subtask-children';
+        for (const sub of task.subtasks) {
+          _appendTaskRow(childWrap, sub, depth + 1, project);
+        }
+        container.appendChild(childWrap);
+      }
     }
 
-    function _showTaskContextMenu(e, folderPath, task, virtualFolder) {
+    function _showTaskContextMenu(e, ctx) {
+      const { project, task } = ctx;
       document.querySelectorAll('.context-menu').forEach(m => m.remove());
       const menu = document.createElement('div');
       menu.className = 'context-menu';
-      menu.style.cssText = `position:fixed;top:${e.clientY}px;left:${e.clientX}px;z-index:2000;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:4px 0;min-width:140px;box-shadow:0 4px 12px rgba(0,0,0,0.3)`;
+      menu.style.cssText = 'position:fixed;top:' + e.clientY + 'px;left:' + e.clientX + 'px;z-index:2000;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;padding:4px 0;min-width:160px;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
 
+      let html = '';
       if (task) {
-        // Context menu for a task
-        menu.innerHTML = `
-          <div class="context-menu-item" data-action="edit">Edit</div>
-          <div class="context-menu-item" data-action="${task.status === 'done' ? 'reopen' : 'complete'}">${task.status === 'done' ? 'Reopen' : 'Complete'}</div>
-          <div class="context-menu-item" data-action="archive">Archive</div>
-          <div class="context-menu-divider"></div>
-          <div class="context-menu-item" data-action="delete" style="color:var(--danger)">Delete</div>
-        `;
-      } else if (virtualFolder) {
-        // Context menu for a virtual task folder
-        const archived = virtualFolder.status === 'archived';
-        menu.innerHTML = `
-          <div class="context-menu-item" data-action="add-task">Add Task</div>
-          <div class="context-menu-item" data-action="new-folder">New Folder</div>
-          <div class="context-menu-divider"></div>
-          <div class="context-menu-item" data-action="edit-folder">Edit Description…</div>
-          <div class="context-menu-item" data-action="${archived ? 'unarchive-folder' : 'archive-folder'}">${archived ? 'Unarchive' : 'Archive'}</div>
-          <div class="context-menu-divider"></div>
-          <div class="context-menu-item" data-action="delete-folder" style="color:var(--danger)">Delete…</div>
-        `;
+        html += '<div class="context-menu-item" data-action="edit">Edit…</div>';
+        html += '<div class="context-menu-item" data-action="add-subtask">Add subtask…</div>';
+        html += '<div class="context-menu-divider"></div>';
+        // Status submenu shortcuts
+        for (const s of ['todo', 'active', 'blocked', 'done', 'cancelled']) {
+          if (s === task.status) continue;
+          html += '<div class="context-menu-item" data-action="status-' + s + '">' +
+            (STATUS_GLYPH[s] || '?') + ' ' + s.charAt(0).toUpperCase() + s.slice(1) +
+            '</div>';
+        }
+        html += '<div class="context-menu-divider"></div>';
+        if (['done', 'cancelled'].includes(task.status)) {
+          html += '<div class="context-menu-item" data-action="' + (task.archived ? 'unarchive' : 'archive') + '">' + (task.archived ? 'Unarchive' : 'Archive') + '</div>';
+        }
+        html += '<div class="context-menu-item" data-action="delete" style="color:var(--danger)">Delete</div>';
       } else {
-        // Context menu for a non-virtual folder (mount root or FS dir holding existing tasks)
-        menu.innerHTML = `
-          <div class="context-menu-item" data-action="add-task">Add Task</div>
-          <div class="context-menu-divider"></div>
-          <div class="context-menu-item" data-action="new-folder">New Folder</div>
-        `;
+        // Project context
+        html += '<div class="context-menu-item" data-action="add-task">Add task…</div>';
       }
+      menu.innerHTML = html;
 
       menu.querySelectorAll('.context-menu-item').forEach(item => {
-        item.addEventListener('mouseenter', () => item.style.background = 'var(--bg-hover)');
-        item.addEventListener('mouseleave', () => item.style.background = '');
+        item.style.padding = '4px 12px';
+        item.style.cursor = 'pointer';
+        item.style.fontSize = '12px';
+        item.addEventListener('mouseenter', () => { item.style.background = 'var(--bg-hover)'; });
+        item.addEventListener('mouseleave', () => { item.style.background = ''; });
         item.addEventListener('click', async () => {
           menu.remove();
           const action = item.dataset.action;
-          if (action === 'add-task') {
-            const title = prompt('Task title:');
-            if (title && title.trim()) {
-              await fetch('/api/tasks', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ folder_path: folderPath, title: title.trim() }),
-              });
-              loadTaskTree();
-            }
-          } else if (action === 'new-folder') {
-            const name = prompt('Folder name:');
-            if (name && name.trim()) {
-              const description = prompt('Description (optional):') || '';
-              const r = await fetch('/api/task-folders', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ parent_path: folderPath, name: name.trim(), description }),
-              });
-              if (!r.ok) {
-                const err = await r.json().catch(() => ({}));
-                alert('Could not create folder: ' + (err.error || r.statusText));
-              } else {
-                expandedTaskFolders.add(folderPath);
-                loadTaskTree();
-              }
-            }
-          } else if (action === 'edit-folder' && virtualFolder) {
-            const name = prompt('Folder name:', virtualFolder.name);
-            if (!name || !name.trim()) return;
-            const description = prompt('Description:', virtualFolder.description || '');
-            await fetch(`/api/task-folders/${virtualFolder.id}`, {
-              method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: name.trim(), description: description || '' }),
-            });
-            loadTaskTree();
-          } else if (action === 'archive-folder' && virtualFolder) {
-            await fetch(`/api/task-folders/${virtualFolder.id}`, {
-              method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ status: 'archived' }),
-            });
-            loadTaskTree();
-          } else if (action === 'unarchive-folder' && virtualFolder) {
-            await fetch(`/api/task-folders/${virtualFolder.id}`, {
-              method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ status: 'active' }),
-            });
-            loadTaskTree();
-          } else if (action === 'delete-folder' && virtualFolder) {
-            const cnt = await fetch(`/api/task-folders/${virtualFolder.id}/task-counts`).then(r => r.json()).catch(() => null);
-            if (!cnt) { alert('Failed to load folder details'); return; }
-            const c = cnt.counts;
-            const total = cnt.total;
-            const parent = virtualFolder.path.split('/').slice(0, -1).join('/') || '/';
-            const msg = total === 0
-              ? `Delete folder "${virtualFolder.name}"?`
-              : `Delete folder "${virtualFolder.name}"?\n\nTasks exist: ${c.active} active, ${c.done} done, ${c.archived} archived (${total} total).\nThey will be moved to the parent folder (${parent}).`;
-            if (!confirm(msg)) return;
-            await fetch(`/api/task-folders/${virtualFolder.id}`, { method: 'DELETE' });
-            loadTaskTree();
-          } else if (action === 'edit') {
+          if (action === 'edit') {
             openTaskDetail(task.id);
-          } else if (action === 'complete') {
-            await fetch(`/api/tasks/${task.id}`, {
+          } else if (action === 'add-task') {
+            _openAddTaskModal({ projectId: project.id, parentTaskId: null, projectName: project.name, hasRepo: project.has_repo });
+          } else if (action === 'add-subtask') {
+            const proj = _findProjectById(task.project_id);
+            _openAddTaskModal({ projectId: task.project_id, parentTaskId: task.id, projectName: proj?.name || '', hasRepo: proj?.has_repo });
+          } else if (action && action.startsWith('status-')) {
+            const newStatus = action.replace('status-', '');
+            const r = await fetch('/api/tasks/' + task.id, {
               method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ status: 'done' }),
+              body: JSON.stringify({ status: newStatus }),
             });
-            const node = document.querySelector(`.task-node[data-task-id="${task.id}"]`);
-            if (node) { node.classList.add('done'); node.querySelector('input[type=checkbox]').checked = true; }
-          } else if (action === 'reopen') {
-            await fetch(`/api/tasks/${task.id}`, {
+            if (!r.ok) {
+              const err = await r.json().catch(() => ({}));
+              alert(err.error || 'Failed to change status');
+            }
+            loadTaskTree();
+          } else if (action === 'archive' || action === 'unarchive') {
+            const r = await fetch('/api/tasks/' + task.id, {
               method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ status: 'todo' }),
+              body: JSON.stringify({ archived: action === 'archive' }),
             });
-            const node = document.querySelector(`.task-node[data-task-id="${task.id}"]`);
-            if (node) { node.classList.remove('done'); node.querySelector('input[type=checkbox]').checked = false; }
-          } else if (action === 'archive') {
-            await fetch(`/api/tasks/${task.id}`, {
-              method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ status: 'archived' }),
-            });
-            document.querySelector(`.task-node[data-task-id="${task.id}"]`)?.remove();
+            if (!r.ok) {
+              const err = await r.json().catch(() => ({}));
+              alert(err.error || 'Failed to toggle archive');
+            }
+            loadTaskTree();
           } else if (action === 'delete') {
-            await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' });
-            document.querySelector(`.task-node[data-task-id="${task.id}"]`)?.remove();
+            if (!confirm('Delete task: ' + task.title + '?')) return;
+            await fetch('/api/tasks/' + task.id, { method: 'DELETE' });
+            loadTaskTree();
           }
         });
       });
 
       document.body.appendChild(menu);
-      // Dismiss on click outside
       setTimeout(() => {
         document.addEventListener('click', function dismiss() {
           menu.remove();
@@ -3431,11 +3247,38 @@ build/**</textarea>
       }, 0);
     }
 
-    function countTasks(node) {
-      let c = node.tasks.length;
-      for (const key of Object.keys(node.children)) c += countTasks(node.children[key]);
-      return c;
+    function _findProjectById(pid) {
+      for (const program of (_taskTreeData.programs || [])) {
+        for (const proj of (program.projects || [])) {
+          if (proj.id === pid) return proj;
+        }
+      }
+      return null;
     }
+
+    function _openAddTaskModal({ projectId, parentTaskId, projectName, hasRepo }) {
+      // Reuse the task-detail modal in a "create" mode
+      editingTaskId = null;
+      _addTaskCtx = { projectId, parentTaskId, hasRepo };
+      const m = document.getElementById('task-detail-modal');
+      document.getElementById('task-detail-title').value = '';
+      document.getElementById('task-detail-description').value = '';
+      document.getElementById('task-detail-status').value = 'todo';
+      document.getElementById('task-detail-github-issue').value = '';
+      document.getElementById('task-detail-archived').checked = false;
+      document.getElementById('task-detail-archived').disabled = true; // can't archive a brand-new task
+      const histEl = document.getElementById('task-detail-history');
+      histEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted)">No history yet — task not yet created.</div>';
+      document.getElementById('task-detail-error').style.display = 'none';
+      document.getElementById('task-detail-error').textContent = '';
+      m.dataset.mode = 'create';
+      m.dataset.contextLabel = (parentTaskId ? 'Subtask in ' : 'Task in ') + projectName;
+      m.classList.add('visible');
+      setTimeout(() => document.getElementById('task-detail-title').focus(), 50);
+    }
+
+    let _addTaskCtx = null;
+
 
     let _taskDetailHistoryFilter = 'all';
     let _taskDetailHistory = [];
@@ -3464,8 +3307,18 @@ build/**</textarea>
         const res = await fetch(`/api/tasks/${taskId}`);
         const task = await res.json();
         editingTaskId = taskId;
+        _addTaskCtx = null;
+        const m = document.getElementById('task-detail-modal');
+        m.dataset.mode = 'edit';
         document.getElementById('task-detail-title').value = task.title || '';
         document.getElementById('task-detail-description').value = task.description || '';
+        document.getElementById('task-detail-status').value = task.status || 'todo';
+        document.getElementById('task-detail-github-issue').value = task.github_issue || '';
+        const archEl = document.getElementById('task-detail-archived');
+        archEl.checked = !!task.archived;
+        archEl.disabled = false;
+        document.getElementById('task-detail-error').style.display = 'none';
+        document.getElementById('task-detail-error').textContent = '';
         _taskDetailHistory = task.history || [];
         _taskDetailHistoryFilter = 'all';
         document.querySelectorAll('#task-detail-history-filter .hist-filter').forEach(b => {
@@ -3477,26 +3330,72 @@ build/**</textarea>
         });
         _renderTaskHistory();
         document.getElementById('task-detail-comment-input').value = '';
-        document.getElementById('task-detail-modal').classList.add('visible');
-      } catch {}
+        m.classList.add('visible');
+      } catch (err) { console.error('openTaskDetail', err); }
+    }
+
+    function _showTaskDetailError(msg) {
+      const el = document.getElementById('task-detail-error');
+      el.textContent = msg;
+      el.style.display = 'block';
     }
 
     async function saveTaskDetail() {
-      if (!editingTaskId) return;
       const title = document.getElementById('task-detail-title').value.trim();
       const description = document.getElementById('task-detail-description').value;
-      if (!title) return;
-      await fetch(`/api/tasks/${editingTaskId}`, {
+      const status = document.getElementById('task-detail-status').value;
+      const githubIssue = document.getElementById('task-detail-github-issue').value.trim();
+      const archived = document.getElementById('task-detail-archived').checked;
+      if (!title) { _showTaskDetailError('Title required'); return; }
+      const m = document.getElementById('task-detail-modal');
+      const mode = m.dataset.mode || 'edit';
+      if (mode === 'create' && _addTaskCtx) {
+        // Create flow
+        const body = {
+          project_id: _addTaskCtx.projectId,
+          parent_task_id: _addTaskCtx.parentTaskId,
+          title, description, status,
+          github_issue: githubIssue || null,
+        };
+        const r = await fetch('/api/tasks', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          _showTaskDetailError(err.error || ('HTTP ' + r.status));
+          return;
+        }
+        closeTaskDetail();
+        loadTaskTree();
+        return;
+      }
+      // Edit flow
+      if (!editingTaskId) return;
+      const body = {
+        title, description, status,
+        github_issue: githubIssue || null,
+        archived,
+      };
+      const r = await fetch('/api/tasks/' + editingTaskId, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, description }),
+        body: JSON.stringify(body),
       });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        _showTaskDetailError(err.error || ('HTTP ' + r.status));
+        return;
+      }
       closeTaskDetail();
       loadTaskTree();
     }
 
     function closeTaskDetail() {
       editingTaskId = null;
-      document.getElementById('task-detail-modal').classList.remove('visible');
+      _addTaskCtx = null;
+      const m = document.getElementById('task-detail-modal');
+      m.classList.remove('visible');
+      delete m.dataset.mode;
     }
 
     document.getElementById('task-detail-modal').addEventListener('click', (e) => {
@@ -3559,19 +3458,20 @@ build/**</textarea>
     }
 
     function autoNavigateTaskTree() {
-      // Navigate task tree to active session's CWD
+      // Navigate task tree to the active session's project — collapse all
+      // others and expand only the matching project node.
       const projPath = _getActiveProjectPath();
       if (!projPath) return;
-      // Collapse everything, then expand only the path to this project
-      expandedTaskFolders.clear();
-      const parts = projPath.split('/').filter(Boolean);
-      let current = '';
-      for (const part of parts) {
-        current += '/' + part;
-        expandedTaskFolders.add(current);
+      expandedProjects.clear();
+      for (const program of (_taskTreeData.programs || [])) {
+        for (const proj of (program.projects || [])) {
+          if (proj.path === projPath) {
+            expandedProjects.add(proj.id);
+            break;
+          }
+        }
       }
-      selectedTaskFolder = projPath;
-      loadTaskTree();
+      _renderTaskTree();
     }
 
     // Add-task-input removed — tasks are now added via right-click context menu on folders
