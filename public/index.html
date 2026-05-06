@@ -5511,13 +5511,20 @@ build/**</textarea>
     }
 
     function showSettingsError(msg) {
+      // #292: closeSettings() just removes the .visible class without deleting
+      // the modal from the DOM, so checking only for `.modal-content`'s
+      // presence missed the realistic case where the user closed the modal
+      // between Add-click and PUT-response. Check whether the modal is
+      // actually visible; if not, fall back to alert.
+      const modalRoot = document.getElementById('settings-modal');
+      if (!modalRoot || !modalRoot.classList.contains('visible')) {
+        alert(String(msg));
+        return;
+      }
       let banner = document.getElementById('settings-error-banner');
       if (!banner) {
         const modal = document.querySelector('#settings-modal .modal-content');
         if (!modal) {
-          // #292: previously a silent console.error — failures vanished if the
-          // settings modal had closed by the time the PUT response arrived.
-          // Fall back to alert so the user actually sees the error.
           alert(String(msg));
           return;
         }
