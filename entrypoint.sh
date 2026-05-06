@@ -19,12 +19,16 @@ if [ -f /app/config/CLAUDE.md ] && [ ! -s "$CLAUDE/CLAUDE.md" ]; then
   cp /app/config/CLAUDE.md "$CLAUDE/CLAUDE.md"
   echo "[entrypoint] Seeded global CLAUDE.md"
 fi
-if [ -f /app/config/GEMINI.md ] && [ ! -s "$CLAUDE/GEMINI.md" ]; then
-  cp /app/config/GEMINI.md "$CLAUDE/GEMINI.md"
+# #294: Gemini reads ~/.gemini/GEMINI.md, Codex reads ~/.codex/AGENTS.md.
+# Earlier versions seeded these into $CLAUDE/, where neither CLI looks.
+if [ -f /app/config/GEMINI.md ] && [ ! -s "/data/.gemini/GEMINI.md" ]; then
+  mkdir -p /data/.gemini
+  cp /app/config/GEMINI.md "/data/.gemini/GEMINI.md"
   echo "[entrypoint] Seeded global GEMINI.md"
 fi
-if [ -f /app/config/AGENTS.md ] && [ ! -s "$CLAUDE/AGENTS.md" ]; then
-  cp /app/config/AGENTS.md "$CLAUDE/AGENTS.md"
+if [ -f /app/config/AGENTS.md ] && [ ! -s "/data/.codex/AGENTS.md" ]; then
+  mkdir -p /data/.codex
+  cp /app/config/AGENTS.md "/data/.codex/AGENTS.md"
   echo "[entrypoint] Seeded global AGENTS.md"
 fi
 
