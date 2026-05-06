@@ -5798,6 +5798,36 @@ for (const p of projects) assert(trust[p] === 'TRUST_FOLDER');
 1. \`fetch('/api/kb/status')\` and inspect the response.
 **Verify:** Response contains \`initialized\`, \`ahead\`, \`behind\` (vs origin/main), \`upstreamAhead\`, \`upstreamBehind\` (vs upstream/main), \`originUrl\` (token-stripped, no embedded credentials), \`lastPushAt\`, \`lastPullAt\`, \`lastError\`. Numbers reflect the actual repo state.
 
+### VEC-PATH-01: Additional Paths rejects paths under workspace (client-side)
+**Issue:** #291.
+**Setup:** Settings → Vector Search panel open. Existing additional paths irrelevant to the test.
+**Steps (browser):**
+1. Real-type \`/data/workspace/foo-test\` into the Additional Paths input.
+2. Real-click the Add button.
+**Verify:** \`#settings-error-banner\` is visible with text containing "Paths under /data/workspace are already scanned." Input value is preserved (not cleared). \`GET /api/settings\` shows \`vector_additional_paths\` does not contain \`/data/workspace/foo-test\`.
+
+### VEC-PATH-02: Additional Paths accepts a path outside workspace
+**Issue:** #291.
+**Setup:** Settings → Vector Search panel open. Path \`/tmp/test-vec-X\` does not yet exist in saved settings.
+**Steps (browser):**
+1. Real-type \`/tmp/test-vec-X\` into the Additional Paths input.
+2. Real-click the Add button.
+**Verify:** No error banner. Input cleared. New row \`/tmp/test-vec-X\` rendered in the list. \`GET /api/settings.vector_additional_paths\` includes the new entry.
+
+### VEC-PATH-03: Server rejects a NEWLY-introduced redundant path even if pre-existing redundant entries are tolerated
+**Issue:** #291.
+**Setup:** Saved \`vector_additional_paths\` already contains a redundant entry (e.g., \`/data/workspace/docs\`) from before validation existed.
+**Steps:**
+1. \`PUT /api/settings\` with \`{key:'vector_additional_paths', value:[<existing entries>, '/data/workspace/another-redundant']}\`.
+**Verify:** HTTP 400. Error message names \`/data/workspace/another-redundant\` (the newly-added redundant path) but NOT the pre-existing redundant entries. Saved value is unchanged.
+
+### VEC-PATH-04: scanCode honors Additional Paths (code collection picks up files outside WORKSPACE)
+**Issue:** #291.
+**Setup:** Create a marker file outside WORKSPACE with a unique searchable token, e.g. \`/data/test-vec-291/marker.js\` containing \`function uniqueMarkerForIssue291(){return "UNIQUE_TOKEN_VEC_291_MARKER_zxqp";}\`. Add \`/data/test-vec-291\` to Additional Paths via the UI. Trigger code collection re-index via the Vector Search → Code → Re-index button (or \`POST /api/qdrant/reindex {collection:'code'}\`). Wait for the points_count to reach a steady state.
+**Steps (browser):**
+1. \`POST /api/mcp/call\` with \`{tool:'file_search_code', args:{query:'uniqueMarkerForIssue291', limit:20}}\`.
+**Verify:** Response includes a result whose \`file_path\` ends in \`test-vec-291/marker.js\` AND whose \`text\` contains the marker token. Pre-fix this returned zero matches because scanCode hardcoded \`[WORKSPACE]\`.
+
 ---
 ## Troubleshooting
 
