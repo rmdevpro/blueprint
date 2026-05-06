@@ -2,6 +2,20 @@
 
 This repository is the source code for the Agentic Workbench application — the system you are running inside. You are using the workbench to develop the workbench. The application is a Node.js server (`server.js`) decomposed into focused modules using factory-based dependency injection. The full architecture, module responsibilities, and configuration reference are in `README.md`.
 
+# Testing rule (UI features)
+
+**Every UI-facing test runs in a headless browser against the deployed UI. Always.** Playwright (or equivalent) on the deployed URL. Click the real buttons, drag the real elements, read the rendered DOM.
+
+Forbidden as a substitute for a UI test:
+- SSH'ing into the host and running `docker exec workbench …` to peek at files or send tmux keys.
+- `curl /api/…` to inspect backend responses *in lieu of* observing what the UI renders.
+- `tmux capture-pane` / `tmux send-keys` directly on the host instead of clicking through the UI.
+- Reading state files / DB rows / logs on the host as a substitute for verifying what the user sees.
+
+Those are diagnostic tools — useful while debugging — but they do not test the UI. Many bugs are pure-frontend (CSS, click handlers, polling, render hashing) and a green API call says nothing about whether the bug is actually fixed in the user's view. The headless browser is the only thing that exercises the same code path the user does, in the same DOM, against the same deployed bundle.
+
+This applies to runbook entries too: if `Verify:` describes something the user sees, the steps must be browser-driven actions. Host-side commands are fine in `Setup:` (planting state, restarting containers) but not in `Verify:`.
+
 # Anchor Documents
 
 These documents define the standards and context this project must be reviewed and developed against. When a document is relevant to your current task, read it fully. Do not grep or search within documents — content cannot be understood out of context. A document that is partially read is a document misread.
