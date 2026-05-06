@@ -2966,7 +2966,7 @@ build/**</textarea>
     // ── Task panel v2: project-based, subtasks, status lifecycle, rank ──
     // Loaded tree: { programs: [ { id, name, projects: [ { id, name, has_repo, tasks: [ {..., subtasks:[...]} ] } ] } ] }
     let _taskTreeData = { programs: [] };
-    const expandedProjects = new Set();
+    const expandedTaskProjects = new Set();
     const collapsedTasks = new Set();
 
     const STATUS_GLYPH = {
@@ -3017,7 +3017,7 @@ build/**</textarea>
           const projDiv = document.createElement('div');
           const flat = [];
           _flattenTasksOf(project, flat);
-          const collapsed = !expandedProjects.has(project.id);
+          const collapsed = !expandedTaskProjects.has(project.id);
           const row = document.createElement('div');
           row.className = 'project-row' + (collapsed ? ' collapsed' : '');
           row.dataset.projectId = project.id;
@@ -3026,8 +3026,8 @@ build/**</textarea>
             + (project.has_repo ? '' : ' <span style="font-size:9px;color:var(--text-muted)">(no repo)</span>')
             + (flat.length ? '<span class="count">' + flat.length + '</span>' : '');
           row.addEventListener('click', () => {
-            if (expandedProjects.has(project.id)) expandedProjects.delete(project.id);
-            else expandedProjects.add(project.id);
+            if (expandedTaskProjects.has(project.id)) expandedTaskProjects.delete(project.id);
+            else expandedTaskProjects.add(project.id);
             row.classList.toggle('collapsed');
             tasksDiv.classList.toggle('collapsed-by-project');
             _renderTaskTree();
@@ -3462,11 +3462,11 @@ build/**</textarea>
       // others and expand only the matching project node.
       const projPath = _getActiveProjectPath();
       if (!projPath) return;
-      expandedProjects.clear();
+      expandedTaskProjects.clear();
       for (const program of (_taskTreeData.programs || [])) {
         for (const proj of (program.projects || [])) {
           if (proj.path === projPath) {
-            expandedProjects.add(proj.id);
+            expandedTaskProjects.add(proj.id);
             break;
           }
         }
