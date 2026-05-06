@@ -178,6 +178,7 @@ function registerCoreRoutes(
     registerCodexProvider,
     trustGeminiProjectDirs,
     trustCodexProjectDirs,
+    kbWatcher,
     sleep,
   },
 ) {
@@ -556,29 +557,31 @@ function registerCoreRoutes(
   }
 
   // ── GET /api/kb/status ────────────────────────────────────────────────────
+  // Source of truth is the kb-watcher's in-memory snapshot, refreshed
+  // on demand. Includes ahead/behind vs origin AND vs upstream so the
+  // UI can show both directions of sync state.
 
   app.get('/api/kb/status', async (req, res) => {
+    if (!kbWatcher) return res.json({ initialized: false });
     try {
-      await stat(join(KB_PATH, '.git'));
-    } catch (_err) {
-      return res.json({ initialized: false });
-    }
-    try {
-      const [aheadRes, behindRes, originRes, fetchRes] = await Promise.allSettled([
-        execFileAsync('git', ['-C', KB_PATH, 'rev-list', '--count', 'origin/main..HEAD']),
-        execFileAsync('git', ['-C', KB_PATH, 'rev-list', '--count', 'HEAD..origin/main']),
-        execFileAsync('git', ['-C', KB_PATH, 'remote', 'get-url', 'origin']),
-        execFileAsync('git', ['-C', KB_PATH, 'log', '-1', '--format=%ci', 'FETCH_HEAD']).catch(() =>
-          execFileAsync('git', ['-C', KB_PATH, 'log', '-1', '--format=%ci'])
-        ),
-      ]);
-      const ahead = aheadRes.status === 'fulfilled' ? parseInt(aheadRes.value.stdout.trim(), 10) || 0 : 0;
-      const behind = behindRes.status === 'fulfilled' ? parseInt(behindRes.value.stdout.trim(), 10) || 0 : 0;
-      const originUrl = originRes.status === 'fulfilled' ? originRes.value.stdout.trim().replace(/:\/\/[^@]+@/, '://') : null;
-      const lastSync = fetchRes.status === 'fulfilled' ? fetchRes.value.stdout.trim() : null;
-      res.json({ initialized: true, ahead, behind, originUrl, lastSync });
+      const status = await kbWatcher.refreshStatus();
+      res.json(status);
     } catch (err) {
       res.json({ initialized: true, error: err.message });
+    }
+  });
+
+  // ── POST /api/kb/push ─────────────────────────────────────────────────────
+  // Manual flush: commit any pending changes and push to origin (the user's
+  // fork). Useful when the user wants immediate sync rather than waiting for
+  // the debounce timer.
+  app.post('/api/kb/push', async (req, res) => {
+    if (!kbWatcher) return res.status(503).json({ error: 'KB watcher not initialized' });
+    try {
+      const status = await kbWatcher.pushNow();
+      res.json({ ok: true, status });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
     }
   });
 
@@ -628,35 +631,31 @@ function registerCoreRoutes(
     }
 
     db.setSetting('kb_repo_url', JSON.stringify(publicUrl));
+    // After a fork, the watcher needs to pick up the new origin URL on its
+    // next operation. A status refresh re-reads remotes; a stop+start would
+    // also work. The kb-watcher reads remotes on every operation, so a
+    // refresh here is sufficient.
+    if (kbWatcher) {
+      try { await kbWatcher.refreshStatus(); } catch { /* best-effort */ }
+    }
     res.json({ ok: true, forkUrl: publicUrl });
   });
 
   // ── POST /api/kb/sync-upstream ────────────────────────────────────────────
+  // Pulls upstream changes (fast-forward only) into the user's fork.
+  // Implementation lives in kb-watcher; this endpoint is a manual trigger
+  // that complements the periodic poll.
 
   app.post('/api/kb/sync-upstream', async (req, res) => {
+    if (!kbWatcher) return res.status(503).json({ error: 'KB watcher not initialized' });
     try {
-      await stat(join(KB_PATH, '.git'));
-    } catch (_err) {
-      return res.status(400).json({ error: 'Knowledge Base not initialized' });
-    }
-    // Ensure upstream remote exists (auto-clone on older containers may not have set it).
-    try {
-      await execFileAsync('git', ['-C', KB_PATH, 'remote', 'get-url', 'upstream']);
-    } catch (_e) {
-      try {
-        await execFileAsync('git', ['-C', KB_PATH, 'remote', 'add', 'upstream', KB_UPSTREAM]);
-      } catch (addErr) {
-        return res.status(500).json({ error: `Could not configure upstream remote: ${addErr.message}` });
+      const status = await kbWatcher.syncUpstreamNow();
+      if (status.lastError) {
+        return res.status(409).json({ error: status.lastError, status });
       }
-    }
-    try {
-      await execFileAsync('git', ['-C', KB_PATH, 'fetch', 'upstream']);
-      const { stdout } = await execFileAsync('git', ['-C', KB_PATH, 'rebase', 'upstream/main']);
-      res.json({ ok: true, message: stdout.trim() || 'Up to date' });
+      res.json({ ok: true, status });
     } catch (err) {
-      // Abort any partial rebase
-      await execFileAsync('git', ['-C', KB_PATH, 'rebase', '--abort']).catch(() => {});
-      res.status(409).json({ error: `Rebase conflict: ${err.stderr || err.message}` });
+      res.status(500).json({ error: err.message });
     }
   });
 

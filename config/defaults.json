@@ -25,6 +25,12 @@
   "debug": {
     "tabSwitching": false
   },
+  "kb": {
+    "debounceMs": 8000,
+    "pullIntervalMs": 300000,
+    "commitAuthorName": "Workbench Bot",
+    "commitAuthorEmail": "workbench-bot@local"
+  },
   "embeddings": {
     "providers": {
       "huggingface": {

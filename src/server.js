@@ -19,6 +19,7 @@ const createKeepalive = require('./keepalive');
 const createTmuxLifecycle = require('./tmux-lifecycle');
 const createSessionResolver = require('./session-resolver');
 const createWatchers = require('./watchers');
+const createKbWatcher = require('./kb-watcher');
 const createWsTerminal = require('./ws-terminal');
 const registerCoreRoutes = require('./routes');
 // Voice input (Deepgram) removed — feature disabled
@@ -74,6 +75,8 @@ const watchers = createWatchers({
   CLAUDE_HOME,
   logger,
 });
+
+const kbWatcher = createKbWatcher({ db, logger, config });
 
 const terminal = createWsTerminal({
   safe,
@@ -211,6 +214,7 @@ const { checkAuthStatus } = registerCoreRoutes(app, {
   registerCodexProvider: watchers.registerCodexProvider,
   trustGeminiProjectDirs: watchers.trustGeminiProjectDirs,
   trustCodexProjectDirs: watchers.trustCodexProjectDirs,
+  kbWatcher,
   sleep: tmux.sleep,
 });
 
@@ -302,6 +306,12 @@ if (require.main === module) {
         );
         watchers.registerClaudeStatusLine().catch((err) =>
           logger.error('Post-startup Claude statusLine registration failed', {
+            module: 'server',
+            err: err.message,
+          }),
+        );
+        kbWatcher.start().catch((err) =>
+          logger.error('Post-startup KB watcher start failed', {
             module: 'server',
             err: err.message,
           }),
