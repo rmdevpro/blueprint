@@ -160,7 +160,7 @@ db.exec(`
     github_issue TEXT,
     title TEXT NOT NULL,
     description TEXT DEFAULT '',
-    status TEXT DEFAULT 'todo',
+    status TEXT DEFAULT 'inactive',
     archived INTEGER DEFAULT 0,
     rank INTEGER DEFAULT 1,
     sort_order INTEGER DEFAULT 0,
@@ -252,6 +252,9 @@ db.exec(`
       if (m) setIssue.run(`rmdevpro/agentic-workbench#${m[1]}`, t.id);
     }
   }
+  // #315: rename legacy 'todo' status to 'inactive' (idempotent — only runs
+  // when rows still hold the old value).
+  try { db.prepare("UPDATE tasks SET status = 'inactive' WHERE status = 'todo'").run(); } catch (_e) { /* tasks table not yet created */ }
   // Densify rank within every bucket on every boot.
   const setRank = db.prepare('UPDATE tasks SET rank = ? WHERE id = ?');
   const buckets = db.prepare("SELECT DISTINCT project_id, COALESCE(parent_task_id, 0) AS pti FROM tasks WHERE project_id IS NOT NULL").all();
@@ -501,7 +504,7 @@ module.exports = {
   },
 
   // ── Tasks v2 (project-based, subtasks, status lifecycle, rank) ──────────
-  // Status enum: 'todo' | 'active' | 'blocked' | 'done' | 'cancelled'
+  // Status enum: 'inactive' | 'active' | 'blocked' | 'done' | 'cancelled'
   // archived: 0|1 — separate visibility flag
   // rank: 1-based dense priority within (project_id, parent_task_id) bucket
 
@@ -537,7 +540,7 @@ module.exports = {
     }
     return set;
   },
-  addTask({ projectId, parentTaskId = null, githubIssue = null, title, description = '', status = 'todo', createdBy = 'human' }) {
+  addTask({ projectId, parentTaskId = null, githubIssue = null, title, description = '', status = 'inactive', createdBy = 'human' }) {
     if (status === 'archived') status = 'done'; // legacy mapping
     const archived = 0;
     const bucketParent = parentTaskId ?? 0;
@@ -571,7 +574,7 @@ module.exports = {
   setTaskStatus(id, status) {
     const old = stmts.getTask.get(id);
     if (!old) { const e = new Error('task not found'); e.code = 'not_found'; throw e; }
-    const valid = ['todo', 'active', 'blocked', 'done', 'cancelled'];
+    const valid = ['inactive', 'active', 'blocked', 'done', 'cancelled'];
     if (!valid.includes(status)) {
       const e = new Error(`invalid status: ${status}. Must be one of ${valid.join(', ')}`);
       e.code = 'task_validation';

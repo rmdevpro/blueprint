@@ -614,7 +614,7 @@ function _projectHasRepo(projectPath) {
 handlers.task_find = async (args = {}) => {
   let tasks;
   if (args.project_id != null) tasks = db.getTasksByProject(Number(args.project_id));
-  else tasks = db.getAllTasks(args.filter || 'todo');
+  else tasks = db.getAllTasks(args.filter || 'inactive');
   if (args.pattern) {
     let re;
     try { re = new RegExp(args.pattern, 'i'); }
@@ -666,7 +666,7 @@ handlers.task_add = async (args) => {
     githubIssue,
     title: args.title,
     description: args.description || '',
-    status: args.status || 'todo',
+    status: args.status || 'inactive',
     createdBy: 'agent',
   });
 };

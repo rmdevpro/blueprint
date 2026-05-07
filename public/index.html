@@ -293,7 +293,7 @@
       display:inline-block; width:14px; text-align:center; flex:none;
       font-family: 'Apple Symbols', 'Segoe UI Symbol', 'Symbola', monospace;
     }
-    .task-row .indicator.todo { color:var(--text-muted); }
+    .task-row .indicator.inactive { color:var(--text-muted); }
     .task-row .indicator.active { color:#3fb950; }     /* green for play */
     .task-row .indicator.blocked { color:#f0883e; }    /* orange for stop */
     .task-row .indicator.done { color:#3fb950; }       /* green check */
@@ -307,6 +307,9 @@
     .task-row.has-subtasks .caret { cursor:pointer; }
     .task-row.collapsed-subtasks .caret { transform:rotate(-90deg); display:inline-block; }
     .task-row.drag-over-as-child { background:var(--accent); color:var(--bg-primary); }
+    /* #312: same drag-over highlight on project rows so a top-level drop is */
+    /* visible feedback parity with sub-task drops onto another task row.    */
+    .project-row.drag-over-as-child { background:var(--accent); color:var(--bg-primary); }
     .task-row.drag-over-above { border-top:2px solid var(--accent); }
     .task-row.drag-over-below { border-bottom:2px solid var(--accent); }
     .subtask-children.collapsed { display:none; }
@@ -1027,7 +1030,7 @@ build/**</textarea>
         <div style="flex:1">
           <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">Status</label>
           <select id="task-detail-status" style="width:100%;padding:8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px">
-            <option value="todo">Todo</option>
+            <option value="inactive">Inactive</option>
             <option value="active">Active</option>
             <option value="blocked">Blocked</option>
             <option value="done">Done</option>
@@ -2979,7 +2982,7 @@ build/**</textarea>
     const collapsedTasks = new Set();
 
     const STATUS_GLYPH = {
-      todo: '⏸', active: '⏵', blocked: '⏹', done: '✓', cancelled: '✗',
+      inactive: '⏸', active: '⏵', blocked: '⏹', done: '✓', cancelled: '✗',
     };
 
     function escAttr(s) { return String(s).replace(/"/g, '&quot;'); }
@@ -3185,7 +3188,7 @@ build/**</textarea>
         html += '<div class="context-menu-item" data-action="add-subtask">Add subtask…</div>';
         html += '<div class="context-menu-divider"></div>';
         // Status submenu shortcuts
-        for (const s of ['todo', 'active', 'blocked', 'done', 'cancelled']) {
+        for (const s of ['inactive', 'active', 'blocked', 'done', 'cancelled']) {
           if (s === task.status) continue;
           html += '<div class="context-menu-item" data-action="status-' + s + '">' +
             (STATUS_GLYPH[s] || '?') + ' ' + s.charAt(0).toUpperCase() + s.slice(1) +
@@ -3272,7 +3275,7 @@ build/**</textarea>
       const m = document.getElementById('task-detail-modal');
       document.getElementById('task-detail-title').value = '';
       document.getElementById('task-detail-description').value = '';
-      document.getElementById('task-detail-status').value = 'todo';
+      document.getElementById('task-detail-status').value = 'inactive';
       document.getElementById('task-detail-github-issue').value = '';
       document.getElementById('task-detail-archived').checked = false;
       document.getElementById('task-detail-archived').disabled = true; // can't archive a brand-new task
@@ -3321,7 +3324,7 @@ build/**</textarea>
         m.dataset.mode = 'edit';
         document.getElementById('task-detail-title').value = task.title || '';
         document.getElementById('task-detail-description').value = task.description || '';
-        document.getElementById('task-detail-status').value = task.status || 'todo';
+        document.getElementById('task-detail-status').value = task.status || 'inactive';
         document.getElementById('task-detail-github-issue').value = task.github_issue || '';
         const archEl = document.getElementById('task-detail-archived');
         archEl.checked = !!task.archived;

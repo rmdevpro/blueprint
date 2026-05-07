@@ -1463,7 +1463,7 @@ function registerCoreRoutes(
     let tasks;
     if (filter === 'open') {
       // Open = any non-terminal status
-      tasks = db.getAllTasks('all').filter(t => ['todo', 'active', 'blocked'].includes(t.status));
+      tasks = db.getAllTasks('all').filter(t => ['inactive', 'active', 'blocked'].includes(t.status));
     } else if (filter === 'archived-flag') {
       // Show only archived tasks (archived=1) — different from old 'archived' status
       tasks = db.getAllTasks('all').filter(t => !!t.archived);
@@ -1552,7 +1552,7 @@ function registerCoreRoutes(
         githubIssue: issue,
         title,
         description: description || '',
-        status: status || 'todo',
+        status: status || 'inactive',
         createdBy: created_by || 'human',
       });
       fireEvent('task_added', { task_id: task.id, project_id: project.id, title });
