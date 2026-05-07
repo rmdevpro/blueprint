@@ -5844,6 +5844,77 @@ for (const p of projects) assert(trust[p] === 'TRUST_FOLDER');
 2. Read open tabs.
 **Verify:** A new tab opens at \`https://github.com/<owner>/<repo>/issues/<NNN>\` matching the chip text. Tab title corresponds to the actual issue (not a 404 page) when the issue exists. Click on the chip itself does NOT also open the task-detail modal (the chip's click handler stops propagation).
 
+### GIT-ACCT-V2-01: Settings → Git tab renders path-keyed account list
+**Issue:** #317.
+**Setup:** Workbench running with at least one git_accounts entry (legacy `{name,host,username,token}` form is OK — boot-time migration converts it).
+**Steps (browser):**
+1. Click Settings (sidebar bottom).
+2. Click "Git" tab in the Settings tabs row.
+**Verify:** The "Git Accounts" panel renders a table with columns Path, Name, Token (••••••••), KB, Default, action buttons. Legacy entries appear with `path = host + '/' + username`. The Knowledge Base section appears below the accounts table on the same Git tab. Token plaintext is never shown anywhere in the response or DOM. The field input above the table has placeholder `github.com/yourname` and a password input for the PAT.
+
+### GIT-ACCT-V2-02: Add a git account via the form (path + token)
+**Issue:** #317.
+**Setup:** Settings → Git tab open.
+**Steps (browser):**
+1. Type a new path into `#git-account-path` (e.g., `github.com/test-acct-{ts}`).
+2. Type a PAT into `#git-account-token`.
+3. Click the Add button.
+**Verify:** Row count in `#git-accounts-list tbody` increases by 1; the new row's first cell shows the path; token cell shows `••••••••`; if the table previously had no `default` row, the new row's default radio is checked. The two input fields are cleared on success. `GET /api/git-accounts` returns the new entry with `has_token: true` and **no `token` field**.
+
+### GIT-ACCT-V2-03: Edit a git account (rotate token / change name)
+**Issue:** #317.
+**Setup:** At least one row exists.
+**Steps (browser):**
+1. Click the ✎ (edit) button on a row.
+2. In the prompts: keep path; enter a new display name; enter a new token (or leave blank to keep existing).
+**Verify:** Row's Name cell updates immediately. Path is unchanged unless edited. PUT `/api/git-accounts/<id>` returns 200; `GET /api/git-accounts` shows the updated `name` and `has_token: true`. If a different account is set to KB and you edit it without touching the KB radio, KB assignment is preserved.
+
+### GIT-ACCT-V2-04: Delete a git account
+**Issue:** #317.
+**Setup:** A non-essential row exists (don't delete the KB-flagged account in this test).
+**Steps (browser):**
+1. Click the ✕ (delete) button on a row.
+**Verify:** Row count drops by 1; `GET /api/git-accounts` no longer lists the deleted account. The DB's `git_accounts` setting JSON drops the entry.
+
+### KB-AUTH-V2-01: KB Sync from upstream uses extraheader auth (no URL-embedded token)
+**Issue:** #317 (KB watcher refactor).
+**Setup:** Settings → Git tab; KB account configured (`isKB: true`).
+**Steps (browser):**
+1. Click "Sync from upstream" button.
+2. Read `#kb-status-line` text after a few seconds.
+**Verify:** No 401 / "could not connect" / "auth" errors in the status line. Status either shows `lastPullAt` updated, or a content-level error like "Pull (ff-only) failed: Diverging branches" — both confirm auth completed. The KB clone's `.git/config` `[remote "origin"]` URL should be plain `https://github.com/<account>/<repo>` with no embedded credentials (verify via `docker exec workbench cat /data/knowledge-base/.git/config` if needed).
+
+### PICKER-01: Issue picker opens from task Edit modal and surfaces no_account_for_path
+**Issue:** #314.
+**Setup:** A task in a repo-backed project where no `git_accounts` row exists for the repo's account path.
+**Steps (browser):**
+1. Right-click the task → click "Edit…".
+2. Click the "Pick…" button next to the GitHub Issue field.
+**Verify:** The picker modal opens with the repo header showing `<owner>/<repo>` (e.g., `rmdevpro/agentic-workbench`). The body shows the error `no_account_for_path: <host>/<owner>` with a hint to add the account in Settings → Git. List area is empty.
+
+### PICKER-02: Issue picker fetches issues via GraphQL when account is configured
+**Issue:** #314 (depends on #317 account configuration).
+**Setup:** A `git_accounts` row exists for `github.com/<owner>` with a valid PAT.
+**Steps (browser):**
+1. Open Edit modal for a task in the matching project; click "Pick…".
+2. Wait for the issue list to populate.
+**Verify:** The list renders rows of `<state-dot> #N <title> <labels>` for the repo's open issues (default state filter). Network shows a `GET /api/issues?repo=<owner>/<repo>&state=open` returning 200 with a non-empty `items` array. No token appears in any response body or in the DOM. Tokens in `git_accounts` are never sent to the client.
+
+### PICKER-03: Picker search box filters live; state dropdown re-fetches
+**Issue:** #314.
+**Setup:** Picker open with issues loaded.
+**Steps (browser):**
+1. Type a query into `#issue-picker-search`.
+2. Change `#issue-picker-state` to "Closed".
+**Verify:** Step 1 filters the rendered rows in-place to those whose title contains the query. Step 2 re-fetches `/api/issues?...state=closed` and replaces the list.
+
+### PICKER-04: Click an issue row populates the task's GitHub Issue field
+**Issue:** #314.
+**Setup:** Picker open with issues loaded.
+**Steps (browser):**
+1. Click any `.issue-picker-row`.
+**Verify:** Picker modal closes. `#task-detail-github-issue` field value equals `<owner>/<repo>#<N>` matching the clicked row. Field remains read-only (`readonly` attribute set). Save flow now sends this `github_issue` value to `/api/tasks/<id>` PUT.
+
 ### TASK-STATUS-LIFECYCLE-01: Status enum is \`inactive / active / blocked / done / cancelled\` end-to-end
 **Issue:** #315.
 **Setup:** Open right panel → Tasks. Have at least one existing task visible (any status).
