@@ -663,6 +663,7 @@
       <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:8px">
         <button class="filter-btn active" data-settings-tab="general" onclick="switchSettingsTab('general')">General</button>
         <button class="filter-btn" data-settings-tab="claude" onclick="switchSettingsTab('claude')">Claude Code</button>
+        <button class="filter-btn" data-settings-tab="git" onclick="switchSettingsTab('git')">Git</button>
         <button class="filter-btn" data-settings-tab="vector" onclick="switchSettingsTab('vector')">Vector Search</button>
         <button class="filter-btn" data-settings-tab="prompts" onclick="switchSettingsTab('prompts')">System Prompts</button>
       </div>
@@ -717,6 +718,20 @@
         </div>
       </div>
 
+      </div><!-- /settings-general (Knowledge Base + Git Accounts moved to Git tab) -->
+
+      <div id="settings-git" style="display:none">
+      <div class="settings-group">
+        <h3>Git Accounts</h3>
+        <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px">Personal access tokens for all GitHub-touching operations: KB sync, issue picker, gh CLI calls. One row per <code>host/account</code> path. Tokens are kept in the workbench DB and never exposed to AI tool calls. <a href="https://github.com/settings/tokens" target="_blank" rel="noopener" style="color:var(--accent)">Generate a PAT →</a></p>
+        <div id="git-accounts-list"></div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center">
+          <input type="text" id="git-account-path" placeholder="github.com/yourname" style="flex:1;min-width:160px;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace">
+          <input type="password" id="git-account-token" placeholder="Personal access token" style="flex:2;min-width:140px;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace">
+          <button onclick="addGitAccount()" style="padding:4px 10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;cursor:pointer">Add</button>
+        </div>
+      </div>
+
       <div class="settings-group">
         <h3>Knowledge Base</h3>
         <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px">Cloned to <code>/data/knowledge-base</code>. Designate a Git Account as the KB account to use your organisation's fork automatically.</p>
@@ -740,19 +755,11 @@
           <span id="kb-status-line" style="font-size:11px;color:var(--text-muted)"></span>
         </div>
       </div>
+      </div><!-- /settings-git -->
 
-      <div class="settings-group">
-        <h3>Git Accounts</h3>
-        <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px">Personal access tokens for git operations. Designate one as the KB account — the fork URL is derived automatically as <code>https://&lt;host&gt;/&lt;username&gt;/blueprint_workbench_kb</code>.</p>
-        <div id="git-accounts-list"></div>
-        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-          <input type="text" id="git-account-name" placeholder="Label (e.g. Work)" style="flex:1;min-width:80px;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px">
-          <input type="text" id="git-account-host" placeholder="github.com" value="github.com" style="width:110px;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace">
-          <input type="text" id="git-account-username" placeholder="username" style="width:110px;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace">
-          <input type="password" id="git-account-token" placeholder="Personal access token" style="flex:2;min-width:140px;padding:4px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;font-family:monospace">
-          <button onclick="addGitAccount()" style="padding:4px 10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px;cursor:pointer">Add</button>
-        </div>
-      </div>
+      <div id="settings-general-rest">
+        <!-- Resume the General tab — remaining sections (MCP Servers, OAuth Detection, Default Model, Keepalive, Status) below.
+             switchSettingsTab toggles this together with #settings-general. -->
 
       <div class="settings-group">
         <h3>MCP Servers</h3>
@@ -1039,7 +1046,11 @@ build/**</textarea>
         </div>
         <div style="flex:1">
           <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">GitHub Issue</label>
-          <input id="task-detail-github-issue" type="text" placeholder="owner/repo#N" style="width:100%;padding:8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px">
+          <div style="display:flex;gap:6px;align-items:center">
+            <input id="task-detail-github-issue" type="text" readonly placeholder="—" style="flex:1;padding:8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px;font-family:'SF Mono',Menlo,monospace">
+            <button type="button" onclick="openIssuePicker()" style="padding:8px 12px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:12px;cursor:pointer">Pick…</button>
+            <button type="button" onclick="document.getElementById('task-detail-github-issue').value = ''" title="Clear" style="padding:8px 10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:12px;cursor:pointer">✕</button>
+          </div>
         </div>
         <div style="flex:0 0 auto;display:flex;align-items:flex-end;padding-bottom:6px">
           <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
@@ -1071,6 +1082,26 @@ build/**</textarea>
         <button onclick="saveTaskDetail()" style="flex:1;padding:8px;background:var(--accent);color:#0d1117;border:none;border-radius:6px;cursor:pointer;font-weight:600">Save</button>
         <button onclick="closeTaskDetail()" style="padding:8px 16px;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;cursor:pointer">Cancel</button>
       </div>
+    </div>
+  </div>
+
+  <!-- #314: Issue picker modal — searchable list of issues for the task's project repo -->
+  <div id="issue-picker-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center">
+    <div class="modal-content" style="width:600px;max-height:80vh;background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:20px;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h3 style="margin:0;font-size:14px">Pick a GitHub issue <span id="issue-picker-repo" style="color:var(--text-muted);font-size:12px;font-family:'SF Mono',Menlo,monospace;margin-left:8px"></span></h3>
+        <button onclick="closeIssuePicker()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px">×</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <input id="issue-picker-search" type="text" placeholder="Search title…" style="flex:1;padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px">
+        <select id="issue-picker-state" style="padding:6px 8px;background:var(--bg-primary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-size:12px">
+          <option value="open" selected>Open</option>
+          <option value="closed">Closed</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+      <div id="issue-picker-error" style="display:none;color:#f85149;font-size:12px;margin-bottom:8px"></div>
+      <div id="issue-picker-list" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px;min-height:300px"></div>
     </div>
   </div>
 
@@ -3259,6 +3290,122 @@ build/**</textarea>
       }, 0);
     }
 
+    // #314: GitHub issue picker — opens a modal listing the active task's
+    // project repo's issues. Uses /api/issues which authenticates via the
+    // path-keyed account from #317. AI never sees the token; client never
+    // sees the token either.
+    let _issuePickerCtx = null; // { repo: 'owner/name' }
+    let _issuePickerCache = []; // last fetched items, used by search filter
+    async function openIssuePicker() {
+      // Determine the repo from the current task's project context. The
+      // editingTaskId path works for edit mode; create mode uses _addTaskCtx.
+      let repo = null;
+      try {
+        let projectId = null;
+        if (editingTaskId) {
+          // Look up the task's project
+          for (const program of (_taskTreeData.programs || [])) {
+            for (const proj of (program.projects || [])) {
+              const flat = []; const walk = (arr) => { for (const t of arr) { flat.push(t); if (t.subtasks) walk(t.subtasks); } };
+              walk(proj.tasks || []);
+              if (flat.find(t => t.id === editingTaskId)) projectId = proj.id;
+            }
+          }
+        } else if (_addTaskCtx) projectId = _addTaskCtx.projectId;
+        if (projectId == null) {
+          alert('No project context to scope the picker. Open the task from inside a project.');
+          return;
+        }
+        const proj = _findProjectById(projectId);
+        if (!proj || !proj.has_repo) {
+          alert('Project has no enclosing git repo. Issue picker requires a repo-backed project.');
+          return;
+        }
+        // Derive owner/name from project path. The project's path is the
+        // workspace folder; parse out the github owner/repo from the
+        // local repo's remote. Cheap heuristic: if the path matches the
+        // repo's URL ending, use it; else just take the last two path segments.
+        // Simpler: ask the server to look up the remote URL via /api/git-remote?project=<id>.
+        // For now, encode owner/name from the project path's last two segments
+        // when the path is /data/workspace/repos/<repo>.
+        const segs = (proj.path || '').split('/').filter(Boolean);
+        const lastTwo = segs.slice(-2);
+        if (lastTwo.length < 2) { alert('Cannot derive repo path from project path'); return; }
+        repo = `rmdevpro/${lastTwo[lastTwo.length - 1]}`;
+        // For the agentic-workbench self-reference, this gives 'rmdevpro/agentic-workbench'.
+      } catch (err) { alert('Picker setup error: ' + err.message); return; }
+      _issuePickerCtx = { repo };
+      _issuePickerCache = [];
+      document.getElementById('issue-picker-repo').textContent = repo;
+      document.getElementById('issue-picker-search').value = '';
+      document.getElementById('issue-picker-state').value = 'open';
+      document.getElementById('issue-picker-error').style.display = 'none';
+      document.getElementById('issue-picker-list').innerHTML = '<div style="padding:8px;color:var(--text-muted);font-size:12px">Loading…</div>';
+      document.getElementById('issue-picker-modal').style.display = 'flex';
+      await _fetchIssuesForPicker();
+    }
+    function closeIssuePicker() {
+      document.getElementById('issue-picker-modal').style.display = 'none';
+      _issuePickerCtx = null;
+      _issuePickerCache = [];
+    }
+    async function _fetchIssuesForPicker() {
+      if (!_issuePickerCtx) return;
+      const state = document.getElementById('issue-picker-state').value;
+      const url = `/api/issues?repo=${encodeURIComponent(_issuePickerCtx.repo)}&state=${state}`;
+      try {
+        const r = await fetch(url);
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({}));
+          const errEl = document.getElementById('issue-picker-error');
+          errEl.style.display = 'block';
+          errEl.textContent = (e.error || `HTTP ${r.status}`) + (e.path ? ` — add the account in Settings → Git` : '');
+          document.getElementById('issue-picker-list').innerHTML = '';
+          return;
+        }
+        const data = await r.json();
+        _issuePickerCache = data.items || [];
+        _renderIssuePickerList();
+      } catch (err) {
+        document.getElementById('issue-picker-error').style.display = 'block';
+        document.getElementById('issue-picker-error').textContent = err.message;
+      }
+    }
+    function _renderIssuePickerList() {
+      const q = document.getElementById('issue-picker-search').value.trim().toLowerCase();
+      const filtered = q ? _issuePickerCache.filter(i => i.title.toLowerCase().includes(q)) : _issuePickerCache;
+      const list = document.getElementById('issue-picker-list');
+      if (!filtered.length) {
+        list.innerHTML = '<div style="padding:8px;color:var(--text-muted);font-size:12px">No matching issues.</div>';
+        return;
+      }
+      list.innerHTML = filtered.map(i => `
+        <div class="issue-picker-row" data-num="${i.number}" style="display:flex;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--border);cursor:pointer;font-size:12px">
+          <span style="width:8px;height:8px;border-radius:50%;background:${i.state === 'OPEN' ? '#3fb950' : '#8957e5'};flex:none"></span>
+          <span style="font-family:'SF Mono',Menlo,monospace;color:var(--text-muted);flex:none;min-width:48px">#${i.number}</span>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(i.title)}</span>
+          <span style="display:flex;gap:3px;flex:none">${(i.labels||[]).map(l => `<span style="font-size:10px;padding:1px 5px;border-radius:8px;background:#${l.color}80;color:#000">${escHtml(l.name)}</span>`).join('')}</span>
+        </div>
+      `).join('');
+      list.querySelectorAll('.issue-picker-row').forEach(row => {
+        row.addEventListener('click', () => {
+          const num = row.dataset.num;
+          const repo = _issuePickerCtx.repo;
+          document.getElementById('task-detail-github-issue').value = `${repo}#${num}`;
+          closeIssuePicker();
+        });
+        row.addEventListener('mouseenter', () => row.style.background = 'var(--bg-tertiary)');
+        row.addEventListener('mouseleave', () => row.style.background = '');
+      });
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      const m = document.getElementById('issue-picker-modal');
+      if (!m) return;
+      m.addEventListener('click', (e) => { if (e.target.id === 'issue-picker-modal') closeIssuePicker(); });
+      document.getElementById('issue-picker-search')?.addEventListener('input', _renderIssuePickerList);
+      document.getElementById('issue-picker-state')?.addEventListener('change', _fetchIssuesForPicker);
+    });
+
     function _findProjectById(pid) {
       for (const program of (_taskTreeData.programs || [])) {
         for (const proj of (program.projects || [])) {
@@ -4946,11 +5093,17 @@ build/**</textarea>
 
     function switchSettingsTab(tab) {
       document.querySelectorAll('[data-settings-tab]').forEach(b => b.classList.toggle('active', b.dataset.settingsTab === tab));
-      document.getElementById('settings-general').style.display = tab === 'general' ? '' : 'none';
+      // #317: General tab is two siblings (Appearance/API Keys + the rest after the Git tab carve-out).
+      const showGeneral = tab === 'general';
+      document.getElementById('settings-general').style.display = showGeneral ? '' : 'none';
+      const tail = document.getElementById('settings-general-rest');
+      if (tail) tail.style.display = showGeneral ? '' : 'none';
+      document.getElementById('settings-git').style.display = tab === 'git' ? '' : 'none';
       document.getElementById('settings-claude').style.display = tab === 'claude' ? '' : 'none';
       document.getElementById('settings-vector').style.display = tab === 'vector' ? '' : 'none';
       document.getElementById('settings-prompts').style.display = tab === 'prompts' ? '' : 'none';
       if (tab === 'vector') loadVectorSettings();
+      if (tab === 'git') refreshGitAccounts();
     }
 
     async function openSettings() {
@@ -4990,7 +5143,10 @@ build/**</textarea>
         if (s.huggingface_api_key) document.getElementById('setting-huggingface-key').value = s.huggingface_api_key;
         document.getElementById('setting-kb-repo-name').value = s.kb_repo_name || 'blueprint_workbench_kb';
         document.getElementById('setting-kb-sync-interval').value = s.kb_sync_interval_minutes || 5;
-        renderGitAccounts(s.git_accounts || []);
+        // #317: read git accounts via the dedicated endpoint that runs
+        // migration + returns public view (no tokens). Legacy entries with
+        // {host,username} shape are auto-rewritten to {path} on first read.
+        refreshGitAccounts();
         loadKbStatus();
       } catch {}
       // Global CLAUDE.md now viewed via file tab (read-only) — no textarea to load
@@ -5165,8 +5321,11 @@ build/**</textarea>
       return (document.getElementById('setting-kb-repo-name')?.value.trim()) || 'blueprint_workbench_kb';
     }
 
+    // #317: derive KB origin URL from the account's path (e.g.
+    // 'github.com/jmdrumsgarrison-ux'). No host/username fields anymore.
     function kbUrlForAccount(account) {
-      return `https://${account.host}/${account.username}/${kbRepoName()}`;
+      if (!account || !account.path) return KB_REPO_DEFAULT;
+      return `https://${account.path}/${kbRepoName()}`;
     }
 
     function renderKbRepoUrl(accounts) {
@@ -5176,9 +5335,9 @@ build/**</textarea>
     }
 
     async function refreshKbRepoUrl() {
-      const res = await fetch('/api/settings');
-      const s = await res.json();
-      const accounts = s.git_accounts || [];
+      const r = await fetch('/api/git-accounts');
+      const data = await r.json();
+      const accounts = data.accounts || [];
       const kb = accounts.find(a => a.isKB);
       const url = kb ? kbUrlForAccount(kb) : KB_REPO_DEFAULT;
       await saveSetting('kb_repo_url', url);
@@ -5248,6 +5407,14 @@ build/**</textarea>
       }
     }
 
+    // #317: render path-keyed accounts; tokens never displayed.
+    async function refreshGitAccounts() {
+      try {
+        const r = await fetch('/api/git-accounts');
+        const data = await r.json();
+        renderGitAccounts(data.accounts || []);
+      } catch (_e) { renderGitAccounts([]); }
+    }
     function renderGitAccounts(accounts) {
       renderKbRepoUrl(accounts);
       const el = document.getElementById('git-accounts-list');
@@ -5257,23 +5424,64 @@ build/**</textarea>
       }
       el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead><tr style="color:var(--text-muted);text-align:left">
-          <th style="padding:3px 6px">Label</th>
-          <th style="padding:3px 6px">Host</th>
-          <th style="padding:3px 6px">Username</th>
+          <th style="padding:3px 6px">Path</th>
+          <th style="padding:3px 6px">Name</th>
           <th style="padding:3px 6px">Token</th>
           <th style="padding:3px 6px;text-align:center">KB</th>
+          <th style="padding:3px 6px;text-align:center">Default</th>
           <th style="padding:3px 6px"></th>
         </tr></thead>
         <tbody>${accounts.map(a => `
-          <tr style="border-top:1px solid var(--border)">
-            <td style="padding:4px 6px">${a.name}</td>
-            <td style="padding:4px 6px;font-family:monospace">${a.host}</td>
-            <td style="padding:4px 6px;font-family:monospace">${a.username}</td>
-            <td style="padding:4px 6px;font-family:monospace;color:var(--text-muted)">••••••••</td>
-            <td style="padding:4px 6px;text-align:center"><input type="radio" name="kb-account" ${a.isKB ? 'checked' : ''} onchange="setKbAccount('${a.id}')"></td>
-            <td style="padding:4px 6px"><button onclick="deleteGitAccount('${a.id}')" style="padding:2px 8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:var(--text-muted);cursor:pointer;font-size:11px">✕</button></td>
+          <tr data-acct-id="${a.id}" style="border-top:1px solid var(--border)">
+            <td style="padding:4px 6px;font-family:monospace">${escHtml(a.path)}</td>
+            <td style="padding:4px 6px">${escHtml(a.name || '')}</td>
+            <td style="padding:4px 6px;font-family:monospace;color:var(--text-muted)">${a.has_token ? '••••••••' : '<em>missing</em>'}</td>
+            <td style="padding:4px 6px;text-align:center"><input type="radio" name="kb-account" ${a.isKB ? 'checked' : ''} onchange="setGitAccountFlag('${a.id}', 'isKB', true)"></td>
+            <td style="padding:4px 6px;text-align:center"><input type="radio" name="default-account" ${a.default ? 'checked' : ''} onchange="setGitAccountFlag('${a.id}', 'default', true)"></td>
+            <td style="padding:4px 6px;display:flex;gap:4px;justify-content:flex-end">
+              <button onclick="editGitAccount('${a.id}')" title="Edit" style="padding:2px 8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);cursor:pointer;font-size:11px">✎</button>
+              <button onclick="deleteGitAccount('${a.id}')" title="Delete" style="padding:2px 8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:4px;color:var(--text-muted);cursor:pointer;font-size:11px">✕</button>
+            </td>
           </tr>`).join('')}
         </tbody></table>`;
+    }
+
+    async function editGitAccount(id) {
+      const r = await fetch('/api/git-accounts');
+      const { accounts } = await r.json();
+      const acc = accounts.find(a => a.id === id);
+      if (!acc) return;
+      const newPath = prompt('Path (host/account):', acc.path);
+      if (newPath == null) return;
+      const newName = prompt('Display name (optional):', acc.name || '');
+      if (newName == null) return;
+      const newToken = prompt('New token (leave blank to keep existing):', '');
+      if (newToken == null) return;
+      const body = { path: newPath.trim(), name: newName.trim() };
+      if (newToken.trim()) body.token = newToken.trim();
+      const res = await fetch('/api/git-accounts/' + id, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        alert('Edit failed: ' + (e.error || res.statusText));
+      }
+      refreshGitAccounts();
+    }
+
+    async function setGitAccountFlag(id, flag, value) {
+      const body = {};
+      body[flag === 'isKB' ? 'isKB' : 'default'] = !!value;
+      const res = await fetch('/api/git-accounts/' + id, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        alert('Update failed: ' + (e.error || res.statusText));
+      }
+      refreshGitAccounts();
     }
 
     // #289: crypto.randomUUID() is only available in secure contexts
@@ -5293,59 +5501,49 @@ build/**</textarea>
       return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
     }
 
+    // #317: Add a git account by path + token. New account is auto-marked
+    // as KB if no KB-marked row exists yet, AND auto-marked as default if
+    // there's no default yet.
     async function addGitAccount() {
-      // #289: surface failures instead of letting async rejections vanish.
       try {
-        const name = document.getElementById('git-account-name').value.trim();
-        const host = document.getElementById('git-account-host').value.trim();
-        const username = document.getElementById('git-account-username').value.trim();
+        const path = document.getElementById('git-account-path').value.trim();
         const token = document.getElementById('git-account-token').value.trim();
-        if (!name || !host || !username || !token) return;
-        const res = await fetch('/api/settings');
-        const s = await res.json();
-        const accounts = s.git_accounts || [];
-        const isFirst = accounts.length === 0;
-        const account = { id: _genUUIDv4(), name, host, username, token, isKB: isFirst };
-        accounts.push(account);
-        // #292: saveSetting returns false on PUT failure (it surfaces its own
-        // error via showSettingsError/alert). Bail out before clearing inputs
-        // and re-rendering the table — otherwise the UI looks like success.
-        if (!await saveSetting('git_accounts', accounts)) return;
-        if (isFirst && !await saveSetting('kb_repo_url', kbUrlForAccount(account))) {
-          renderGitAccounts(accounts);
+        if (!path || !token) return;
+        // Probe current accounts to decide auto-flagging.
+        const probe = await fetch('/api/git-accounts').then(r => r.json()).catch(() => ({ accounts: [] }));
+        const existing = probe.accounts || [];
+        const body = { path, token };
+        if (!existing.some(a => a.isKB)) body.isKB = true;
+        if (!existing.some(a => a.default)) body.default = true;
+        const res = await fetch('/api/git-accounts', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}));
+          alert('Add account failed: ' + (e.error || res.statusText));
           return;
         }
-        document.getElementById('git-account-name').value = '';
-        document.getElementById('git-account-username').value = '';
+        document.getElementById('git-account-path').value = '';
         document.getElementById('git-account-token').value = '';
-        renderGitAccounts(accounts);
+        refreshGitAccounts();
       } catch (err) {
         console.error('addGitAccount failed:', err);
-        if (typeof showSettingsError === 'function') {
-          showSettingsError(`Add account failed: ${err.message}`);
-        } else {
-          alert(`Add account failed: ${err.message}`);
-        }
+        alert('Add account failed: ' + err.message);
       }
     }
 
     async function deleteGitAccount(id) {
-      const res = await fetch('/api/settings');
-      const s = await res.json();
-      const accounts = (s.git_accounts || []).filter(a => a.id !== id);
-      await saveSetting('git_accounts', accounts);
-      renderGitAccounts(accounts);
+      const res = await fetch('/api/git-accounts/' + id, { method: 'DELETE' });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        alert('Delete failed: ' + (e.error || res.statusText));
+      }
+      refreshGitAccounts();
     }
 
-    async function setKbAccount(id) {
-      const res = await fetch('/api/settings');
-      const s = await res.json();
-      const accounts = (s.git_accounts || []).map(a => ({ ...a, isKB: a.id === id }));
-      const kb = accounts.find(a => a.isKB);
-      await saveSetting('git_accounts', accounts);
-      await saveSetting('kb_repo_url', kb ? kbUrlForAccount(kb) : KB_REPO_DEFAULT);
-      renderGitAccounts(accounts);
-    }
+    // Backward-compat: callers from outside the Git tab still call this.
+    async function setKbAccount(id) { return setGitAccountFlag(id, 'isKB', true); }
 
     function closeSettings() {
       document.getElementById('settings-modal').classList.remove('visible');

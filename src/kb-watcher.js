@@ -20,11 +20,20 @@ const chokidar = require('chokidar');
 const simpleGit = require('simple-git');
 const { join } = require('path');
 const { stat } = require('fs/promises');
+const gitAuth = require('./git-auth');
 
 const KB_PATH = '/data/knowledge-base';
 const KB_UPSTREAM_URL = 'https://github.com/rmdevpro/workbench-kb';
 
 module.exports = function createKbWatcher({ db, logger, config }) {
+  // #317: KB ops authenticate via http.extraheader — token never embedded in
+  // remote URL. _kbAuthArgs() returns the per-call git args that inject the
+  // header, looked up fresh each time so token rotation takes effect without
+  // restart.
+  function _kbAuthArgs() {
+    const acc = gitAuth.kbAccount(db);
+    return gitAuth.gitAuthArgs(acc?.token || '');
+  }
   const debounceMs = config.get('kb.debounceMs', 8000);
   const pullIntervalMs = config.get('kb.pullIntervalMs', 5 * 60 * 1000);
   const commitAuthorName = config.get('kb.commitAuthorName', 'Workbench Bot');
@@ -153,8 +162,9 @@ module.exports = function createKbWatcher({ db, logger, config }) {
       logger.info('kb-watcher: committed', { msg, files: status.files.length });
       // Try to push to origin/main. If push fails (e.g. behind), keep the
       // commit local; status surfaces ahead/behind so the UI can show it.
+      // #317: auth via extraheader — origin URL is plain, no embedded token.
       try {
-        await g.push('origin', 'main');
+        await g.raw([..._kbAuthArgs(), 'push', 'origin', 'main']);
         setStatus({ lastPushAt: new Date().toISOString(), lastError: null });
         logger.info('kb-watcher: pushed', { msg });
       } catch (pushErr) {
@@ -205,6 +215,7 @@ module.exports = function createKbWatcher({ db, logger, config }) {
       // something we can merge". Use raw() to invoke `git fetch upstream`
       // directly so the underlying git binary handles the refspec.
       try {
+        // upstream is the public KB; no auth needed for read.
         await g.raw(['fetch', 'upstream']);
       } catch (err) {
         setStatus({ lastError: `Fetch upstream failed: ${err.message}` });
@@ -223,9 +234,10 @@ module.exports = function createKbWatcher({ db, logger, config }) {
       await _refreshAheadBehind();
       // After a pull (which may have fast-forwarded our local main past
       // origin/main on the user's fork), push the result so origin matches.
+      // #317: auth via extraheader on the push.
       if (lastStatus.ahead > 0) {
         try {
-          await g.push('origin', 'main');
+          await g.raw([..._kbAuthArgs(), 'push', 'origin', 'main']);
           setStatus({ lastPushAt: new Date().toISOString() });
           await _refreshAheadBehind();
         } catch (pushErr) {
@@ -280,7 +292,8 @@ module.exports = function createKbWatcher({ db, logger, config }) {
       if (!await _kbExists()) return getStatus();
       const g = await _git();
       try {
-        await g.push('origin', 'main');
+        // #317: auth via extraheader.
+        await g.raw([..._kbAuthArgs(), 'push', 'origin', 'main']);
         setStatus({ lastPushAt: new Date().toISOString(), lastError: null });
       } catch (err) {
         setStatus({ lastError: `Push failed: ${err.message}` });

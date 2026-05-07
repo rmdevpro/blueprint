@@ -547,14 +547,30 @@ function registerCoreRoutes(
   const KB_PATH = '/data/knowledge-base';
   const KB_UPSTREAM = 'https://github.com/rmdevpro/workbench-kb';
 
-  function getKbAccount() {
-    let accounts = [];
-    try { accounts = JSON.parse(db.getSetting('git_accounts', '[]')); } catch (_e) {}
-    return accounts.find(a => a.isKB) || null;
-  }
-
+  // #317: KB account is just a row in git_accounts with isKB=true. Lookup by
+  // path prefix (e.g., 'github.com/jmdrumsgarrison-ux'). The token stays in
+  // DB; URLs do NOT carry it. Auth happens per-call via http.extraheader.
+  const gitAuth = require('./git-auth');
+  function getKbAccount() { return gitAuth.kbAccount(db); }
+  // Plain origin URL — token NOT embedded. Auth flows through extraheader at
+  // git invocation time.
   function kbOriginUrl(account, repoName) {
-    return `https://${account.username}:${account.token}@${account.host}/${account.username}/${repoName}`;
+    // path is e.g. 'github.com/jmdrumsgarrison-ux' → host = 'github.com', user = 'jmdrumsgarrison-ux'
+    const i = (account.path || '').indexOf('/');
+    if (i < 0) return null;
+    const host = account.path.slice(0, i);
+    const user = account.path.slice(i + 1);
+    return `https://${host}/${user}/${repoName}`;
+  }
+  // Older callers passed account with .host / .username; also expose a legacy
+  // shim for the fork API (which still needs host).
+  function kbAccountHost(account) {
+    const i = (account.path || '').indexOf('/');
+    return i < 0 ? null : account.path.slice(0, i);
+  }
+  function kbAccountUsername(account) {
+    const i = (account.path || '').indexOf('/');
+    return i < 0 ? null : account.path.slice(i + 1);
   }
 
   // ── GET /api/kb/status ────────────────────────────────────────────────────
@@ -595,8 +611,11 @@ function registerCoreRoutes(
     try { repoName = JSON.parse(db.getSetting('kb_repo_name', '"blueprint_workbench_kb"')); } catch (_e) { repoName = 'blueprint_workbench_kb'; }
 
     // Fork via GitHub API
+    const host = kbAccountHost(account);
+    const username = kbAccountUsername(account);
+    if (!host || !username) return res.status(500).json({ error: `KB account has invalid path: ${account.path}` });
     try {
-      const forkRes = await fetch(`https://api.${account.host}/repos/rmdevpro/workbench-kb/forks`, {
+      const forkRes = await fetch(`https://api.${host}/repos/rmdevpro/workbench-kb/forks`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${account.token}`,
@@ -613,9 +632,12 @@ function registerCoreRoutes(
       return res.status(502).json({ error: `GitHub API request failed: ${err.message}` });
     }
 
-    // Point local clone at fork and add upstream remote
+    // Point local clone at fork and add upstream remote.
+    // #317: origin URL is plain (no embedded creds) — auth flows through
+    // http.extraheader at clone/push/fetch time.
     const originUrl = kbOriginUrl(account, repoName);
-    const publicUrl = `https://${account.host}/${account.username}/${repoName}`;
+    const publicUrl = originUrl;
+    const authArgs = gitAuth.gitAuthArgs(account.token);
     try {
       await stat(join(KB_PATH, '.git'));
       // Repo exists — update remotes
@@ -626,8 +648,8 @@ function registerCoreRoutes(
         await execFileAsync('git', ['-C', KB_PATH, 'remote', 'set-url', 'upstream', KB_UPSTREAM]);
       }
     } catch (_err) {
-      // Not yet cloned — clone the fork
-      await execFileAsync('git', ['clone', originUrl, KB_PATH]);
+      // Not yet cloned — clone the fork. extraheader injects auth for this call only.
+      await execFileAsync('git', [...authArgs, 'clone', originUrl, KB_PATH]);
       await execFileAsync('git', ['-C', KB_PATH, 'remote', 'add', 'upstream', KB_UPSTREAM]);
     }
 
@@ -657,6 +679,113 @@ function registerCoreRoutes(
       res.json({ ok: true, status });
     } catch (err) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── GET /api/issues ───────────────────────────────────────────────────────
+  // #314: list GitHub issues for a repo, scoped via the path-keyed account
+  // token (#317). Used by the task editor's issue picker. Caches per-repo
+  // for 60s to keep typing-storm-friendly without rate-limit pressure.
+  const _issuesCache = new Map(); // key: repo+state → { fetchedAt, items }
+  const _ISSUES_TTL_MS = 60 * 1000;
+  app.get('/api/issues', async (req, res) => {
+    const repo = String(req.query.repo || '');  // 'owner/name'
+    const state = String(req.query.state || 'open').toLowerCase();
+    const q = String(req.query.q || '').toLowerCase();
+    const m = /^([^/]+)\/([^/]+)$/.exec(repo);
+    if (!m) return res.status(400).json({ error: 'repo must be owner/name' });
+    const [, owner, name] = m;
+    const path = `github.com/${owner}`;
+    const account = gitAuth.accountForPath(db, path);
+    if (!account) return res.status(404).json({ error: `no_account_for_path: ${path}` });
+
+    const cacheKey = `${repo}\x00${state}`;
+    const cached = _issuesCache.get(cacheKey);
+    let items;
+    if (cached && Date.now() - cached.fetchedAt < _ISSUES_TTL_MS) {
+      items = cached.items;
+    } else {
+      const stateFilter = state === 'all' ? '[OPEN, CLOSED]' : state === 'closed' ? '[CLOSED]' : '[OPEN]';
+      const query = `query { repository(owner: "${owner}", name: "${name}") {
+        issues(states: ${stateFilter}, first: 100, orderBy: {field: UPDATED_AT, direction: DESC}) {
+          nodes { number title state labels(first: 5) { nodes { name color } } updatedAt }
+        }
+      } }`;
+      try {
+        const ghRes = await fetch(`https://api.github.com/graphql`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${account.token}`,
+            'Accept': 'application/vnd.github+json',
+            'Content-Type': 'application/json',
+            'User-Agent': 'workbench/issues-picker',
+          },
+          body: JSON.stringify({ query }),
+        });
+        if (ghRes.status === 401 || ghRes.status === 403) {
+          return res.status(401).json({ error: 'auth_rejected', path, status: ghRes.status });
+        }
+        if (!ghRes.ok) {
+          const body = await ghRes.text();
+          return res.status(502).json({ error: `GitHub API ${ghRes.status}: ${body.slice(0, 200)}` });
+        }
+        const json = await ghRes.json();
+        items = (json.data?.repository?.issues?.nodes || []).map(i => ({
+          number: i.number,
+          title: i.title,
+          state: i.state,
+          labels: (i.labels?.nodes || []).map(l => ({ name: l.name, color: l.color })),
+          updated_at: i.updatedAt,
+        }));
+        _issuesCache.set(cacheKey, { fetchedAt: Date.now(), items });
+      } catch (err) {
+        return res.status(502).json({ error: `GitHub API request failed: ${err.message}` });
+      }
+    }
+    if (q) items = items.filter(i => i.title.toLowerCase().includes(q));
+    res.json({ repo, owner, name, count: items.length, items });
+  });
+
+  // ── GET /api/git-accounts ─────────────────────────────────────────────────
+  // #317: account management endpoints. Token never returned in responses.
+  app.get('/api/git-accounts', (req, res) => {
+    res.json({ accounts: gitAuth.resolveAccounts(db).map(gitAuth.publicView) });
+  });
+  app.post('/api/git-accounts', (req, res) => {
+    const { path, token, isKB, default: isDefault, name } = req.body || {};
+    if (!path) return res.status(400).json({ error: 'path required' });
+    if (!token) return res.status(400).json({ error: 'token required' });
+    try {
+      const a = gitAuth.addAccount(db, { path, token, isKB: !!isKB, isDefault: !!isDefault, name });
+      res.json(gitAuth.publicView(a));
+    } catch (e) {
+      if (e.code === 'duplicate_path') return res.status(409).json({ error: e.message });
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.put('/api/git-accounts/:id', (req, res) => {
+    try {
+      const a = gitAuth.updateAccount(db, req.params.id, {
+        token: req.body?.token,
+        isKB: req.body?.isKB,
+        isDefault: req.body?.default,
+        name: req.body?.name,
+        path: req.body?.path,
+      });
+      res.json(gitAuth.publicView(a));
+    } catch (e) {
+      if (e.code === 'not_found') return res.status(404).json({ error: e.message });
+      if (e.code === 'duplicate_path') return res.status(409).json({ error: e.message });
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.delete('/api/git-accounts/:id', (req, res) => {
+    try {
+      gitAuth.removeAccount(db, req.params.id);
+      res.json({ removed: true, id: req.params.id });
+    } catch (e) {
+      if (e.code === 'not_found') return res.status(404).json({ error: e.message });
+      res.status(500).json({ error: e.message });
     }
   });
 

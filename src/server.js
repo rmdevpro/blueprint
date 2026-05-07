@@ -406,11 +406,14 @@ if (require.main === module) {
             try {
               await fsStat(join(KB_PATH, '.git'));
             } catch (_e) { return; }
-          let accounts = [];
-            try { accounts = JSON.parse(db.getSetting('git_accounts', '[]')); } catch (_e) {}
-            if (!accounts.find(a => a.isKB)) return;
+            // #317: KB account lookup via the centralized helper. Token used
+            // per-call via http.extraheader; never embedded in remote URL.
+            const gitAuth = require('./git-auth');
+            const acc = gitAuth.kbAccount(db);
+            if (!acc) return;
+            const authArgs = gitAuth.gitAuthArgs(acc.token || '');
             try {
-              await execFileAsync('git', ['-C', KB_PATH, 'fetch', 'origin']);
+              await execFileAsync('git', ['-C', KB_PATH, ...authArgs, 'fetch', 'origin']);
               await execFileAsync('git', ['-C', KB_PATH, 'merge', '--ff-only', 'origin/main']);
               logger.debug('KB sync: pulled from origin', { module: 'server' });
             } catch (err) {

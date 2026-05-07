@@ -756,6 +756,124 @@ handlers.task_delete = async (args) => {
   return { deleted: true, task_id: id };
 };
 
+// ── gh_* (path-keyed GitHub credential management + gh shell-out) ────────
+// #317: git_accounts is the single source of GitHub credentials. Token is
+// looked up per-call from the path. AI never sees the token — handlers
+// return public views that omit it.
+const _gitAuth = require('./git-auth');
+const _childProcess = require('child_process');
+
+handlers.gh_account_list = async () => {
+  const accounts = _gitAuth.resolveAccounts(db).map(_gitAuth.publicView);
+  return { accounts };
+};
+
+handlers.gh_account_add = async (args) => {
+  require_(args, 'path');
+  require_(args, 'token');
+  try {
+    const a = _gitAuth.addAccount(db, {
+      path: args.path,
+      token: args.token,
+      isKB: !!args.isKB,
+      isDefault: !!args.default,
+      name: args.name,
+    });
+    return _gitAuth.publicView(a);
+  } catch (e) {
+    if (e.code === 'duplicate_path') throw new ToolError(e.message, 409);
+    throw e;
+  }
+};
+
+handlers.gh_account_update = async (args) => {
+  require_(args, 'id');
+  try {
+    const a = _gitAuth.updateAccount(db, args.id, {
+      token: args.token,
+      isKB: args.isKB,
+      isDefault: args.default,
+      name: args.name,
+      path: args.path,
+    });
+    return _gitAuth.publicView(a);
+  } catch (e) {
+    if (e.code === 'not_found') throw new ToolError(e.message, 404);
+    if (e.code === 'duplicate_path') throw new ToolError(e.message, 409);
+    throw e;
+  }
+};
+
+handlers.gh_account_remove = async (args) => {
+  require_(args, 'id');
+  try {
+    _gitAuth.removeAccount(db, args.id);
+    return { removed: true, id: args.id };
+  } catch (e) {
+    if (e.code === 'not_found') throw new ToolError(e.message, 404);
+    throw e;
+  }
+};
+
+// gh_cmd: spawn `gh` (or `git`) with the right token for the requested repo.
+// args:
+//   command: array of args, e.g. ['issue', 'list']
+//   repo:    'owner/name' for path lookup (looked up as host + '/' + owner)
+//   host:    default 'github.com'
+// Token is injected via GH_TOKEN env (for `gh`) or via extraheader (for `git`).
+// Token never appears in args or output. Stderr/stdout are captured.
+handlers.gh_cmd = async (args) => {
+  require_(args, 'command');
+  const cmd = args.command;
+  const useGit = !!args.use_git; // when true: use 'git' instead of 'gh'
+  const host = args.host || 'github.com';
+  let path = null;
+  if (args.repo) {
+    // 'owner/name' → lookup path is 'host/owner'
+    const m = /^([^/]+)\/[^/]+$/.exec(String(args.repo));
+    if (!m) throw new ToolError(`invalid repo: ${args.repo} (expected 'owner/name')`, 400);
+    path = `${host}/${m[1]}`;
+  } else if (args.path) {
+    path = String(args.path);
+  } else {
+    throw new ToolError('repo or path required', 400);
+  }
+  const account = _gitAuth.accountForPath(db, path);
+  if (!account) {
+    throw new ToolError(`no_account_for_path: ${path}`, 404);
+  }
+  return new Promise((resolve, reject) => {
+    let bin, finalArgs, env;
+    if (useGit) {
+      bin = 'git';
+      finalArgs = [..._gitAuth.gitAuthArgs(account.token), ...cmd];
+      env = process.env;
+    } else {
+      bin = 'gh';
+      finalArgs = cmd;
+      env = { ...process.env, GH_TOKEN: account.token, GH_HOST: host };
+    }
+    const child = _childProcess.spawn(bin, finalArgs, {
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '', stderr = '';
+    child.stdout.on('data', b => stdout += b.toString());
+    child.stderr.on('data', b => stderr += b.toString());
+    child.on('error', err => reject(new ToolError(`spawn failed: ${err.message}`, 500)));
+    child.on('close', code => {
+      // Distinguish auth errors from other failures.
+      if (code === 0) {
+        resolve({ ok: true, code, stdout: stdout.slice(0, 200000), stderr: stderr.slice(0, 8000), path });
+      } else if (/401|403|token_expired|Bad credentials/i.test(stderr)) {
+        reject(new ToolError(`auth_rejected for path ${path}: ${stderr.trim().slice(0, 500)}`, 401));
+      } else {
+        reject(new ToolError(`gh_cmd exit ${code}: ${stderr.trim().slice(0, 500)}`, code === 1 ? 400 : 500));
+      }
+    });
+  });
+};
+
 // ── log_* ────────────────────────────────────────────────────────────────────
 
 const SINCE_RE = /^(\d+)\s*([smhd])$/;
