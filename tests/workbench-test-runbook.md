@@ -5828,6 +5828,36 @@ for (const p of projects) assert(trust[p] === 'TRUST_FOLDER');
 1. \`POST /api/mcp/call\` with \`{tool:'file_search_code', args:{query:'uniqueMarkerForIssue291', limit:20}}\`.
 **Verify:** Response includes a result whose \`file_path\` ends in \`test-vec-291/marker.js\` AND whose \`text\` contains the marker token. Pre-fix this returned zero matches because scanCode hardcoded \`[WORKSPACE]\`.
 
+### TASK-DRAG-PROJ-HL-01: Drop-on-project shows accent highlight (parity with drop-on-task)
+**Issue:** #312.
+**Setup:** Open right panel → Tasks. Expand at least one project that has tasks (e.g., \`Workbench\`). Have at least one task row visible.
+**Steps (browser):**
+1. Dispatch a real \`dragover\` DragEvent (with a DataTransfer that holds \`application/x-task-id\` set to a visible task's id) on a \`.project-row\` element. Read \`getComputedStyle\` of that row.
+2. Dispatch \`dragleave\` on the same row. Read \`getComputedStyle\` again.
+**Verify:** During the dragover, the project row has class \`drag-over-as-child\` and \`backgroundColor === rgb(224, 236, 255)\` (the \`--accent\` value). After dragleave, the class is gone and \`backgroundColor === rgba(0, 0, 0, 0)\`. Same accent is observed when the same class is applied to a \`.task-row\` (parity check). Pre-fix the project row remained transparent because the CSS rule only matched \`.task-row.drag-over-as-child\`.
+
+### TASK-ISSUE-LINK-01: Click \`#NNN\` chip in task row opens the GitHub issue in a new tab
+**Issue:** #307 + #313 (data populated by #313).
+**Setup:** Open right panel → Tasks. Expand a project whose tasks have \`github_issue\` populated (e.g., \`Workbench\` after #313's backfill). Confirm at least one row shows a \`#NNN\` chip.
+**Steps (browser):**
+1. \`browser_click\` on a \`.issue-num\` chip element (e.g., \`#244\`).
+2. Read open tabs.
+**Verify:** A new tab opens at \`https://github.com/<owner>/<repo>/issues/<NNN>\` matching the chip text. Tab title corresponds to the actual issue (not a 404 page) when the issue exists. Click on the chip itself does NOT also open the task-detail modal (the chip's click handler stops propagation).
+
+### TASK-STATUS-LIFECYCLE-01: Status enum is \`inactive / active / blocked / done / cancelled\` end-to-end
+**Issue:** #315.
+**Setup:** Open right panel → Tasks. Have at least one existing task visible (any status).
+**Steps (browser):**
+1. Right-click a task row whose status is \`inactive\` → context menu appears.
+2. Verify the menu includes status shortcuts \`⏵ Active\`, \`⏹ Blocked\`, \`✓ Done\`, \`✗ Cancelled\` and **does NOT** include the current state's shortcut (no \`⏸ Inactive\` entry).
+3. Click \`Edit…\` → modal opens.
+4. Read the \`#task-detail-status\` \`<select>\` options.
+**Verify:**
+- Step 4 select options are exactly \`{value:'inactive',label:'Inactive'}\`, \`{...active}\`, \`{...blocked}\`, \`{...done}\`, \`{...cancelled}\` — **no \`todo\` value or \`Todo\` label anywhere**.
+- The task row's indicator element has class \`indicator inactive\` (not \`indicator todo\`) and renders \`⏸\`.
+- DB query \`SELECT COUNT(*) FROM tasks WHERE status = 'todo'\` returns 0 (boot-time migration ran).
+Pre-fix the option label/value, indicator class, and any legacy DB rows would still read \`todo\`.
+
 ---
 ## Troubleshooting
 
