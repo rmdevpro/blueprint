@@ -2535,6 +2535,15 @@ build/**</textarea>
                 if (tabId === _activeIdForPanel(panel)) updateStatusBar(panel);
                 return;
               }
+              // #310: consume CLI settings-change broadcasts so they don't
+              // fall through to tab.term.write() and dump JSON into the
+              // terminal display. Trigger a sidebar/state refresh so the
+              // watcher's "UI can react" intent is actually met.
+              if (msg.type === 'cli_settings_changed') {
+                clearTimeout(window._cliSettingsRefreshTimer);
+                window._cliSettingsRefreshTimer = setTimeout(loadState, 1000);
+                return;
+              }
               if (msg.type === 'error') {
                 tab.term.write(`\r\n\x1b[31m[Error: ${msg.message}]\x1b[0m\r\n`);
                 if (msg.message && msg.message.includes('No tmux session')) {
