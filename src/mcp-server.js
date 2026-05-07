@@ -201,33 +201,73 @@ const TOOLS = [
     project: P.project,
   }, ['project']),
 
-  // task_*
-  T('task_find', 'Find tasks. Optional filters: folder_path, status (todo / done / archived / all), pattern (regex over title + description). Replaces task_list and task_grep.', {
-    folder_path: P.folder_path,
-    filter: { type: 'string', enum: ['all', 'todo', 'done', 'archived'], description: 'Status filter (default todo).' },
+  // task_* (v2 — project-based, subtasks, status lifecycle, rank, github_issue)
+  T('task_find', 'Find tasks. Filter by project_id, parent_task_id, status (inactive/active/blocked/done/cancelled/all/open), pattern (regex). Replaces task_list and task_grep.', {
+    project_id: { type: 'number', description: 'Filter to one project.' },
+    parent_task_id: { type: 'number', description: 'Filter to subtasks of one parent (or null for top-level).' },
+    filter: { type: 'string', enum: ['all', 'inactive', 'active', 'blocked', 'done', 'cancelled', 'open'], description: "Status filter (default 'inactive'). 'open' bundles inactive + active + blocked." },
     pattern: { type: 'string', description: 'Optional case-insensitive regex over title + description.' },
   }),
   T('task_get', 'Get a single task by ID.', { task_id: P.task_id }, ['task_id']),
-  T('task_add', 'Create a new task.', {
+  T('task_add', 'Create a new task. Tasks belong to a project (and optionally a parent task). Repo-backed projects require github_issue; non-repo projects make it optional.', {
     title: { type: 'string', description: 'Task title (≤ 500 chars).' },
     description: { type: 'string' },
-    folder_path: P.folder_path,
+    project_id: { type: 'number', description: 'Workbench project id (or omit and use parent_task_id to inherit).' },
+    project_name: { type: 'string', description: 'Alternative to project_id — looks up by name.' },
+    parent_task_id: { type: 'number', description: 'Make this task a subtask of the given task.' },
+    github_issue: { type: 'string', description: "Fully-qualified, e.g. 'rmdevpro/agentic-workbench#317'. Required for tasks in repo-backed projects." },
+    status: { type: 'string', enum: ['inactive', 'active', 'blocked', 'done', 'cancelled'], description: "Default 'inactive'." },
   }, ['title']),
-  T('task_move', 'Move a task to a different folder.', {
-    task_id: P.task_id, folder_path: P.folder_path,
-  }, ['task_id', 'folder_path']),
-  T('task_update', 'Update task fields (title, description, status, folder_path).', {
+  T('task_move', 'Re-parent a task and/or move it across projects. parent_task_id null = top-level.', {
+    task_id: P.task_id,
+    parent_task_id: { type: ['number', 'null'], description: 'New parent task id, or null to make it top-level.' },
+    project_id: { type: 'number', description: 'New project id (cascades to all descendants).' },
+  }, ['task_id']),
+  T('task_update', 'Update task fields. Status transitions and archive flag have server-side validation (e.g. cannot mark done with open subtasks; cannot archive non-terminal status).', {
     task_id: P.task_id,
     title: { type: 'string' },
     description: { type: 'string' },
-    status: { type: 'string', enum: ['todo', 'done', 'archived'] },
-    folder_path: P.folder_path,
+    github_issue: { type: 'string', description: "Linked issue, fully qualified (or empty string to clear)." },
+    status: { type: 'string', enum: ['inactive', 'active', 'blocked', 'done', 'cancelled'] },
+    archived: { type: 'boolean', description: "Visibility flag. Only allowed when status is 'done' or 'cancelled'." },
+    rank: { type: 'number', description: '1-based dense rank within the sibling group; setting shifts neighbors.' },
+    parent_task_id: { type: ['number', 'null'] },
+    project_id: { type: 'number' },
   }, ['task_id']),
+  T('task_delete', 'Delete a task (and its subtree via cascade).', { task_id: P.task_id }, ['task_id']),
   T('task_comment_add', 'Add a comment to a task. Comments are recorded in task_history with event_type=comment and shown alongside change events.', {
     task_id: P.task_id,
     body: { type: 'string', description: 'Comment text (markdown).' },
     created_by: { type: 'string', description: 'Author tag for filtering. Defaults to "agent" for MCP-authored comments.' },
   }, ['task_id', 'body']),
+
+  // gh_* (#317 path-keyed credential model + gh shell-out)
+  T('gh_account_list', 'List configured GitHub accounts (path + flags + has_token). Tokens are NEVER returned.', {}),
+  T('gh_account_add', "Add a GitHub account row keyed by path (e.g. 'github.com/yourname'). Token is stored in DB and never echoed back.", {
+    path: { type: 'string', description: "Path key — host + '/' + account name (e.g. 'github.com/rmdevpro')." },
+    token: { type: 'string', description: 'Personal access token — stored only in workbench DB.' },
+    isKB: { type: 'boolean', description: 'If true, this is the KB account (used for Knowledge Base sync). At most one row may have this set.' },
+    default: { type: 'boolean', description: 'If true, this is the default account for context-less ops. At most one row may have this set.' },
+    name: { type: 'string', description: 'Optional display label.' },
+  }, ['path', 'token']),
+  T('gh_account_update', 'Update an existing account row. Pass only the fields to change.', {
+    id: { type: 'string', description: 'Account id (from gh_account_list).' },
+    token: { type: 'string', description: 'New token (omit to keep existing).' },
+    isKB: { type: 'boolean' },
+    default: { type: 'boolean' },
+    name: { type: 'string' },
+    path: { type: 'string', description: 'New path (cannot collide with another row).' },
+  }, ['id']),
+  T('gh_account_remove', 'Remove an account row by id.', {
+    id: { type: 'string', description: 'Account id (from gh_account_list).' },
+  }, ['id']),
+  T('gh_cmd', "Run a `gh` (or `git` when use_git=true) command authenticated against the path-keyed account. Token is injected via GH_TOKEN env (or http.extraheader for git). Caller passes repo='owner/name' to scope the lookup; the host defaults to github.com. Distinct errors for missing path (404) vs auth rejected (401).", {
+    command: { type: 'array', items: { type: 'string' }, description: "Argv to pass to gh/git, e.g. ['issue','list','-R','owner/name'] or ['log','--oneline','-n','5']." },
+    repo: { type: 'string', description: "owner/name — used to derive the host/account path for token lookup. Either repo or path is required." },
+    path: { type: 'string', description: "Direct lookup path, e.g. 'github.com/rmdevpro'. Use when repo isn't applicable." },
+    host: { type: 'string', description: "Host for path construction (default 'github.com')." },
+    use_git: { type: 'boolean', description: 'If true, run `git` instead of `gh` (auth via http.extraheader).' },
+  }, ['command']),
 
   // log_*
   T('log_find', 'Query the workbench audit-log table. Optional filters: level (DEBUG/INFO/WARN/ERROR), module (e.g. qdrant-sync), since (1h / 30m / 24h / iso8601), pattern (regex over message + context), limit (default 200, max 5000). Returns rows newest-first.', {
