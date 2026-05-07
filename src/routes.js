@@ -176,6 +176,7 @@ function registerCoreRoutes(
     ensureSettings,
     registerGeminiMcp,
     registerCodexProvider,
+    registerCodexAuth,
     trustGeminiProjectDirs,
     trustCodexProjectDirs,
     kbWatcher,
@@ -1721,6 +1722,15 @@ function registerCoreRoutes(
       registerCodexProvider().catch(err =>
         logger.warn('registerCodexProvider after codex_api_key save failed', { module: 'routes', err: err.message })
       );
+      // #309: seed auth.json (API-key form) so codex_apps MCP and discoverable
+      // tool calls don't 401-loop on a stale chatgpt-form auth.json. Guarded
+      // by absent-file check inside registerCodexAuth so prior user choice
+      // (live OAuth or otherwise) is preserved.
+      if (value) {
+        registerCodexAuth().catch(err =>
+          logger.warn('registerCodexAuth after codex_api_key save failed', { module: 'routes', err: err.message })
+        );
+      }
     }
     if (key === 'huggingface_api_key') {
       // qdrant-sync's HF embedding provider reads process.env.HF_TOKEN

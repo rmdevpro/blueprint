@@ -212,6 +212,7 @@ const { checkAuthStatus } = registerCoreRoutes(app, {
   ensureSettings: watchers.ensureSettings,
   registerGeminiMcp: watchers.registerGeminiMcp,
   registerCodexProvider: watchers.registerCodexProvider,
+  registerCodexAuth: watchers.registerCodexAuth,
   trustGeminiProjectDirs: watchers.trustGeminiProjectDirs,
   trustCodexProjectDirs: watchers.trustCodexProjectDirs,
   kbWatcher,
@@ -330,6 +331,14 @@ if (require.main === module) {
         );
         watchers.registerCodexProvider().catch((err) =>
           logger.error('Post-startup Codex provider config failed', {
+            module: 'server',
+            err: err.message,
+          }),
+        );
+        // #309: seed API-key-form auth.json after the provider config is set,
+        // so the absence-guard's check is correct relative to the latest env.
+        watchers.registerCodexAuth().catch((err) =>
+          logger.error('Post-startup Codex auth seed failed', {
             module: 'server',
             err: err.message,
           }),

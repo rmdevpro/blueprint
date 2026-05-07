@@ -345,6 +345,79 @@ module.exports = function createWatchers({
     }
   }
 
+  // #309: seed Codex's API-key-form auth.json when an OPENAI_API_KEY is
+  // available and no auth.json exists yet. Codex's `codex login --with-api-key`
+  // is a one-shot CLI that reads the key from stdin and writes
+  //   { "auth_mode": "apikey", "OPENAI_API_KEY": "sk-..." }
+  // and exits. Without this, the absence of an API-key-form auth.json (or the
+  // presence of a stale chatgpt-form one with expired tokens) causes
+  // codex_apps MCP and per-turn discoverable-tool calls to 401-loop, driving
+  // a 25 MB/sec write storm via Codex's TRACE-logging + inotify watcher
+  // rooted at $HOME=/data.
+  //
+  // Guard: only seed when auth.json is absent. That preserves any prior user
+  // choice (live OAuth, manual /login, anything else). If the user wants to
+  // re-seed they can delete auth.json (or run `codex logout`).
+  async function registerCodexAuth() {
+    const HOME = safe.HOME;
+    const authFile = join(HOME, '.codex', 'auth.json');
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return;
+    try {
+      await fsp.access(authFile);
+      // File exists — preserve user's prior choice. No-op.
+      return;
+    } catch (err) {
+      if (err.code !== 'ENOENT') {
+        logger.warn('Failed to stat codex auth.json', { module: 'watchers', err: err.message });
+        return;
+      }
+      // ENOENT — fall through to seed.
+    }
+    try {
+      await fsp.mkdir(join(HOME, '.codex'), { recursive: true });
+    } catch (err) {
+      logger.warn('Could not create ~/.codex dir', { module: 'watchers', err: err.message });
+      return;
+    }
+    // Spawn codex login --with-api-key, write key to stdin, close. Codex
+    // writes auth.json itself; workbench is the caller, not the writer.
+    // Per `reference_execfile_drops_stdio.md`: must use spawn (not execFile)
+    // for stdio control.
+    const { spawn } = require('child_process');
+    await new Promise((resolve) => {
+      const child = spawn('codex', ['login', '--with-api-key'], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: process.env,
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout?.on('data', (b) => { stdout += b.toString(); });
+      child.stderr?.on('data', (b) => { stderr += b.toString(); });
+      child.on('error', (err) => {
+        logger.warn('codex login --with-api-key spawn failed', { module: 'watchers', err: err.message });
+        resolve();
+      });
+      child.on('close', (code) => {
+        if (code === 0) {
+          logger.info('Seeded Codex auth.json via `codex login --with-api-key`', { module: 'watchers' });
+        } else {
+          logger.warn('codex login --with-api-key exited non-zero', {
+            module: 'watchers', code, stdout: stdout.slice(0, 200), stderr: stderr.slice(0, 200),
+          });
+        }
+        resolve();
+      });
+      try {
+        child.stdin.write(apiKey + '\n');
+      } catch (err) {
+        logger.warn('codex login stdin write failed', { module: 'watchers', err: err.message });
+      } finally {
+        child.stdin.end();
+      }
+    });
+  }
+
   async function registerCodexMcp() {
     const HOME = safe.HOME;
     const codexConfigFile = join(HOME, '.codex', 'config.toml');
@@ -625,6 +698,7 @@ module.exports = function createWatchers({
     registerGeminiMcp,
     registerCodexMcp,
     registerCodexProvider,
+    registerCodexAuth,
     trustProjectDirs,
     trustGeminiProjectDirs,
     trustCodexProjectDirs,
